@@ -79,13 +79,13 @@ output_size = len(np.unique(y))
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 256, bias=True)
-        self.fc2 = nn.Linear(256, 256, bias=True)
+        self.fc1 = nn.Linear(input_size, 512, bias=True)
+        self.fc2 = nn.Linear(512, 512, bias=True)
         if output_size == 2:
-            self.fc3 = nn.Linear(256, 1, bias=True)
+            self.fc3 = nn.Linear(512, 1, bias=True)
             self.activation = nn.Sigmoid()
         else:
-            self.fc3 = nn.Linear(256, output_size, bias=True)
+            self.fc3 = nn.Linear(512, output_size, bias=True)
             self.activation = nn.Softmax(dim=1)
         self.relu = nn.ReLU()
 
