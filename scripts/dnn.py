@@ -119,7 +119,7 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.0001)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 
 # Training loop with DataLoader
