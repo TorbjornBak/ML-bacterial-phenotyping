@@ -63,7 +63,7 @@ y_train_tensor = torch.tensor(y_train, device = device)
 y_test_tensor = torch.tensor(y_test, device = device)
 
 
-batch_size = 2
+batch_size = 50
 train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
 test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -119,7 +119,7 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 
 # Training loop with DataLoader
