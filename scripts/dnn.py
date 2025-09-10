@@ -29,7 +29,7 @@ y_filtered = y[mask]
 
 
 
-device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+#device = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
 
 
