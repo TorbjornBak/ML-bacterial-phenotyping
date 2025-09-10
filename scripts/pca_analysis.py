@@ -8,7 +8,6 @@ from sklearn.decomposition import PCA
 
 
 
-
 if __name__ == "__main__":
 	file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
 	#labels = load_labels(file_path="downloads/genome_lineage")
@@ -26,9 +25,9 @@ if __name__ == "__main__":
 	labels = np.unique(y)
 
 	label2id = {label: i for i, label in enumerate(labels) }
-	print(label2id)
-	print(y)
+	
 	color_list = [label2id[l] for l in y]
+
 	
 
 	plt.figure(figsize=(6,5))

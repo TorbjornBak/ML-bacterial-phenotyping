@@ -77,7 +77,7 @@ def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size,
 				array[kmer_suffix_binary] = 1
 
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
-	print(f'Total kmers: {kmer_count}')
+	#print(f'Total kmers: {kmer_count}')
 	return array
 
 def dna_to_binary(dna, kmer_size):
@@ -153,7 +153,7 @@ def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
 		array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
 		array = kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size)
 
-		print(f'Unique kmers: {array.sum()}')
+		#print(f'Unique kmers: {array.sum()}')
 		vector.append(array)
 
 
@@ -207,7 +207,6 @@ def find_files_to_kmerize(directory, prefix = ".fna", id = "genome_id", label = 
 	labels = load_labels(id = id, label = label)
 
 	
-
 	final_dir_list = [dir for dir in dir_list if dir.replace(prefix, "") in labels]
 
 
