@@ -5,9 +5,11 @@ import torch.nn as nn
 import torch.optim as optim
 from kmer_sampling import kmer_sampling_multiple_files, find_files_to_kmerize
 
-# Example data: 10 samples, 5 classes (one-hot encoded)
+
+
+
 file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, sample_nr = 1000)
+X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, sample_nr = 200)
 X = np.stack(X, axis=0)
 
 labels = np.unique(y)
@@ -44,10 +46,14 @@ else:
 
 print(f"Using {device} device")
 
+print("Splitting data into test and training set")
+
 # Split filtered data into train and test sets (1/5 for test)
 X_train, X_test, y_train, y_test = train_test_split(
     X_filtered, y_filtered, test_size=0.2, random_state=42, stratify=y_filtered)
 
+
+print("Converting arrays to tensors")
 # Convert numpy arrays to torch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device = device)
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32, device = device)
