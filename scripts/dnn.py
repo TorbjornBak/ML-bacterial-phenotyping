@@ -10,7 +10,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 
 file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, sample_nr = None)
+X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
 X = np.stack(X, axis=0)
 
 labels = np.unique(y)
@@ -119,7 +119,7 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
+optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 
 # Training loop with DataLoader
