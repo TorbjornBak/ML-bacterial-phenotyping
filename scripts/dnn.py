@@ -131,7 +131,7 @@ for fold, (train_idx, test_idx) in enumerate(skf.split(X_filtered, y_filtered)):
         y_test_tensor = y_test_tensor.long()
 
     # L2 regularization (weight decay)
-    optimizer = optim.Adam(model.parameters(), lr=0.00001, weight_decay=0.01)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001, weight_decay=0.01)
 
     # Early stopping parameters
     epochs = 100
