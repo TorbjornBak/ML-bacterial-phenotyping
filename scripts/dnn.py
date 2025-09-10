@@ -69,22 +69,28 @@ output_size = len(np.unique(y))
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 256)
+        self.fc1 = nn.Linear(input_size, 1024)
         self.relu = nn.ReLU()
         if output_size == 2:
-            self.fc3 = nn.Linear(256, 1)
+            self.fc3 = nn.Linear(1024, 1)
             self.activation = nn.Sigmoid()
         else:
-            self.fc3 = nn.Linear(256, output_size)
+            self.fc3 = nn.Linear(1024, output_size)
             self.activation = nn.Softmax(dim=1)
 
-        self.fc2 = nn.Linear(256, 256)
+        self.fc2 = nn.Linear(1024, 1024)
     def forward(self, x):
         out = self.fc1(x)
         out = self.relu(out)
         out = self.fc2(out)
         out = self.relu(out)
+        out = self.fc2(out)
+        out = self.relu(out)
+        out = self.fc2(out)
+        out = self.relu(out)
         out = self.fc3(out)
+        out = self.fc2(out)
+        out = self.relu(out)
         out = self.activation(out)
         return out
 
@@ -100,7 +106,7 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.005)
+optimizer = optim.Adam(model.parameters(), lr=0.01)
 
 # Training loop
 epochs = 30
