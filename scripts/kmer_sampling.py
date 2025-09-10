@@ -171,6 +171,7 @@ def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None
 
 	random.shuffle(file_names)
 
+	print("Sampling kmers from files")
 	for i, file_name in enumerate(file_names):
 		if i == sample_nr:
 			print(f"Stopped after {i} iterations")

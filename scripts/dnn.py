@@ -63,16 +63,16 @@ output_size = len(np.unique(y))
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 128)
+        self.fc1 = nn.Linear(input_size, 256)
         self.relu = nn.ReLU()
         if output_size == 2:
-            self.fc3 = nn.Linear(128, 1)
+            self.fc3 = nn.Linear(256, 1)
             self.activation = nn.Sigmoid()
         else:
-            self.fc3 = nn.Linear(128, output_size)
+            self.fc3 = nn.Linear(256, output_size)
             self.activation = nn.Softmax(dim=1)
 
-        self.fc2 = nn.Linear(128, 128)
+        self.fc2 = nn.Linear(256, 256)
     def forward(self, x):
         out = self.fc1(x)
         out = self.relu(out)
@@ -94,16 +94,17 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+optimizer = optim.Adam(model.parameters(), lr=0.005)
 
 # Training loop
-for epoch in range(10):
+epochs = 30
+for epoch in range(epochs):
     optimizer.zero_grad()
     outputs = model(X_train_tensor)
     loss = criterion(outputs, y_train_tensor)
     loss.backward()
     optimizer.step()
-    print(f'Epoch [{epoch+1}/10], Loss: {loss.item():.4f}')
+    print(f'Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}')
 
 # Evaluate on test set
 with torch.no_grad():
