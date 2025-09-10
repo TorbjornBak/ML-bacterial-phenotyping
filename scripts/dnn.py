@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from kmer_sampling import kmer_sampling_multiple_files, find_files_to_kmerize
-
+# Create PyTorch datasets and dataloaders
+from torch.utils.data import TensorDataset, DataLoader
 
 
 
@@ -54,6 +55,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 
 
 print("Converting arrays to tensors")
+
 # Convert numpy arrays to torch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device = device)
 X_test_tensor = torch.tensor(X_test, dtype=torch.float32, device = device)
@@ -61,30 +63,41 @@ y_train_tensor = torch.tensor(y_train, device = device)
 y_test_tensor = torch.tensor(y_test, device = device)
 
 
+batch_size = 2
+train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+
 # Dynamically set input and output sizes
 input_size = X.shape[1]
 output_size = len(np.unique(y))
 
 # If output_size == 2, use single output for binary classification
+
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
-        self.fc1 = nn.Linear(input_size, 1024)
-        self.relu = nn.ReLU()
+        self.fc1 = nn.Linear(input_size, 256, bias=True)
+        self.fc2 = nn.Linear(256, 256, bias=True)
         if output_size == 2:
-            self.fc3 = nn.Linear(1024, 1)
+            self.fc3 = nn.Linear(256, 1, bias=True)
             self.activation = nn.Sigmoid()
         else:
-            self.fc3 = nn.Linear(1024, output_size)
+            self.fc3 = nn.Linear(256, output_size, bias=True)
             self.activation = nn.Softmax(dim=1)
+        self.relu = nn.ReLU()
 
-        self.fc2 = nn.Linear(1024, 1024)
+        # Gaussian initialization for all Linear layers
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0.0, std=0.1)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+
     def forward(self, x):
         out = self.fc1(x)
-        out = self.relu(out)
-        out = self.fc2(out)
-        out = self.relu(out)
-        out = self.fc2(out)
         out = self.relu(out)
         out = self.fc2(out)
         out = self.relu(out)
@@ -106,37 +119,53 @@ else:
     y_train_tensor = y_train_tensor.long()
     y_test_tensor = y_test_tensor.long()
 
-optimizer = optim.Adam(model.parameters(), lr=0.01)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-# Training loop
-epochs = 30
+
+# Training loop with DataLoader
+epochs = 10
 for epoch in range(epochs):
-    optimizer.zero_grad()
-    outputs = model(X_train_tensor)
-    loss = criterion(outputs, y_train_tensor)
-    loss.backward()
-    optimizer.step()
-    print(f'Epoch [{epoch+1}/{epochs}], Loss: {loss.item():.4f}')
+    model.train()
+    running_loss = 0.0
+    total_samples = 0
+    for batch_X, batch_y in train_loader:
+        optimizer.zero_grad()
+        if output_size == 2:
+            batch_y = batch_y.float().unsqueeze(1)
+        else:
+            batch_y = batch_y.long()
+        outputs = model(batch_X)
+        loss = criterion(outputs, batch_y)
+        loss.backward()
+        optimizer.step()
+        running_loss += loss.item() * batch_X.size(0)
+        total_samples += batch_X.size(0)
+    avg_loss = running_loss / total_samples
+    print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
 
-# Evaluate on test set
+
+# Evaluate on test set with DataLoader
+model.eval()
+all_preds = []
+all_trues = []
 with torch.no_grad():
-    test_outputs = model(X_test_tensor)
-    # For multiclass, take argmax; for binary, threshold at 0.5
-    test_outputs = test_outputs.cpu()
-    if output_size == 2:
-        pred_indices = (test_outputs.numpy() > 0.5).astype(int).flatten()
-        true_indices = y_test_tensor.cpu().numpy().astype(int).flatten()
-    else:
-        pred_indices = np.argmax(test_outputs.numpy(), axis=1)
-        true_indices = y_test_tensor.cpu().numpy().astype(int)
+    for batch_X, batch_y in test_loader:
+        outputs = model(batch_X)
+        outputs = outputs.cpu()
+        if output_size == 2:
+            preds = (outputs.numpy() > 0.5).astype(int).flatten()
+            trues = batch_y.cpu().numpy().astype(int).flatten()
+        else:
+            preds = np.argmax(outputs.numpy(), axis=1)
+            trues = batch_y.cpu().numpy().astype(int)
+        all_preds.extend(preds)
+        all_trues.extend(trues)
 
-    print("Predicted vs Correct class:")
-    correct_predictions = 0
-    for pred, true in zip(pred_indices, true_indices):
-        print(f"Predicted: {id2label[pred]}, Correct: {id2label[true]}")
-        
-        if id2label[pred] == id2label[true]:
-            correct_predictions += 1
-
-    print(f'Correct / total: {correct_predictions}/{X_test.shape[0]}')
-    print(f'Accuracy: {(correct_predictions/X_test.shape[0])*100} %')
+print("Predicted vs Correct class:")
+correct_predictions = 0
+for pred, true in zip(all_preds, all_trues):
+    print(f"Predicted: {id2label[pred]}, Correct: {id2label[true]}")
+    if id2label[pred] == id2label[true]:
+        correct_predictions += 1
+print(f'Correct / total: {correct_predictions}/{len(all_trues)}')
+print(f'Accuracy: {(correct_predictions/len(all_trues))*100} %')
