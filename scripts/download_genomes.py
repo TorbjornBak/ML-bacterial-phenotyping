@@ -1,6 +1,7 @@
 import ftplib
 import os
 import pandas as pd
+import random
 
 # Made with AI
 
@@ -67,9 +68,9 @@ def get_list_of_genomes_to_download(file_path = "downloads/genome_summary"):
     filtered_genome_summary = genome_summary[genome_summary['genome_status'] != 'Deprecated']
     genome_list = filtered_genome_summary.genome_id.to_list()
 
+    random.shuffle(genome_list)
+
     return genome_list
-
-
 
 
 if __name__ == "__main__":
