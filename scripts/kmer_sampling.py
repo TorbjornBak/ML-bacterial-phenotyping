@@ -2,6 +2,7 @@ import mmap
 import sys, os
 import numpy as np
 import pandas as pd
+import random
 # Reads one fasta file
 
 # One-hot encoding.
@@ -157,7 +158,7 @@ def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
 		vector.append(array)
 
 
-def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, labels = None, prefix = ".fna"):
+def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, labels = None, prefix = ".fna", sample_nr = None):
 	kmer_prefix = b"CGTGAT"
 	kmer_suffix_size = 11
 	arrays = list()
@@ -168,7 +169,12 @@ def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None
 		file_names = [f'{genome_id}{prefix}' for genome_id in genome_ids]
 
 
-	for file_name in file_names:
+	random.shuffle(file_names)
+
+	for i, file_name in enumerate(file_names):
+		if i == sample_nr:
+			print(f"Stopped after {i} iterations")
+			return arrays, y_labels
 		file_path = f'{directory}/{file_name}'
 		sequences = read_fasta_binary(file_path=file_path)
 		
