@@ -1,5 +1,5 @@
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, StratifiedKFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -63,19 +63,6 @@ y_train_tensor = torch.tensor(y_train, device = device)
 y_test_tensor = torch.tensor(y_test, device = device)
 
 
-batch_size = 50
-train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
-
-
-# Dynamically set input and output sizes
-input_size = X.shape[1]
-output_size = len(np.unique(y))
-
-# If output_size == 2, use single output for binary classification
-
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
@@ -107,6 +94,137 @@ class SimpleNN(nn.Module):
         out = self.activation(out)
         return out
 
+# Cross-validation parameters
+k_folds = 5
+skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
+
+batch_size = 50
+
+cv_accuracies = []
+for fold, (train_idx, test_idx) in enumerate(skf.split(X_filtered, y_filtered)):
+    print(f"\nFold {fold+1}/{k_folds}")
+    X_train, X_test = X_filtered[train_idx], X_filtered[test_idx]
+    y_train, y_test = y_filtered[train_idx], y_filtered[test_idx]
+
+    X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device=device)
+    X_test_tensor = torch.tensor(X_test, dtype=torch.float32, device=device)
+    y_train_tensor = torch.tensor(y_train, device=device)
+    y_test_tensor = torch.tensor(y_test, device=device)
+
+    train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
+    test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+
+    input_size = X.shape[1]
+    output_size = len(np.unique(y))
+    model = SimpleNN(input_size, output_size).to(device)
+
+    # Choose loss function based on output size
+    if output_size == 2:
+        criterion = nn.BCELoss()
+        y_train_tensor = y_train_tensor.float().unsqueeze(1)
+        y_test_tensor = y_test_tensor.float().unsqueeze(1)
+    else:
+        criterion = nn.CrossEntropyLoss()
+        y_train_tensor = y_train_tensor.long()
+        y_test_tensor = y_test_tensor.long()
+
+    # L2 regularization (weight decay)
+    optimizer = optim.Adam(model.parameters(), lr=0.00001, weight_decay=0.01)
+
+    # Early stopping parameters
+    epochs = 100
+    patience = 10
+    best_val_loss = float('inf')
+    patience_counter = 0
+
+    for epoch in range(epochs):
+        model.train()
+        running_loss = 0.0
+        total_samples = 0
+        for batch_X, batch_y in train_loader:
+            optimizer.zero_grad()
+            if output_size == 2:
+                batch_y = batch_y.float().unsqueeze(1)
+            else:
+                batch_y = batch_y.long()
+            outputs = model(batch_X)
+            loss = criterion(outputs, batch_y)
+            loss.backward()
+            optimizer.step()
+            running_loss += loss.item() * batch_X.size(0)
+            total_samples += batch_X.size(0)
+        avg_loss = running_loss / total_samples
+
+        # Validation loss (on test set)
+        model.eval()
+        val_loss = 0.0
+        val_samples = 0
+        with torch.no_grad():
+            for batch_X, batch_y in test_loader:
+                if output_size == 2:
+                    batch_y = batch_y.float().unsqueeze(1)
+                else:
+                    batch_y = batch_y.long()
+                outputs = model(batch_X)
+                loss = criterion(outputs, batch_y)
+                val_loss += loss.item() * batch_X.size(0)
+                val_samples += batch_X.size(0)
+        avg_val_loss = val_loss / val_samples
+        print(f'Epoch [{epoch+1}/{epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+
+        # Early stopping check
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            patience_counter = 0
+            best_model_state = model.state_dict()
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping at epoch {epoch+1}")
+                model.load_state_dict(best_model_state)
+                break
+
+    # Evaluate on test set with DataLoader
+    model.eval()
+    all_preds = []
+    all_trues = []
+    with torch.no_grad():
+        for batch_X, batch_y in test_loader:
+            outputs = model(batch_X)
+            outputs = outputs.cpu()
+            if output_size == 2:
+                preds = (outputs.numpy() > 0.5).astype(int).flatten()
+                trues = batch_y.cpu().numpy().astype(int).flatten()
+            else:
+                preds = np.argmax(outputs.numpy(), axis=1)
+                trues = batch_y.cpu().numpy().astype(int)
+            all_preds.extend(preds)
+            all_trues.extend(trues)
+
+    print("Predicted vs Correct class:")
+    correct_predictions = 0
+    for pred, true in zip(all_preds, all_trues):
+        print(f"Predicted: {id2label[pred]}, Correct: {id2label[true]}")
+        if id2label[pred] == id2label[true]:
+            correct_predictions += 1
+    accuracy = correct_predictions / len(all_trues)
+    print(f'Correct / total: {correct_predictions}/{len(all_trues)}')
+    print(f'Accuracy: {accuracy*100:.2f} %')
+    cv_accuracies.append(accuracy)
+
+print(f"\nCross-validation mean accuracy: {np.mean(cv_accuracies)*100:.2f} %")
+
+
+# Dynamically set input and output sizes
+input_size = X.shape[1]
+output_size = len(np.unique(y))
+
+# If output_size == 2, use single output for binary classification
+
+
+
 model = SimpleNN(input_size, output_size).to(device)
 
 # Choose loss function based on output size
@@ -123,7 +241,13 @@ optimizer = optim.Adam(model.parameters(), lr=0.00001)
 
 
 # Training loop with DataLoader
-epochs = 75
+
+# Early stopping parameters
+epochs = 100
+patience = 10
+best_val_loss = float('inf')
+patience_counter = 0
+
 for epoch in range(epochs):
     model.train()
     running_loss = 0.0
@@ -141,7 +265,35 @@ for epoch in range(epochs):
         running_loss += loss.item() * batch_X.size(0)
         total_samples += batch_X.size(0)
     avg_loss = running_loss / total_samples
-    print(f'Epoch [{epoch+1}/{epochs}], Loss: {avg_loss:.4f}')
+
+    # Validation loss (on test set)
+    model.eval()
+    val_loss = 0.0
+    val_samples = 0
+    with torch.no_grad():
+        for batch_X, batch_y in test_loader:
+            if output_size == 2:
+                batch_y = batch_y.float().unsqueeze(1)
+            else:
+                batch_y = batch_y.long()
+            outputs = model(batch_X)
+            loss = criterion(outputs, batch_y)
+            val_loss += loss.item() * batch_X.size(0)
+            val_samples += batch_X.size(0)
+    avg_val_loss = val_loss / val_samples
+    print(f'Epoch [{epoch+1}/{epochs}], Train Loss: {avg_loss:.4f}, Val Loss: {avg_val_loss:.4f}')
+
+    # Early stopping check
+    if avg_val_loss < best_val_loss:
+        best_val_loss = avg_val_loss
+        patience_counter = 0
+        best_model_state = model.state_dict()
+    else:
+        patience_counter += 1
+        if patience_counter >= patience:
+            print(f"Early stopping at epoch {epoch+1}")
+            model.load_state_dict(best_model_state)
+            break
 
 
 # Evaluate on test set with DataLoader
