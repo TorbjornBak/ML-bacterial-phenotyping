@@ -58,7 +58,7 @@ def download_genomes_from_bvbrc(genome_list, ftp_server = "ftp.bvbrc.org", remot
         
     return
 
-def get_list_of_genomes_to_download(file_path = "../downloads/genome_summary"):
+def get_list_of_genomes_to_download(file_path = "downloads/genome_summary"):
     
     genome_summary_path = file_path
 
@@ -73,5 +73,5 @@ def get_list_of_genomes_to_download(file_path = "../downloads/genome_summary"):
 
 
 if __name__ == "__main__":
-    genome_list = get_list_of_genomes_to_download(file_path="../downloads/genome_summary")
-    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=20)
+    genome_list = get_list_of_genomes_to_download(file_path="downloads/genome_summary")
+    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=2000)
