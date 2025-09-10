@@ -123,7 +123,7 @@ optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
 
 # Training loop with DataLoader
-epochs = 10
+epochs = 30
 for epoch in range(epochs):
     model.train()
     running_loss = 0.0
