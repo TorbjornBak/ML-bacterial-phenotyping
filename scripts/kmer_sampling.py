@@ -180,7 +180,7 @@ def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None
 		
 		array = kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size)
 
-		print(f'Unique kmers: {array.sum()}')
+		#print(f'Unique kmers: {array.sum()}')
 		arrays.append(array)
 
 		genome_id = file_name.strip(prefix)
