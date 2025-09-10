@@ -160,7 +160,7 @@ def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
 
 def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, labels = None, prefix = ".fna", sample_nr = None):
 	kmer_prefix = b"CGTGAT"
-	kmer_suffix_size = 11
+	kmer_suffix_size = 10
 	arrays = list()
 	y_labels = list()
 	array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
