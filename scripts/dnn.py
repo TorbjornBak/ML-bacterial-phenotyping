@@ -9,7 +9,7 @@ from kmer_sampling import kmer_sampling_multiple_files, find_files_to_kmerize
 
 
 file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, sample_nr = 500)
+X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, sample_nr = 1000)
 X = np.stack(X, axis=0)
 
 labels = np.unique(y)
