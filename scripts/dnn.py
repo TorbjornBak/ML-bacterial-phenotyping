@@ -13,9 +13,11 @@ from torch.utils.data import TensorDataset, DataLoader
 
 
 
-file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
-X = np.stack(X, axis=0)
+#file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
+#X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
+
+X = np.load(file = "/home/projects2/s203555/bv-numpy-arrays/X_array.npy", allow_pickle=True, mmap_mode='r')
+y = np.load(file = "/home/projects2/s203555/bv-numpy-arrays/y_array.npy", allow_pickle=True)
 
 labels = np.unique(y)
 
@@ -23,7 +25,7 @@ label2id = {label: i for i, label in enumerate(labels) }
 id2label = {i : label for i, label in enumerate(labels) }
 
 y = [label2id[l] for l in y]
-y = np.array(y, dtype=np.float32)
+y = np.array(y, dtype=np.uint8)
 print(y)
 
 # Drop classes with fewer than 2 members
