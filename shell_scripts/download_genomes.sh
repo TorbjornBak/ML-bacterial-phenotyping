@@ -15,11 +15,12 @@
 #SBATCH --cpus-per-task=1
 #
 # Wall clock limit:
-#SBATCH --time=00:02:00
+#SBATCH --time=02:00:00
 #
 # File for output, use file or /dev/null
-#SBATCH -o /home/people/s203555/bact-pheno
-#
-## Command(s) to run (example):
+#SBATCH --output=/home/people/s203555/bact-pheno/logs/%x-%j.out
+#SBATCH --error=/home/people/s203555/bact-pheno/logs/%x-%j.err#
 
-/home/ctools/opt/anaconda3_2023-3-1/bin/python3 download_genomes.py 2000
+mkdir -p /home/people/s203555/bact-pheno/logs
+
+/home/ctools/opt/anaconda3_2023-3-1/bin/python3 scripts/download_genomes.py 2000 /home/people/s203555/bact-pheno/ML-bacterial-phenotyping/downloads/genome_summary /home/projects2/s203555/bv-brc-data
