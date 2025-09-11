@@ -9,13 +9,16 @@ from sklearn.decomposition import PCA
 
 
 if __name__ == "__main__":
-	file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-	#labels = load_labels(file_path="downloads/genome_lineage")
+	# file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
+	# #labels = load_labels(file_path="downloads/genome_lineage")
 	
-	X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
-	#print()
+	# X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
+	# #print()
 
-	X_np = np.stack(X, axis=0)
+	# X_np = np.stack(X, axis=0)
+
+	X_np = np.load(file = "/home/projects2/s203555/bv-numpy-arrays/X_array.npy", allow_pickle=True, mmap_mode='r')
+	y = np.load(file = "/home/projects2/s203555/bv-numpy-arrays/y_array.npy", allow_pickle=True)
 
 	pca = PCA(n_components=2, random_state=0)
 	X_pcs = pca.fit_transform(X_np)
