@@ -80,5 +80,16 @@ if __name__ == "__main__":
         nr_of_genomes_to_download = int(sys.argv[1])
     else:
         nr_of_genomes_to_download = 10
-    genome_list = get_list_of_genomes_to_download(file_path="downloads/genome_summary")
-    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=nr_of_genomes_to_download)
+    
+    if sys.argv[2] is not None:
+        file_path = sys.argv[2]
+    else:
+        file_path="downloads/genome_summary"
+
+    if sys.argv[3] is not None:
+        local_directory = sys.argv[3]
+    else:
+        local_directory = "data"
+
+    genome_list = get_list_of_genomes_to_download(file_path=file_path)
+    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=nr_of_genomes_to_download, local_directory=local_directory)
