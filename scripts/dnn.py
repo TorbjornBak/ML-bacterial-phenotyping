@@ -126,7 +126,7 @@ for lr in learning_rates:
 
     print(f'Learning rate: {lr}')
     # Cross-validation parameters
-    k_folds = 5
+    k_folds = 1
     skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
 
     batch_size = 50
