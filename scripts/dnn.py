@@ -72,9 +72,9 @@ class SimpleNN(nn.Module):
         super(SimpleNN, self).__init__()
         layer_size = 512
         self.fc1 = nn.Linear(input_size, layer_size, bias=True)
-        self.dropout1 = nn.Dropout(0.3)
+        self.dropout1 = nn.Dropout(0.1)
         self.fc2 = nn.Linear(layer_size, layer_size, bias=True)
-        self.dropout2 = nn.Dropout(0.3)
+        self.dropout2 = nn.Dropout(0.1)
         if output_size == 2:
             self.fc3 = nn.Linear(layer_size, 1, bias=True)
             self.activation = nn.Sigmoid()
@@ -104,7 +104,7 @@ class SimpleNN(nn.Module):
         return out
     
 
-learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+learning_rates = [0.001, 0.0001, 0.00001]
 epochs = 100
 weight_decay = 0.01
 
