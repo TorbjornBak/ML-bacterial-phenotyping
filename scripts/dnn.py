@@ -63,8 +63,8 @@ X_train, X_test, y_train, y_test = train_test_split(
 print("Converting arrays to tensors")
 
 # Convert numpy arrays to torch tensors
-X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device = device)
-X_test_tensor = torch.tensor(X_test, dtype=torch.float32, device = device)
+X_train_tensor = torch.tensor(X_train, dtype=torch.uint8, device = device)
+X_test_tensor = torch.tensor(X_test, dtype=torch.uint8, device = device)
 y_train_tensor = torch.tensor(y_train, device = device)
 y_test_tensor = torch.tensor(y_test, device = device)
 
@@ -72,7 +72,7 @@ y_test_tensor = torch.tensor(y_test, device = device)
 class SimpleNN(nn.Module):
     def __init__(self, input_size, output_size):
         super(SimpleNN, self).__init__()
-        layer_size = 512
+        layer_size = 1024
         self.fc1 = nn.Linear(input_size, layer_size, bias=True)
         self.dropout1 = nn.Dropout(0.1)
         self.fc2 = nn.Linear(layer_size, layer_size, bias=True)
@@ -106,8 +106,8 @@ class SimpleNN(nn.Module):
         return out
     
 
-learning_rates = [0.001, 0.0001, 0.00001]
-epochs = 100
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
+epochs = 150
 weight_decay = 0.01
 
 best_results = dict()
@@ -130,7 +130,7 @@ for lr in learning_rates:
 
     print(f'Learning rate: {lr}')
     # Cross-validation parameters
-    k_folds = 2
+    k_folds = 5
     skf = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
 
     batch_size = 50

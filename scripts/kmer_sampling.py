@@ -50,7 +50,7 @@ def read_fasta_binary(file_path):
 
 def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size):
 
-	array = np.zeros(array_size, dtype = int)
+	array = np.zeros(array_size, dtype = np.uint8)
 	
 	kmer_prefix_size = len(kmer_prefix)
 	kmer_count = 0
