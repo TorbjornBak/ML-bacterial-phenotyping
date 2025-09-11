@@ -104,7 +104,7 @@ class SimpleNN(nn.Module):
         return out
     
 
-learning_rates = [0.1, 0.01, 0.001, 0.0001, 0.00001]
+learning_rates = [0.01, 0.001, 0.0001, 0.00001]
 epochs = 100
 weight_decay = 0.01
 
