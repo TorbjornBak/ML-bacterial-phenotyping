@@ -202,19 +202,19 @@ def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label 
 	return labels
 
 
-def find_files_to_kmerize(directory, prefix = ".fna", id = "genome_id", label = "class"):
+def find_files_to_kmerize(directory, file_suffix = ".fna", id = "genome_id", label = "class"):
 
 	dir_list = os.listdir(directory)
 
 
 
-	dir_list = [file for file in dir_list if prefix in file]
+	dir_list = [file for file in dir_list if file_suffix in file]
 
 
 	labels = load_labels(id = id, label = label)
 
 	
-	final_dir_list = [dir for dir in dir_list if dir.replace(prefix, "") in labels]
+	final_dir_list = [dir for dir in dir_list if dir.replace(file_suffix, "") in labels]
 
 
 	return final_dir_list, labels
@@ -248,12 +248,12 @@ if __name__ == "__main__":
 	# 									28901.2926,
 	# 									28901.2927,
 	# 									28901.2928])
-	file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
+	file_names, labels = find_files_to_kmerize(directory="/home/projects2/s203555/bv-brc-data", file_suffix = ".fna")
 	#labels = load_labels(file_path="downloads/genome_lineage")
 	
 	X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8)
 	
-	save_kmerized_files_with_numpy(X = X, X_file_path="/home/projects2/s203555/bv-brc-data/X_array.npy", y = y, y_file_path="/home/projects2/s203555/bv-brc-data/y_array.npy")
+	save_kmerized_files_with_numpy(X = X, X_file_path="/home/projects2/s203555/bv-numpy-arrays/X_array.npy", y = y, y_file_path="/home/projects2/s203555/bv-numpy-arrays/y_array.npy")
 	
 	print(f'{len(file_names)=}') 
 	print(len(y))
