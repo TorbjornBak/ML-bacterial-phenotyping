@@ -76,8 +76,8 @@ def get_list_of_genomes_to_download(file_path = "downloads/genome_summary"):
 
 
 if __name__ == "__main__":
-    if sys.argv[2] is not None:
-        nr_of_genomes_to_download = int(sys.argv[2])
+    if sys.argv[1] is not None:
+        nr_of_genomes_to_download = int(sys.argv[1])
     else:
         nr_of_genomes_to_download = 10
     genome_list = get_list_of_genomes_to_download(file_path="downloads/genome_summary")
