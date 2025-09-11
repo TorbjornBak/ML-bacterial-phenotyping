@@ -108,6 +108,8 @@ learning_rates = [0.001, 0.0001, 0.00001]
 epochs = 100
 weight_decay = 0.01
 
+best_results = dict()
+
 for lr in learning_rates:
     # run = wandb.init(
     #     # Set the wandb entity where your project will be logged (generally your team name).
@@ -262,4 +264,8 @@ for lr in learning_rates:
             correct_predictions += 1
     print(f'Correct / total: {correct_predictions}/{len(all_trues)}')
     print(f'Accuracy: {(correct_predictions/len(all_trues))*100} %')
+
+    best_results[lr] = f'Correct / total: {correct_predictions}/{len(all_trues)} \nAccuracy: {(correct_predictions/len(all_trues))*100} %'
     #run.finish()
+
+print(best_results)
