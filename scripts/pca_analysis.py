@@ -27,7 +27,6 @@ if __name__ == "__main__":
 	label2id = {label: i for i, label in enumerate(labels) }
 	
 	color_list = [label2id[l] for l in y]
-
 	
 
 	plt.figure(figsize=(6,5))

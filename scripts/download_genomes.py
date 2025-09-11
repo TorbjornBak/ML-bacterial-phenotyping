@@ -1,5 +1,5 @@
 import ftplib
-import os
+import os, sys
 import pandas as pd
 import random
 
@@ -12,6 +12,8 @@ def download_genomes_from_bvbrc(genome_list, ftp_server = "ftp.bvbrc.org", remot
     
     nr_of_downloaded_genomes = 0
     
+    print(f"Starting downloading genomes. \nRequested nr of genomes: {nr_of_genomes_to_download}")
+
     for genome_id in genome_list:
         if nr_of_downloaded_genomes == nr_of_genomes_to_download:
             # Stop when nr of desired genomes is reached
@@ -74,5 +76,9 @@ def get_list_of_genomes_to_download(file_path = "downloads/genome_summary"):
 
 
 if __name__ == "__main__":
+    if sys.argv[2] is not None:
+        nr_of_genomes_to_download = int(sys.argv[2])
+    else:
+        nr_of_genomes_to_download = 10
     genome_list = get_list_of_genomes_to_download(file_path="downloads/genome_summary")
-    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=2000)
+    download_genomes_from_bvbrc(genome_list=genome_list, nr_of_genomes_to_download=nr_of_genomes_to_download)
