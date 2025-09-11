@@ -144,29 +144,29 @@ def get_array_size(alphabet_size, kmer_size):
 
 
 
-def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
-	kmer_prefix = b"CGTGATGT"
-	kmer_suffix_size = 8
-	vector = list()
-	for iteration in range(iterations):
-		print(f'Iteration nr: {iteration}')
-		sequences = read_fasta_binary(file_path=file_path)
-		array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
-		array = kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size)
+# def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
+# 	kmer_prefix = b"CGTGATGT"
+# 	kmer_suffix_size = 8
+# 	vector = list()
+# 	for iteration in range(iterations):
+# 		print(f'Iteration nr: {iteration}')
+# 		sequences = read_fasta_binary(file_path=file_path)
+# 		array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
+# 		array = kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size)
 
-		#print(f'Unique kmers: {array.sum()}')
-		vector.append(array)
+# 		#print(f'Unique kmers: {array.sum()}')
+# 		vector.append(array)
 
 
-def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, labels = None, prefix = ".fna", sample_nr = None):
-	kmer_prefix = b"CGTGAT"
-	kmer_suffix_size = 10
+def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8, labels = None, file_suffix = ".fna", sample_nr = None):
+	
+	
 	arrays = list()
 	y_labels = list()
 	array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
 	
 	if genome_ids is not None:
-		file_names = [f'{genome_id}{prefix}' for genome_id in genome_ids]
+		file_names = [f'{genome_id}{file_suffix}' for genome_id in genome_ids]
 
 
 	random.shuffle(file_names)
@@ -184,7 +184,7 @@ def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None
 		#print(f'Unique kmers: {array.sum()}')
 		arrays.append(array)
 
-		genome_id = file_name.strip(prefix)
+		genome_id = file_name.strip(file_suffix)
 
 		y_labels.append(labels[genome_id])
 
@@ -220,6 +220,14 @@ def find_files_to_kmerize(directory, prefix = ".fna", id = "genome_id", label = 
 	return final_dir_list, labels
 	
 
+def save_kmerized_files_with_numpy(X, X_file_path, y, y_file_path):
+	X = np.stack(X, axis=0)
+
+	np.save(file = X_file_path, arr = X, allow_pickle=True)
+	np.save(file = y_file_path, arr=y, allow_pickle=True)
+	
+	print("Successfully saved X and y to .npy files")
+
 if __name__ == "__main__":
 	# kmer_prefix = b"CGTGA"
 	# kmer_suffix_size = 8
@@ -243,8 +251,11 @@ if __name__ == "__main__":
 	file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
 	#labels = load_labels(file_path="downloads/genome_lineage")
 	
-	X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
-	print(f'{len(file_names)=}')
+	X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8)
+	
+	save_kmerized_files_with_numpy(X = X, X_file_path="/home/projects2/s203555/bv-brc-data/X_array.npy", y = y, y_file_path="/home/projects2/s203555/bv-brc-data/y_array.npy")
+	
+	print(f'{len(file_names)=}') 
 	print(len(y))
 	print(f'{y=}')
 
