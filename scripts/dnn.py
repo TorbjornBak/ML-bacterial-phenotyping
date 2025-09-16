@@ -57,7 +57,7 @@ print("Splitting data into test and training set")
 
 # Split filtered data into train and test sets (1/5 for test)
 X_train, X_test, y_train, y_test = train_test_split(
-    X_filtered, y_filtered, test_size=0.2, random_state=42, stratify=y_filtered)
+    X_filtered, y_filtered, test_size=0.1, random_state=42, stratify=y_filtered)
 
 
 print("Converting arrays to tensors")
@@ -65,8 +65,8 @@ print("Converting arrays to tensors")
 # Convert numpy arrays to torch tensors
 X_train_tensor = torch.tensor(X_train, dtype=torch.uint8, device = device)
 X_test_tensor = torch.tensor(X_test, dtype=torch.uint8, device = device)
-y_train_tensor = torch.tensor(y_train, device = device)
-y_test_tensor = torch.tensor(y_test, device = device)
+y_train_tensor = torch.tensor(y_train, dtype=torch.uint8, device = device)
+y_test_tensor = torch.tensor(y_test, dtype=torch.uint8, device = device)
 
 
 class SimpleNN(nn.Module):
@@ -141,15 +141,15 @@ for lr in learning_rates:
         X_train, X_test = X_filtered[train_idx], X_filtered[test_idx]
         y_train, y_test = y_filtered[train_idx], y_filtered[test_idx]
 
-        X_train_tensor = torch.tensor(X_train, dtype=torch.float32, device=device)
-        X_test_tensor = torch.tensor(X_test, dtype=torch.float32, device=device)
-        y_train_tensor = torch.tensor(y_train, device=device)
-        y_test_tensor = torch.tensor(y_test, device=device)
+        X_train_tensor = torch.tensor(X_train, dtype=torch.uint8, device=device)
+        X_val_tensor = torch.tensor(X_test, dtype=torch.uint8, device=device)
+        y_train_tensor = torch.tensor(y_train, dtype=torch.uint8,device=device)
+        y_val_tensor = torch.tensor(y_test, dtype=torch.uint8, device=device)
 
         train_dataset = TensorDataset(X_train_tensor, y_train_tensor)
-        test_dataset = TensorDataset(X_test_tensor, y_test_tensor)
+        validation_dataset = TensorDataset(X_val_tensor, y_val_tensor)
         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False)
+        validation_loader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=False)
 
         input_size = X.shape[1]
         output_size = len(np.unique(y))
@@ -171,7 +171,7 @@ for lr in learning_rates:
 
         # Early stopping parameters
         
-        patience = 10
+        patience = 20
         best_val_loss = float('inf')
         patience_counter = 0
 
@@ -198,7 +198,7 @@ for lr in learning_rates:
             val_loss = 0.0
             val_samples = 0
             with torch.no_grad():
-                for batch_X, batch_y in test_loader:
+                for batch_X, batch_y in validation_loader:
                     if output_size == 2:
                         batch_y = batch_y.float().unsqueeze(1)
                     else:
@@ -225,12 +225,12 @@ for lr in learning_rates:
                     model.load_state_dict(best_model_state)
                     break
 
-        # Evaluate on test set with DataLoader
+        # Evaluate on valt with DataLoader
         model.eval()
         all_preds = []
         all_trues = []
         with torch.no_grad():
-            for batch_X, batch_y in test_loader:
+            for batch_X, batch_y in validation_loader:
                 outputs = model(batch_X)
                 outputs = outputs.cpu()
                 if output_size == 2:
