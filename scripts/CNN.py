@@ -94,6 +94,7 @@ else:
 
 
 
+
 label_dict = label_dict_int
 
 
@@ -182,7 +183,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 criterion = nn.CrossEntropyLoss()
 
 # ----- Training loop -----
-epochs = 5
+epochs = int(cli_arguments["--EPOCHS"])
 for epoch in range(epochs):
     model.train()
     train_loss = 0.0
