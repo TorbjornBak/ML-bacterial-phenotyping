@@ -4,6 +4,7 @@ import os, sys
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
+import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 
 from kmer_sampling import load_labels, read_parquet, kmerize_and_embed_parquet_dataset
@@ -102,10 +103,11 @@ print(f"Using {device} device")
 
 # ----- PyTorch Dataset wrapping the dict -----
 class GenomeKmerDataset(Dataset):
-    def __init__(self, seq_dict, label_dict):
+    def __init__(self, seq_dict, label_dict, shuffle_tokens: bool = False):
         self.ids = list(seq_dict.keys())
         self.seq_dict = seq_dict
         self.label_dict = label_dict
+        self.shuffle_tokens = shuffle_tokens
 
     def __len__(self):
         return len(self.ids)
@@ -116,6 +118,10 @@ class GenomeKmerDataset(Dataset):
         y = self.label_dict[gid]
         # Convert to 1D LongTensor of token ids
         seq = torch.from_numpy(seq_np.astype(np.int64))  # [L] Long tensor on CPU
+        if self.shuffle_tokens and seq.numel() > 1:
+            # Diagnostic: shuffle token order to test if model relies on order
+            perm = torch.randperm(seq.size(0))
+            seq = seq[perm]
         target = torch.tensor(y, dtype=torch.long)       # scalar Long tensor on CPU
         return seq, target
 
@@ -137,13 +143,16 @@ def pad_collate(batch, pad_id=0):
 class CNNKmerClassifier(nn.Module):
     def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0):
         super().__init__()
+        self.kernel_size = kernel_size
+        # approximate 'same' padding per conv layer
+        self.pad = kernel_size // 2
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         self.conv = nn.Sequential(
-            nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=3),
+            nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad),
             nn.ReLU(inplace=True),
-            nn.Conv1d(128, conv_dim, kernel_size=kernel_size, stride=2, padding=3),
+            nn.Conv1d(128, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
-            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=3),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
@@ -154,7 +163,24 @@ class CNNKmerClassifier(nn.Module):
         x = self.emb(token_ids)          # [B, T, D]
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
         z = self.conv(x)                 # [B, C, T']
-        z = self.pool(z).squeeze(-1)     # [B, C]
+
+        if mask is not None:
+            # Downsample mask to z's temporal length using avg_pool with same strides
+            m = mask.float()  # [B, T]
+            # First conv has stride 1 → same length
+            # Second conv stride=2
+            m = F.avg_pool1d(m.unsqueeze(1), kernel_size=self.kernel_size, stride=2, padding=self.pad).squeeze(1)
+            # Third conv stride=2
+            m = F.avg_pool1d(m.unsqueeze(1), kernel_size=self.kernel_size, stride=2, padding=self.pad).squeeze(1)
+            # Weighted mean over time, ignoring padded (near-zero) positions
+            weights = (m > 0).float().unsqueeze(1)  # [B,1,T']
+            # If everything padded (edge case), prevent div by zero
+            denom = weights.sum(dim=-1).clamp_min(1.0)  # [B,1]
+            z = (z * weights).sum(dim=-1) / denom  # [B, C]
+        else:
+            # Fallback to unmasked average
+            z = self.pool(z).squeeze(-1)     # [B, C]
+
         logits = self.fc(z)              # [B, num_classes]
         return logits
 
@@ -166,12 +192,31 @@ pad_id = 0          # reserve 0 for padding in your tokenizer
 # ----- Split into train/test only -----
 
 ids = list(data_dict.keys())
-train_ids, test_ids = train_test_split(ids, test_size=0.2, random_state=42, stratify=[label_dict[i] for i in ids])
+
+# Optional: stratify by joint of label and length bin to reduce length leakage across splits
+stratify_by_len = cli_arguments.get("--STRATIFY_BY_LEN", "false").lower() == "true"
+if stratify_by_len:
+    def len_bin_fn(L: int):
+        # robust coarse bins via log2 length
+        return int(np.log2(max(L, 1)))
+    strat_labels = []
+    for i in ids:
+        arr_i = data_dict[i]
+        L = int(arr_i.shape[0]) if isinstance(arr_i, np.ndarray) else len(arr_i)
+        strat_labels.append(f"{label_dict[i]}_{len_bin_fn(L)}")
+    try:
+        train_ids, test_ids = train_test_split(ids, test_size=0.2, random_state=42, stratify=strat_labels)
+    except Exception as e:
+        print(f"[Stratify by length] Fallback to label-only due to: {e}")
+        train_ids, test_ids = train_test_split(ids, test_size=0.2, random_state=42, stratify=[label_dict[i] for i in ids])
+else:
+    train_ids, test_ids = train_test_split(ids, test_size=0.2, random_state=42, stratify=[label_dict[i] for i in ids])
 
 def subset_dict(d, keys):
     return {k: d[k] for k in keys}
 
-train_dataset = GenomeKmerDataset(subset_dict(data_dict, train_ids), label_dict)
+shuffle_tokens_train = cli_arguments.get("--SHUFFLE_TOKENS_TRAIN", "false").lower() == "true"
+train_dataset = GenomeKmerDataset(subset_dict(data_dict, train_ids), label_dict, shuffle_tokens=shuffle_tokens_train)
 test_dataset = GenomeKmerDataset(subset_dict(data_dict, test_ids), label_dict)
 
 
@@ -190,6 +235,31 @@ test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, col
 model = CNNKmerClassifier(vocab_size=V, emb_dim=emb_dim, conv_dim=conv_dim, kernel_size=kernel_size, num_classes=2, pad_id=pad_id).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
+
+# ----- Optional: length-only baseline to detect leakage -----
+if cli_arguments.get("--CHECK_LENGTH_BASELINE", "false").lower() == "true":
+    try:
+        from sklearn.linear_model import LogisticRegression
+        import numpy as np
+        # Build simple features: only sequence length
+        train_lengths = np.array([subset_dict(data_dict, train_ids)[gid].shape[0] for gid in train_ids], dtype=np.float32).reshape(-1, 1)
+        test_lengths = np.array([subset_dict(data_dict, test_ids)[gid].shape[0] for gid in test_ids], dtype=np.float32).reshape(-1, 1)
+        print(train_lengths)
+        y_train = np.array([label_dict[gid] for gid in train_ids])
+        y_test = np.array([label_dict[gid] for gid in test_ids])
+        # Standardize lengths
+        mu, sigma = train_lengths.mean(), train_lengths.std() if train_lengths.std() > 0 else 1.0
+        train_lengths_std = (train_lengths - mu) / sigma
+        test_lengths_std = (test_lengths - mu) / sigma
+        clf = LogisticRegression(max_iter=1000)
+        clf.fit(train_lengths_std, y_train)
+        baseline_acc = clf.score(test_lengths_std, y_test)
+        print(f"[Length Baseline] Test accuracy using ONLY sequence length: {baseline_acc:.4f}")
+        if baseline_acc > 0.7:
+            print("[Warning] Length strongly predicts the label. Consider countermeasures like masked pooling (enabled), fixed-length crops, or stratifying by length.")
+
+    except Exception as e:
+        print(f"[Length Baseline] Skipped due to error: {e}")
 
 # ----- Training loop -----
 epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 5
