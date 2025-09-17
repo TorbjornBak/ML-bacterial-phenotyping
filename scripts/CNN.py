@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import os, sys
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
@@ -8,15 +9,41 @@ from sklearn.model_selection import train_test_split
 from kmer_sampling import load_labels, read_parquet, kmerize_and_embed_parquet_dataset
 
 
-label_dict_literal, label_dict_int = load_labels(file_path="downloads/labels.csv", id = "genome_name", label = "madin_categorical_gram_stain", sep = ",")
+if torch.cuda.is_available(): 
+    device = torch.device("cuda")
+    labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+    data_directory = "/home/projects2/bact_pheno/bacbench_data"
+
+# elif torch.backends.mps.is_available(): 
+#     device = torch.device("mps")
+else: 
+    device = torch.device("cpu")
+    labels_path = "downloads/labels.csv"
+    data_directory = "downloads"
+
+
+label_dict_literal, label_dict_int = load_labels(file_path=labels_path, id = "genome_name", label = "madin_categorical_gram_stain", sep = ",")
 
 data_dict = dict()
 
-for path in ["downloads/train_01.parquet","downloads/train_02.parquet", "downloads/train_03.parquet"]:
+
+file_suffix = ".parquet"
+dir_list = os.listdir(data_directory)
+dir_list = [f'{data_directory}/{file}' for file in dir_list if file_suffix in file]
+
+print(dir_list)
+
+for path in dir_list:
 
     parquet_df = read_parquet(parguet_path=path)
 
-    kmerized_sequences = kmerize_and_embed_parquet_dataset(df = parquet_df, genome_column= "genome_name", dna_sequence_column= "dna_sequence", ids = label_dict_literal.keys(), kmer_prefix="CGTCAT", kmer_suffix_size=8)
+    kmerized_sequences = kmerize_and_embed_parquet_dataset(
+        df = parquet_df, 
+        genome_column= "genome_name", 
+        dna_sequence_column= "dna_sequence", 
+        ids = label_dict_literal.keys(), 
+        kmer_prefix="CGTCAT", 
+        kmer_suffix_size=8)
 
     data_dict.update(kmerized_sequences)
 
@@ -24,15 +51,6 @@ for path in ["downloads/train_01.parquet","downloads/train_02.parquet", "downloa
 
 
 label_dict = label_dict_int
-
-
-if torch.cuda.is_available(): 
-    device = torch.device("cuda")
-
-# elif torch.backends.mps.is_available(): 
-#     device = torch.device("mps")
-else: 
-    device = torch.device("cpu")
 
 
 print(f"Using {device} device")
@@ -119,7 +137,7 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 criterion = nn.CrossEntropyLoss()
 
 # ----- Training loop -----
-epochs = 2
+epochs = 5
 for epoch in range(epochs):
     model.train()
     train_loss = 0.0
@@ -127,7 +145,6 @@ for epoch in range(epochs):
     correct = 0
     total = 0
     for seqs_padded, lengths, mask, targets in train_loader:
-        print(targets.shape)
         logits = model(seqs_padded, lengths, mask)
         loss = criterion(logits, targets)
         optimizer.zero_grad()
@@ -157,7 +174,7 @@ with torch.no_grad():
         preds = logits.argmax(dim=1)
         correct += (preds == targets).sum().item()
         print(f'{preds=}\n{targets}')
-        print(f'{correct/batch_size}')
+        print(f'{correct=}{batch_size=}')
         total += targets.size(0)
 avg_test_loss = test_loss / test_batches
 test_acc = correct / total if total > 0 else 0

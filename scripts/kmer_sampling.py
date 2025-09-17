@@ -278,10 +278,10 @@ def find_files_to_kmerize(directory, file_suffix = ".fna", id = "genome_id", lab
 	labels = load_labels(id = id, label = label)
 
 	
-	final_dir_list = [dir for dir in dir_list if dir.replace(file_suffix, "") in labels]
+	dir_list = [dir for dir in dir_list if dir.replace(file_suffix, "") in labels]
 
 
-	return final_dir_list, labels
+	return dir_list, labels
 	
 
 def save_kmerized_files_with_numpy(X, X_file_path, y, y_file_path):
