@@ -135,19 +135,19 @@ def pad_collate(batch, pad_id=0):
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=64, num_classes=2, pad_id=0):
+    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0):
         super().__init__()
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         self.conv = nn.Sequential(
-            nn.Conv1d(emb_dim, 128, kernel_size=7, padding=3),
+            nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=3),
             nn.ReLU(inplace=True),
-            nn.Conv1d(128, 256, kernel_size=7, stride=2, padding=3),
+            nn.Conv1d(128, conv_dim, kernel_size=kernel_size, stride=2, padding=3),
             nn.ReLU(inplace=True),
-            nn.Conv1d(256, 256, kernel_size=7, stride=2, padding=3),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=3),
             nn.ReLU(inplace=True),
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
-        self.fc = nn.Linear(256, num_classes)
+        self.fc = nn.Linear(conv_dim, num_classes)
 
     def forward(self, token_ids, lengths=None, mask=None):
         # token_ids: [B, T] Long
@@ -177,11 +177,17 @@ test_dataset = GenomeKmerDataset(subset_dict(data_dict, test_ids), label_dict)
 
 batch_size = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 16
 learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
+kernel_size = int(cli_arguments["--KERNEL_SIZE"]) if "--KERNEL_SIZE" in cli_arguments else 7
+conv_dim = int(cli_arguments["--CONV_DIM"]) if "--CONV_DIM" in cli_arguments else 256
+emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 128
+
+
+
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id))
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id))
 
-model = CNNKmerClassifier(vocab_size=V, emb_dim=64, num_classes=2, pad_id=pad_id).to(device)
+model = CNNKmerClassifier(vocab_size=V, emb_dim=emb_dim, conv_dim=conv_dim, kernel_size=kernel_size, num_classes=2, pad_id=pad_id).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
 
