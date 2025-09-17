@@ -174,16 +174,20 @@ def subset_dict(d, keys):
 train_dataset = GenomeKmerDataset(subset_dict(data_dict, train_ids), label_dict)
 test_dataset = GenomeKmerDataset(subset_dict(data_dict, test_ids), label_dict)
 
-batch_size = 16
+
+batch_size = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 16
+learning_rate = int(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
+
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id))
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id))
 
 model = CNNKmerClassifier(vocab_size=V, emb_dim=64, num_classes=2, pad_id=pad_id).to(device)
-optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
 
 # ----- Training loop -----
-epochs = int(cli_arguments["--EPOCHS"])
+epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 5
+
 for epoch in range(epochs):
     model.train()
     train_loss = 0.0
