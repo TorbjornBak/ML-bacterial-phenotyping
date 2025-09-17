@@ -9,6 +9,8 @@ from sklearn.model_selection import train_test_split
 from kmer_sampling import load_labels, read_parquet, kmerize_and_embed_parquet_dataset
 
 
+
+
 if torch.cuda.is_available(): 
     device = torch.device("cuda")
     labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
@@ -24,29 +26,71 @@ else:
 
 label_dict_literal, label_dict_int = load_labels(file_path=labels_path, id = "genome_name", label = "madin_categorical_gram_stain", sep = ",")
 
-data_dict = dict()
+def save_npz_dict(path, d):
+    keys = list(d.keys())
+    payload = {f"k{i}": arr for i, (_, arr) in enumerate(d.items())}
+    np.savez_compressed(path, keys=np.array(keys, dtype=object), **payload)
+
+def load_npz_dict(path):
+    z = np.load(path, allow_pickle=True)
+    keys = list(z["keys"])
+    arrays = [z[f"k{i}"] for i in range(len(keys))]
+    return dict(zip(keys, arrays))
 
 
-file_suffix = ".parquet"
-dir_list = os.listdir(data_directory)
-dir_list = [f'{data_directory}/{file}' for file in dir_list if file_suffix in file]
+def parse_cli():
+    print(len(sys.argv))
+    if len(sys.argv) > 1:
+        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
+        print(cli_arguments)
+    else:
+        raise ValueError("No arguments was provided!")
 
-print(dir_list)
+    return cli_arguments
 
-for path in dir_list:
+cli_arguments = parse_cli()
 
-    parquet_df = read_parquet(parguet_path=path)
 
-    kmerized_sequences = kmerize_and_embed_parquet_dataset(
-        df = parquet_df, 
-        genome_column= "genome_name", 
-        dna_sequence_column= "dna_sequence", 
-        ids = label_dict_literal.keys(), 
-        kmer_prefix="CGTCAT", 
-        kmer_suffix_size=8)
+if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
-    data_dict.update(kmerized_sequences)
+    save_data_dict = True
 
+    data_dict = dict()
+
+
+    file_suffix = ".parquet"
+    dir_list = os.listdir(data_directory)
+    dir_list = [f'{data_directory}/{file}' for file in dir_list if file_suffix in file]
+
+    print(f'{dir_list=}')
+
+    for path in dir_list:
+
+        parquet_df = read_parquet(parguet_path=path)
+
+        kmerized_sequences = kmerize_and_embed_parquet_dataset(
+            df = parquet_df, 
+            genome_column= "genome_name", 
+            dna_sequence_column= "dna_sequence", 
+            ids = label_dict_literal.keys(), 
+            kmer_prefix="CGTCAT", 
+            kmer_suffix_size=8)
+
+        data_dict.update(kmerized_sequences)
+    
+    if "--PATH" in cli_arguments:
+        data_dict_path = cli_arguments["--PATH"]
+        save_npz_dict(data_dict_path, data_dict)
+
+elif "--PATH" in cli_arguments:
+    # Don't reembed kmers
+    # Load np array instead
+    data_dict_path = cli_arguments["--PATH"]
+    data_dict = load_npz_dict(data_dict_path)
+
+
+else:
+    raise ValueError("No data was provided!")
 
 
 
@@ -70,21 +114,22 @@ class GenomeKmerDataset(Dataset):
         seq_np = self.seq_dict[gid]  # np.array of shape [L]
         y = self.label_dict[gid]
         # Convert to 1D LongTensor of token ids
-        seq = torch.from_numpy(seq_np.astype(np.int32))  # [L]
-        target = torch.tensor(y, dtype=torch.long, device = device)
+        seq = torch.from_numpy(seq_np.astype(np.int64))  # [L] Long tensor on CPU
+        target = torch.tensor(y, dtype=torch.long)       # scalar Long tensor on CPU
         return seq, target
 
 # ----- Collate: pad sequences to max length in batch and build masks -----
 def pad_collate(batch, pad_id=0):
     # batch is list of (seq[L], target)
     seqs, targets = zip(*batch)
-    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long, device = device)
+    # seqs are torch tensors; use .size(0) to get length
+    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
     # pad on the right to [B, T] with pad_id
     seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
     # mask True for real tokens
     T = seqs_padded.size(1)
     mask = torch.arange(T).unsqueeze(0) < lengths.unsqueeze(1)
-    targets = torch.stack(targets)
+    targets = torch.stack(targets)  # [B]
     return seqs_padded, lengths, mask, targets
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
@@ -145,6 +190,10 @@ for epoch in range(epochs):
     correct = 0
     total = 0
     for seqs_padded, lengths, mask, targets in train_loader:
+        seqs_padded = seqs_padded.to(device)
+        lengths = lengths.to(device)
+        mask = mask.to(device)
+        targets = targets.to(device)
         logits = model(seqs_padded, lengths, mask)
         loss = criterion(logits, targets)
         optimizer.zero_grad()
@@ -167,15 +216,20 @@ correct = 0
 total = 0
 with torch.no_grad():
     for seqs_padded, lengths, mask, targets in test_loader:
+        seqs_padded = seqs_padded.to(device)
+        lengths = lengths.to(device)
+        mask = mask.to(device)
+        targets = targets.to(device)
         logits = model(seqs_padded, lengths, mask)
         loss = criterion(logits, targets)
         test_loss += loss.item()
         test_batches += 1
         preds = logits.argmax(dim=1)
         correct += (preds == targets).sum().item()
-        print(f'{preds=}\n{targets}')
-        print(f'{correct=}{batch_size=}')
+        
         total += targets.size(0)
 avg_test_loss = test_loss / test_batches
 test_acc = correct / total if total > 0 else 0
+
+print(f'{correct=}/{total=}')
 print(f"Test Loss: {avg_test_loss:.4f} | Test Acc: {test_acc:.4f}")
