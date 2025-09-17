@@ -71,14 +71,14 @@ class GenomeKmerDataset(Dataset):
         y = self.label_dict[gid]
         # Convert to 1D LongTensor of token ids
         seq = torch.from_numpy(seq_np.astype(np.int32))  # [L]
-        target = torch.tensor(y, dtype=torch.long)
+        target = torch.tensor(y, dtype=torch.long, device = device)
         return seq, target
 
 # ----- Collate: pad sequences to max length in batch and build masks -----
 def pad_collate(batch, pad_id=0):
     # batch is list of (seq[L], target)
     seqs, targets = zip(*batch)
-    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
+    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long, device = device)
     # pad on the right to [B, T] with pad_id
     seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
     # mask True for real tokens
