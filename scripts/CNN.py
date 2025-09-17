@@ -3,7 +3,7 @@ import torch
 import os, sys
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 
@@ -51,6 +51,8 @@ def parse_cli():
 
 cli_arguments = parse_cli()
 
+kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
+kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
 
 if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
@@ -74,7 +76,7 @@ if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE"
             genome_column= "genome_name", 
             dna_sequence_column= "dna_sequence", 
             ids = label_dict_literal.keys(), 
-            kmer_prefix="CGTCAT", 
+            kmer_prefix=kmer_prefix, 
             kmer_suffix_size=8)
 
         data_dict.update(kmerized_sequences)
@@ -141,11 +143,13 @@ def pad_collate(batch, pad_id=0):
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0):
+    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, use_mask: bool = True, use_rnn: bool = False):
         super().__init__()
         self.kernel_size = kernel_size
         # approximate 'same' padding per conv layer
         self.pad = kernel_size // 2
+        self.use_mask = use_mask
+        self.use_rnn = use_rnn
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         self.conv = nn.Sequential(
             nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad),
@@ -156,6 +160,9 @@ class CNNKmerClassifier(nn.Module):
             nn.ReLU(inplace=True),
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
+        if self.use_rnn:
+            # Bidirectional GRU to capture order; output feature dim = conv_dim
+            self.rnn = nn.GRU(input_size=conv_dim, hidden_size=conv_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
         self.fc = nn.Linear(conv_dim, num_classes)
 
     def forward(self, token_ids, lengths=None, mask=None):
@@ -164,24 +171,34 @@ class CNNKmerClassifier(nn.Module):
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
         z = self.conv(x)                 # [B, C, T']
 
-        if mask is not None:
-            # Downsample mask to z's temporal length using avg_pool with same strides
-            m = mask.float()  # [B, T]
-            # First conv has stride 1 → same length
-            # Second conv stride=2
-            m = F.avg_pool1d(m.unsqueeze(1), kernel_size=self.kernel_size, stride=2, padding=self.pad).squeeze(1)
-            # Third conv stride=2
-            m = F.avg_pool1d(m.unsqueeze(1), kernel_size=self.kernel_size, stride=2, padding=self.pad).squeeze(1)
-            # Weighted mean over time, ignoring padded (near-zero) positions
-            weights = (m > 0).float().unsqueeze(1)  # [B,1,T']
-            # If everything padded (edge case), prevent div by zero
-            denom = weights.sum(dim=-1).clamp_min(1.0)  # [B,1]
-            z = (z * weights).sum(dim=-1) / denom  # [B, C]
-        else:
-            # Fallback to unmasked average
-            z = self.pool(z).squeeze(-1)     # [B, C]
+        if self.use_rnn:
+            # Prepare downsampled mask for lengths (allow None → full length)
+            if mask is not None:
+                m = mask.float().unsqueeze(1)  # [B,1,T]
+                m = F.adaptive_avg_pool1d(m, output_size=z.size(-1)).squeeze(1)  # [B,T']
+                lengths_rnn = (m > 0.5).sum(dim=1).to(torch.int64)
+            else:
+                lengths_rnn = torch.full((z.size(0),), fill_value=z.size(-1), dtype=torch.int64, device=z.device)
+            lengths_rnn = lengths_rnn.clamp_min(1)
 
-        logits = self.fc(z)              # [B, num_classes]
+            # Run GRU over time dimension
+            z_time = z.transpose(1, 2)  # [B, T', C]
+            packed = pack_padded_sequence(z_time, lengths_rnn.cpu(), batch_first=True, enforce_sorted=False)
+            _, h_n = self.rnn(packed)  # h_n: [2, B, C//2] for bidirectional
+            feat = torch.cat([h_n[-2], h_n[-1]], dim=1)  # [B, C]
+        else:
+            if mask is not None and self.use_mask:
+                # Downsample mask to match z's temporal dimension exactly
+                m = mask.float().unsqueeze(1)  # [B,1,T]
+                m = F.adaptive_avg_pool1d(m, output_size=z.size(-1))  # [B,1,T']
+                weights = (m > 0.5).float()  # [B,1,T']
+                denom = weights.sum(dim=-1).clamp_min(1.0)  # [B,1]
+                feat = (z * weights).sum(dim=-1) / denom  # [B, C]
+            else:
+                # Fallback to unmasked average
+                feat = self.pool(z).squeeze(-1)     # [B, C]
+
+        logits = self.fc(feat)              # [B, num_classes]
         return logits
 
 # ----- Instantiate loader and model -----
@@ -232,7 +249,9 @@ emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 1
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id))
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id))
 
-model = CNNKmerClassifier(vocab_size=V, emb_dim=emb_dim, conv_dim=conv_dim, kernel_size=kernel_size, num_classes=2, pad_id=pad_id).to(device)
+use_mask = cli_arguments.get("--USE_MASK", "true").lower() == "true"
+use_rnn = cli_arguments.get("--USE_RNN", "false").lower() == "true"
+model = CNNKmerClassifier(vocab_size=V, emb_dim=emb_dim, conv_dim=conv_dim, kernel_size=kernel_size, num_classes=2, pad_id=pad_id, use_mask=use_mask, use_rnn=use_rnn).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
 
@@ -244,7 +263,6 @@ if cli_arguments.get("--CHECK_LENGTH_BASELINE", "false").lower() == "true":
         # Build simple features: only sequence length
         train_lengths = np.array([subset_dict(data_dict, train_ids)[gid].shape[0] for gid in train_ids], dtype=np.float32).reshape(-1, 1)
         test_lengths = np.array([subset_dict(data_dict, test_ids)[gid].shape[0] for gid in test_ids], dtype=np.float32).reshape(-1, 1)
-        print(train_lengths)
         y_train = np.array([label_dict[gid] for gid in train_ids])
         y_test = np.array([label_dict[gid] for gid in test_ids])
         # Standardize lengths
@@ -263,6 +281,7 @@ if cli_arguments.get("--CHECK_LENGTH_BASELINE", "false").lower() == "true":
 
 # ----- Training loop -----
 epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 5
+debug_mask = cli_arguments.get("--DEBUG_MASK", "false").lower() == "true"
 
 for epoch in range(epochs):
     model.train()
@@ -270,12 +289,18 @@ for epoch in range(epochs):
     train_batches = 0
     correct = 0
     total = 0
-    for seqs_padded, lengths, mask, targets in train_loader:
+    for batch_idx, (seqs_padded, lengths, mask, targets) in enumerate(train_loader):
         seqs_padded = seqs_padded.to(device)
         lengths = lengths.to(device)
         mask = mask.to(device)
         targets = targets.to(device)
         logits = model(seqs_padded, lengths, mask)
+        if debug_mask and epoch == 0 and batch_idx == 0:
+            with torch.no_grad():
+                logits_nomask = model(seqs_padded, lengths, None)
+                diff = (logits - logits_nomask).abs().mean().item()
+                valid_counts = mask.sum(dim=1).detach().cpu().numpy()
+                print(f"[DEBUG_MASK] mean|logits(masked)-logits(unmasked)| = {diff:.6f}; valid tokens per sample: min={valid_counts.min()}, max={valid_counts.max()}, mean={valid_counts.mean():.1f}")
         loss = criterion(logits, targets)
         optimizer.zero_grad()
         loss.backward()
