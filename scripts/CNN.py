@@ -55,6 +55,7 @@ kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
 dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
 
+
 if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
     save_data_dict = True
@@ -111,6 +112,7 @@ class GenomeKmerDataset(Dataset):
         self.seq_dict = seq_dict
         self.label_dict = label_dict
         self.shuffle_tokens = shuffle_tokens
+        
 
     def __len__(self):
         return len(self.ids)
@@ -151,28 +153,41 @@ class CNNKmerClassifier(nn.Module):
         self.pad = kernel_size // 2
         self.use_mask = use_mask
         self.use_rnn = use_rnn
+        self.head_dropout = nn.Dropout(dropout)
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         self.conv = nn.Sequential(
-            nn.Dropout1d(0.2),
+            
             nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad),
             nn.ReLU(inplace=True),
-            nn.Dropout1d(0.2),
+            nn.Dropout1d(dropout),
+            nn.MaxPool1d(3, stride = 2),
             nn.Conv1d(128, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
-            nn.Dropout1d(0.2),
+            nn.MaxPool1d(3, stride = 2),
             nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
+            nn.MaxPool1d(3, stride = 2),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(3, stride = 2),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(3, stride = 2),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
+            nn.ReLU(inplace=True),
+            nn.MaxPool1d(3, stride = 2),
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
         if self.use_rnn:
             # Bidirectional GRU to capture order; output feature dim = conv_dim
-            self.rnn = nn.GRU(input_size=conv_dim, hidden_size=conv_dim // 2, num_layers=1, batch_first=True, bidirectional=True)
+            self.rnn = nn.GRU(input_size=conv_dim, hidden_size=conv_dim // 2, num_layers=3, batch_first=True, bidirectional=True, dropout = dropout)
         self.fc = nn.Linear(conv_dim, num_classes)
 
     def forward(self, token_ids, lengths=None, mask=None):
         # token_ids: [B, T] Long
         x = self.emb(token_ids)          # [B, T, D]
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
+
         z = self.conv(x)                 # [B, C, T']
 
         if self.use_rnn:
@@ -201,8 +216,8 @@ class CNNKmerClassifier(nn.Module):
             else:
                 # Fallback to unmasked average
                 feat = self.pool(z).squeeze(-1)     # [B, C]
-
-        logits = self.fc(feat)              # [B, num_classes]
+        
+        logits = self.fc(self.head_dropout(feat))              # [B, num_classes]
         return logits
 
 # ----- Instantiate loader and model -----
@@ -258,6 +273,8 @@ use_rnn = cli_arguments.get("--USE_RNN", "false").lower() == "true"
 model = CNNKmerClassifier(vocab_size=V, emb_dim=emb_dim, conv_dim=conv_dim, kernel_size=kernel_size, num_classes=2, pad_id=pad_id, use_mask=use_mask, use_rnn=use_rnn).to(device)
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 criterion = nn.CrossEntropyLoss()
+
+print(model)
 
 # ----- Optional: length-only baseline to detect leakage -----
 if cli_arguments.get("--CHECK_LENGTH_BASELINE", "false").lower() == "true":
