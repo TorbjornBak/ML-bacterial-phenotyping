@@ -176,7 +176,7 @@ test_dataset = GenomeKmerDataset(subset_dict(data_dict, test_ids), label_dict)
 
 
 batch_size = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 16
-learning_rate = int(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
+learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id))
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id))
