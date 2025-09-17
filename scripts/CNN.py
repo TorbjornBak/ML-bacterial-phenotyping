@@ -53,6 +53,7 @@ cli_arguments = parse_cli()
 
 kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
+dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
 
 if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
@@ -152,10 +153,13 @@ class CNNKmerClassifier(nn.Module):
         self.use_rnn = use_rnn
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         self.conv = nn.Sequential(
+            nn.Dropout1d(0.2),
             nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad),
             nn.ReLU(inplace=True),
+            nn.Dropout1d(0.2),
             nn.Conv1d(128, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
+            nn.Dropout1d(0.2),
             nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, stride=2, padding=self.pad),
             nn.ReLU(inplace=True),
         )
