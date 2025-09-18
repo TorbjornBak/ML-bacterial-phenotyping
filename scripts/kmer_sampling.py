@@ -298,22 +298,22 @@ def read_parquet(parguet_path):
 	df = pd.read_parquet(parguet_path, engine = "fastparquet")
 	return df
 	
-def kmerize_and_embed_parquet_dataset(df, genome_column, dna_sequence_column, ids, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_parquet_dataset(df, genome_column, dna_sequence_column, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
 	print("Kmerizing the parquet dataset")
 	kmer_embeddings = dict()
 
 	for genome_id, dna_sequences in zip(df[genome_column], df[dna_sequence_column]):
-		if genome_id in ids:
-			dna_sequences = dna_sequences.split(" ")
-			kmers = kmerize_sequences_prefix_filtering_return_all(dna_sequences, kmer_prefix, kmer_suffix_size)
+		
+		dna_sequences = dna_sequences.split(" ")
+		kmers = kmerize_sequences_prefix_filtering_return_all(dna_sequences, kmer_prefix, kmer_suffix_size)
 
-			embeddings = [kmer_to_integer(kmer) for kmer in kmers]
+		embeddings = [kmer_to_integer(kmer) for kmer in kmers]
 
-			embeddings_np = np.array(embeddings, dtype = np.int32)
+		embeddings_np = np.array(embeddings, dtype = np.int32)
 
-			kmer_embeddings[genome_id] = embeddings_np
+		kmer_embeddings[genome_id] = embeddings_np
 
-			#print(f'{genome_id} : {len(kmers)}')
+		#print(f'{genome_id} : {len(kmers)}')
 
 	
 	return kmer_embeddings
