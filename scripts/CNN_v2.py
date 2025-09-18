@@ -26,21 +26,6 @@ else:
     labels_path = "downloads/labels.csv"
     data_directory = "downloads"
 
-id = "genome_name"
-phenotype = "madin_categorical_gram_stain"
-label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
-
-def save_npz_dict(path, d):
-    keys = list(d.keys())
-    payload = {f"k{i}": arr for i, (_, arr) in enumerate(d.items())}
-    np.savez_compressed(path, keys=np.array(keys, dtype=object), **payload)
-
-def load_npz_dict(path):
-    z = np.load(path, allow_pickle=True)
-    keys = list(z["keys"])
-    arrays = [z[f"k{i}"] for i in range(len(keys))]
-    return dict(zip(keys, arrays))
-
 
 def parse_cli():
     if len(sys.argv) > 1:
@@ -51,7 +36,14 @@ def parse_cli():
 
     return cli_arguments
 
+
+
 cli_arguments = parse_cli()
+
+id = "genome_name"
+phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_"
+label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
+
 
 kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
@@ -241,7 +233,8 @@ def fit_model(
     test_loader: DataLoader,
     device,
     num_epochs=10,
-    learning_rate=0.001):
+    learning_rate=0.001,
+    class_weight = None):
     
 
     
@@ -257,9 +250,12 @@ def fit_model(
                           num_classes=2, 
                           pad_id=pad_id).to(device)
 
-    
+    weight = None
+    if class_weight is not None:
+        weight = torch.tensor(class_weight, dtype=torch.float32).to(device)
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(weight=weight)
 
     print(model)
 
@@ -372,11 +368,15 @@ def get_model_performance():
     val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
     test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
 
+    
+    class_weight = len(y_train) / (len(np.unique(y_train)) * np.bincount(y_train))
+    
     y_test_pred = fit_model(train_loader, val_loader, test_loader,
                             device=device,
                             num_epochs=num_epochs,
-                            learning_rate=learning_rate)
-
+                            learning_rate=learning_rate, 
+                            class_weight=class_weight)
+    
     report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
     
