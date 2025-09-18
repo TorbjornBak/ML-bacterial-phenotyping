@@ -243,6 +243,8 @@ def fit_model(
     num_epochs=10,
     learning_rate=0.001):
     
+
+    
     conv_dim = int(cli_arguments["--CONV_DIM"]) if "--CONV_DIM" in cli_arguments else 256
     emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 128
 
@@ -334,8 +336,6 @@ def get_model_performance():
 
     X, y = embed_data()
 
-    results_df = pd.DataFrame()
-
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 42, test_size= 0.2)
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
 
@@ -346,6 +346,28 @@ def get_model_performance():
     train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
     val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
     test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+
+
+    results_df = pd.DataFrame(
+        columns=[
+            "phenotype",
+            "model_name",
+            "f1_score_weighted",
+            "f1_score_macro",
+            "precision_weighted",
+            "precision_macro",
+            "precision_weighted",
+            "precision_macro",
+            "recall_weighted",
+            "recall_macro",
+            "accuracy",
+            "balanced_accuracy",
+            "auc_weighted",
+            "auc_macro",
+            "n_classes",
+        ]
+    )
+
     train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
     val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
     test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
