@@ -78,21 +78,23 @@ def embed_data():
                 df = parquet_df, 
                 genome_column= "genome_name", 
                 dna_sequence_column= "dna_sequence", 
-                ids = label_dict.keys(), 
                 kmer_prefix=kmer_prefix, 
-                kmer_suffix_size=8)
+                kmer_suffix_size=kmer_suffix_size)
 
             data_dict.update(kmerized_sequences)
         
-        ids = [gid for gid in label_dict.keys() if gid in data_dict]
-        X = [data_dict[gid] for gid in ids]  # variable-length sequences
-        y = np.array([label_dict[gid] for gid in ids], dtype=np.int64)
+        ids = [gid for gid in data_dict.keys()]
+        X = [data_dict[gid] for gid in ids]
 
         if "--PATH" in cli_arguments:
             dataset_path = cli_arguments["--PATH"]
             # Save as object array for variable-length sequences, with ids and y
             X_obj = np.array(X, dtype=object)
-            np.savez_compressed(dataset_path, X=X_obj, ids=np.array(ids, dtype=object), y=y)
+            np.savez_compressed(dataset_path, X=X_obj, ids=np.array(ids, dtype=object))
+
+        X = [x for gid, x in zip(ids, X) if gid in label_dict]
+        y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+        
 
     elif "--PATH" in cli_arguments:
         # Don't reembed kmers
@@ -100,21 +102,19 @@ def embed_data():
         dataset_path = cli_arguments["--PATH"]
         z = np.load(dataset_path, allow_pickle=True)
 
-        X = list(z["X"])  # object array → list of arrays
-        if "y" in z:
-            y = z["y"]
-        elif "ids" in z:
-            ids = list(z["ids"])  # map labels from current dict
-            y = np.array([label_dict[gid] for gid in ids], dtype=np.int64)
-        else:
-            # fallback: align by current label_dict order
-            keys = list(label_dict.keys())
-            y = np.array([label_dict[gid] for gid in keys], dtype=np.int64)[: len(X)]
-    
+        X = list(z["X"])  # object array → list of arrays 
+        ids = list(z["ids"])  # map labels from current dict
+        X = [x for gid, x in zip(ids, X) if gid in label_dict]
+        y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+        
 
+
+        # Select only the rows where y is not None
+       
     else:
         raise ValueError("No data was provided! Aborting...")
     
+
     return X, y
 
 
