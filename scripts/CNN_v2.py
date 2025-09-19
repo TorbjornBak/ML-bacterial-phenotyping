@@ -318,7 +318,7 @@ def fit_model(
         model = RNNKmerClassifier(vocab_size=V, 
                             emb_dim=emb_dim, 
                             rnn_hidden=hidden_dim, 
-                            num_layers=3,
+                            num_layers=1,
                             bidirectional=True,
                             num_classes=num_classes, 
                             dropout=dropout,
