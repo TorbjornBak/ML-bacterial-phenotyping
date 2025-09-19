@@ -295,14 +295,14 @@ def save_kmerized_files_with_numpy(X, X_file_path, y, y_file_path):
 
 def read_parquet(parguet_path):
 	# Read in as parquet one at a time, kmerize, convert to npy (or parquet?) Then we can stream and potentially use much bigger datasets?
-	print("Loading parquet dataset as pd df")
+	print(f"Loading parquet dataset: {parguet_path}")
 	df = pd.read_parquet(parguet_path, engine = "fastparquet")
 	return df
 	
 def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
 	
 	
-	print("Kmerizing the parquet dataset")
+	print(f"Kmerizing {path}")
 	
 	df = read_parquet(parguet_path=path)
 	
@@ -329,10 +329,15 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 
 	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
 
+	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
+
 	data_dict = dict()
+	
 	for kmer_dict in joblib_results:
 		data_dict.update(kmer_dict)
 
+	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
+	
 	return data_dict
 
 
