@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 
 from kmer_sampling import load_labels, kmerize_parquet_joblib
-
+from Transformers_and_S4Ms import TransformerKmerClassifier
 
 
 
@@ -324,6 +324,19 @@ def fit_model(
                             dropout=dropout,
                             use_mask=True,
                             pad_id=pad_id).to(device)
+    
+    elif model_type == "TRANSFORMER":
+        model = TransformerKmerClassifier(
+            vocab_size=V,
+            emb_dim=emb_dim,
+            nhead=8,
+            ff_dim=512,
+            num_layers=4,
+            num_classes=num_classes,
+            pad_id=pad_id,
+            dropout=dropout,
+            use_mask=True
+            )
     else:
         raise ValueError("No model type was specified. Aborting...")
 
@@ -405,7 +418,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance():
+def get_model_performance(model_type = "CNN"):
     # ----- Split into train/test only -----
 
 
@@ -461,7 +474,7 @@ def get_model_performance():
                             learning_rate=learning_rate, 
                             class_weight=class_weight,
                             num_classes=num_classes,
-                            model_type="RNN")
+                            model_type=model_type)
     
     report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
@@ -477,7 +490,7 @@ def get_model_performance():
     results_df.loc[len(results_df)] = pd.Series(
         {
             "phenotype": phenotype,
-            "model_name": "CNN",
+            "model_name": model_type,
             "f1_score_weighted": report["weighted avg"]["f1-score"],
             "f1_score_macro": report["macro avg"]["f1-score"],
             "precision_weighted": report["weighted avg"]["precision"],
@@ -495,7 +508,9 @@ def get_model_performance():
     return results_df
 
     
-results_df = get_model_performance()
+
+model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
+results_df = get_model_performance(model_type=model_type)
 path = f'{output_directory}/{dataset_name}.csv'
 results_df.to_csv(path_or_buf=path)
 print(results_df)
