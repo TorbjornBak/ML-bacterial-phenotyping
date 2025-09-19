@@ -48,14 +48,16 @@ kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
 dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
 nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
-downsampled_data_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
+output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
+
+
+dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
 
 def embed_data():
     # Should return X and y
-    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    dataset_file_path = f'{downsampled_data_directory}/{dataset_name}.npz'
-
+    
 
     if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
@@ -77,8 +79,6 @@ def embed_data():
         print(f"Saving embeddings to: {dataset_file_path=}")
         np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
         
-
-
     elif os.path.isfile(dataset_file_path):
         # Don't reembed kmers
         # Load np array instead
@@ -90,7 +90,7 @@ def embed_data():
         
        
     else:
-        raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was provided! \nAborting...")
+        raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
     
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
@@ -411,4 +411,7 @@ def get_model_performance():
     return results_df
 
     
-print(get_model_performance())
+results_df = get_model_performance()
+path = f'{output_directory}/{dataset_name}.csv'
+results_df.to_csv(path_or_buf=path)
+print(results_df)
