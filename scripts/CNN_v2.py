@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 
-from kmer_sampling import load_labels, read_parquet, kmerize_and_embed_parquet_dataset
+from kmer_sampling import load_labels, kmerize_parquet_joblib
 
 
 
@@ -48,6 +48,7 @@ label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, lab
 kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
 dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
+nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
 
 def embed_data():
     # Should return X and y
@@ -62,18 +63,7 @@ def embed_data():
 
         print(f'{dir_list=}')
 
-        for path in dir_list:
-
-            parquet_df = read_parquet(parguet_path=path)
-
-            kmerized_sequences = kmerize_and_embed_parquet_dataset(
-                df = parquet_df, 
-                genome_column= "genome_name", 
-                dna_sequence_column= "dna_sequence", 
-                kmer_prefix=kmer_prefix, 
-                kmer_suffix_size=kmer_suffix_size)
-
-            data_dict.update(kmerized_sequences)
+        data_dict = kmerize_parquet_joblib(dir_list, kmer_prefix, kmer_suffix_size, nr_of_cores = nr_of_cores)
         
         ids = [gid for gid in data_dict.keys()]
         X = [data_dict[gid] for gid in ids]
@@ -84,8 +74,6 @@ def embed_data():
             X_obj = np.array(X, dtype=object)
             np.savez_compressed(dataset_path, X=X_obj, ids=np.array(ids, dtype=object))
 
-        X = [x for gid, x in zip(ids, X) if gid in label_dict]
-        y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
         
 
     elif "--PATH" in cli_arguments:
@@ -96,17 +84,20 @@ def embed_data():
 
         X = list(z["X"])  # object array → list of arrays 
         ids = list(z["ids"])  # map labels from current dict
-        X = [x for gid, x in zip(ids, X) if gid in label_dict]
-        y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
         
-
-
-        # Select only the rows where y is not None
+        
        
     else:
         raise ValueError("No data was provided! Aborting...")
     
-
+    # Select only the rows where y is not None
+    X = [x for gid, x in zip(ids, X) if gid in label_dict]
+    y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+    
+    print(f'{np.unique(y)=}')
+    print(f'{len(y)=}')
+    print(f'{len(X)=}')
+    
     return X, y
 
 
@@ -234,7 +225,8 @@ def fit_model(
     device,
     num_epochs=10,
     learning_rate=0.001,
-    class_weight = None):
+    class_weight = None,
+    num_classes = 2):
     
 
     
@@ -242,12 +234,13 @@ def fit_model(
     emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 128
 
 
+
     #Initialize model, optimizer, loss function
     model = CNNKmerClassifier(vocab_size=V, 
                           emb_dim=emb_dim, 
                           conv_dim=conv_dim, 
                           kernel_size=kernel_size, 
-                          num_classes=2, 
+                          num_classes=num_classes, 
                           pad_id=pad_id).to(device)
 
     weight = None
@@ -281,6 +274,7 @@ def fit_model(
             preds = output.argmax(dim=1)
             correct += (preds == yb).sum().item()
             total += yb.size(0)
+        
         loss = torch.tensor(running_loss / max(len(train_loader), 1))
 
         model.eval()
@@ -332,6 +326,8 @@ def get_model_performance():
 
     X, y = embed_data()
 
+    num_classes = len(np.unique(y))
+
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 42, test_size= 0.2)
     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
 
@@ -369,13 +365,17 @@ def get_model_performance():
     test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
 
     
-    class_weight = len(y_train) / (len(np.unique(y_train)) * np.bincount(y_train))
-    
+    binc = np.bincount(y_train, minlength=num_classes).astype(np.float64)
+    # Avoid div by zero if a class is missing in train
+    binc[binc == 0] = 1.0
+    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+
     y_test_pred = fit_model(train_loader, val_loader, test_loader,
                             device=device,
                             num_epochs=num_epochs,
                             learning_rate=learning_rate, 
-                            class_weight=class_weight)
+                            class_weight=class_weight,
+                            num_classes=num_classes)
     
     report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
