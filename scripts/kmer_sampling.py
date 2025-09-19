@@ -3,6 +3,7 @@ import sys, os
 import numpy as np
 import pandas as pd
 import random
+from joblib import Parallel, delayed
 # Reads one fasta file
 
 # One-hot encoding.
@@ -298,11 +299,16 @@ def read_parquet(parguet_path):
 	df = pd.read_parquet(parguet_path, engine = "fastparquet")
 	return df
 	
-def kmerize_and_embed_parquet_dataset(df, genome_column, dna_sequence_column, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+	
+	
 	print("Kmerizing the parquet dataset")
+	
+	df = read_parquet(parguet_path=path)
+	
 	kmer_embeddings = dict()
 
-	for genome_id, dna_sequences in zip(df[genome_column], df[dna_sequence_column]):
+	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
 		
 		dna_sequences = dna_sequences.split(" ")
 		kmers = kmerize_sequences_prefix_filtering_return_all(dna_sequences, kmer_prefix, kmer_suffix_size)
@@ -317,6 +323,17 @@ def kmerize_and_embed_parquet_dataset(df, genome_column, dna_sequence_column, km
 
 	
 	return kmer_embeddings
+
+
+def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
+
+	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+
+	data_dict = dict()
+	for kmer_dict in joblib_results:
+		data_dict.update(kmer_dict)
+
+	return data_dict
 
 
 if __name__ == "__main__":
