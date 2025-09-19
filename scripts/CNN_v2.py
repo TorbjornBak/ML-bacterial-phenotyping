@@ -4,7 +4,7 @@ import os, sys
 import pandas as pd
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
@@ -208,6 +208,73 @@ class CNNKmerClassifier(nn.Module):
         logits = self.fc(self.head_dropout(feat))              # [B, num_classes]
         return logits
 
+
+
+
+# ----- RNN model: embedding -> BiGRU -> masked global pool -> classifier -----
+class RNNKmerClassifier(nn.Module):
+    def __init__(
+        self,
+        vocab_size,
+        emb_dim=128,
+        rnn_hidden=256,
+        num_layers=1,
+        bidirectional=True,
+        num_classes=2,
+        pad_id=0,
+        dropout=0.1,
+        use_mask: bool = True,
+    ):
+        super().__init__()
+        self.use_mask = use_mask
+        self.pad_id = pad_id
+        self.bidirectional = bidirectional
+        self.head_dropout = nn.Dropout(dropout)
+
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
+        self.gru = nn.GRU(
+            input_size=emb_dim,
+            hidden_size=rnn_hidden,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=bidirectional,
+            dropout=dropout if num_layers > 1 else 0.0,
+        )
+        feat_dim = rnn_hidden * (2 if bidirectional else 1)
+        self.fc = nn.Linear(feat_dim, num_classes)
+
+    def forward(self, token_ids: torch.Tensor, mask: torch.Tensor | None = None):
+        # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
+        B, T = token_ids.shape
+        x = self.emb(token_ids)  # [B, T, D]
+
+        if self.use_mask and mask is not None:
+            # Compute true lengths from mask for packing
+            lengths = mask.long().sum(dim=1).clamp_min(1)  # [B]
+            # Enforce_sorted=False allows arbitrary batch ordering
+            packed = pack_padded_sequence(
+                x, lengths.cpu(), batch_first=True, enforce_sorted=False
+            )  # packed sequence for GRU [web:5][web:12]
+            packed_out, _ = self.gru(packed)  # GRU over packed input [web:13][web:16]
+            out, _ = pad_packed_sequence(packed_out, batch_first=True, total_length=T)
+            # out: [B, T, H*dir]
+        else:
+            # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
+            out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
+
+        if mask is not None:
+            # Masked average pooling over time to mirror CNN masked pooling
+            w = (mask > 0).to(out.dtype).unsqueeze(-1)  # [B, T, 1]
+            denom = w.sum(dim=1).clamp_min(1.0)        # [B, 1]
+            feat = (out * w).sum(dim=1) / denom 
+        else:
+            # Global average over valid timesteps when lengths unknown
+            feat = out.mean(dim=1)  # [B, H*dir]
+
+        logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
+        return logits
+
+
 # ----- Instantiate loader and model -----
 V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
 pad_id = 0          # reserve 0 for padding in tokenizer
@@ -228,22 +295,38 @@ def fit_model(
     num_epochs=10,
     learning_rate=0.001,
     class_weight = None,
-    num_classes = 2):
+    num_classes = 2, 
+    model_type = "CNN"):
     
 
     
-    conv_dim = int(cli_arguments["--CONV_DIM"]) if "--CONV_DIM" in cli_arguments else 256
+    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 256
     emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 128
 
 
 
     #Initialize model, optimizer, loss function
-    model = CNNKmerClassifier(vocab_size=V, 
-                          emb_dim=emb_dim, 
-                          conv_dim=conv_dim, 
-                          kernel_size=kernel_size, 
-                          num_classes=num_classes, 
-                          pad_id=pad_id).to(device)
+    if model_type == "CNN":
+        model = CNNKmerClassifier(vocab_size=V, 
+                            emb_dim=emb_dim, 
+                            conv_dim=hidden_dim, 
+                            kernel_size=kernel_size, 
+                            num_classes=num_classes, 
+                            pad_id=pad_id).to(device)
+    
+    elif model_type == "RNN":
+        model = RNNKmerClassifier(vocab_size=V, 
+                            emb_dim=emb_dim, 
+                            rnn_hidden=hidden_dim, 
+                            num_layers=3,
+                            bidirectional=True,
+                            num_classes=num_classes, 
+                            dropout=dropout,
+                            use_mask=True,
+                            pad_id=pad_id).to(device)
+    else:
+        raise ValueError("No model type was specified. Aborting...")
+
 
     weight = None
     if class_weight is not None:
@@ -377,7 +460,8 @@ def get_model_performance():
                             num_epochs=num_epochs,
                             learning_rate=learning_rate, 
                             class_weight=class_weight,
-                            num_classes=num_classes)
+                            num_classes=num_classes,
+                            model_type="RNN")
     
     report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
