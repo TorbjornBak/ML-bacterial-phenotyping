@@ -336,7 +336,7 @@ def fit_model(
             pad_id=pad_id,
             dropout=dropout,
             use_mask=True
-            )
+            ).to(device)
     else:
         raise ValueError("No model type was specified. Aborting...")
 
@@ -353,7 +353,7 @@ def fit_model(
     # ----- Training loop -----
 
     early_stop_counter = 0
-    patience = 20
+    patience = 10
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
