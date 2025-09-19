@@ -17,14 +17,14 @@ from kmer_sampling import load_labels, kmerize_parquet_joblib
 if torch.cuda.is_available(): 
     device = torch.device("cuda")
     labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-    data_directory = "/home/projects2/bact_pheno/bacbench_data"
+    input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
 # elif torch.backends.mps.is_available(): 
 #     device = torch.device("mps")
 else: 
     device = torch.device("cpu")
     labels_path = "downloads/labels.csv"
-    data_directory = "downloads"
+    input_data_directory = "downloads"
 
 
 def parse_cli():
@@ -35,7 +35,6 @@ def parse_cli():
         raise ValueError("No arguments was provided!")
 
     return cli_arguments
-
 
 
 cli_arguments = parse_cli()
@@ -49,17 +48,22 @@ kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments
 kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
 dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
 nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
+downsampled_data_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
+
 
 def embed_data():
     # Should return X and y
+    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+    dataset_file_path = f'{downsampled_data_directory}/{dataset_name}.npz'
+
 
     if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
 
         data_dict = dict()
 
         file_suffix = ".parquet"
-        dir_list = os.listdir(data_directory)
-        dir_list = [f'{data_directory}/{file}' for file in dir_list if file_suffix in file]
+        dir_list = os.listdir(input_data_directory)
+        dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
         print(f'{dir_list=}')
 
@@ -67,33 +71,31 @@ def embed_data():
         
         ids = [gid for gid in data_dict.keys()]
         X = [data_dict[gid] for gid in ids]
+            
+        X_obj = np.array(X, dtype=object)
 
-        if "--PATH" in cli_arguments:
-            dataset_path = cli_arguments["--PATH"]
-            # Save as object array for variable-length sequences, with ids and y
-            X_obj = np.array(X, dtype=object)
-            np.savez_compressed(dataset_path, X=X_obj, ids=np.array(ids, dtype=object))
-
+        print(f"Saving embeddings to: {dataset_file_path=}")
+        np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
         
 
-    elif "--PATH" in cli_arguments:
+
+    elif os.path.isfile(dataset_file_path):
         # Don't reembed kmers
         # Load np array instead
-        dataset_path = cli_arguments["--PATH"]
-        z = np.load(dataset_path, allow_pickle=True)
+        print(f"Loading embeddings from: {dataset_file_path=}")
+        z = np.load(dataset_file_path, allow_pickle=True)
 
         X = list(z["X"])  # object array → list of arrays 
         ids = list(z["ids"])  # map labels from current dict
         
-        
        
     else:
-        raise ValueError("No data was provided! Aborting...")
+        raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was provided! \nAborting...")
     
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
     y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
-    
+
     print(f'{np.unique(y)=}')
     print(f'{len(y)=}')
     print(f'{len(X)=}')
