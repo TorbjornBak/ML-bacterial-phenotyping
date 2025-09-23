@@ -29,9 +29,10 @@ elif torch.backends.mps.is_available():
 else: 
     # On CPU server
     #device = torch.device("cpu")
+    device = "cpu"
     labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
     input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-
+print(f"Using {device=}")
 
 def parse_cli():
     if len(sys.argv) > 1:
@@ -137,7 +138,7 @@ def load_stored_embeddings(dataset_file_path):
     ids = list(z["ids"])  # map labels from current dict
     return X, ids
 
-print(f"Using {device} device")
+
 
 
 class SequenceDataset(Dataset):
