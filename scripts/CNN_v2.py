@@ -66,11 +66,6 @@ def embed_data(prefix = None, suffix_size = None, reembed = None):
 
     if ("--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE") or reembed is True:
 
-        
-         
-
-   
-
         data_dict = dict()
 
         file_suffix = ".parquet"
@@ -544,15 +539,24 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
 
 
 
-model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
+embed_only = cli_arguments["--embed_only"].upper() == "TRUE" if "--embed_only" in cli_arguments else False
+
 
 base_kmer = "CGTCACA"
 
 kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
 kmer_suffix_sizes = [size for size in range(1,13)]
-print(kmer_prefixes)
-results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
 
-path = f'{output_directory}/{dataset_name}.csv'
-results_df.to_csv(path_or_buf=path)
-print(results_df)
+if embed_only:
+    for prefix in kmer_prefixes:
+        for suffix_size in kmer_suffix_sizes:
+            print(f'Embedding dataset with {prefix=} and {suffix_size=}')
+            embed_data(prefix=prefix, suffix_size=suffix_size)
+else:
+    model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
+
+    results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
+
+    path = f'{output_directory}/{dataset_name}.csv'
+    results_df.to_csv(path_or_buf=path)
+    print(results_df)
