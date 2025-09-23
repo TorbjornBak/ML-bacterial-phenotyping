@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from kmer_sampling import load_labels, kmerize_parquet_joblib
+from kmer_sampling import load_labels, kmerize_parquet_joblib, kmerize_parquet_joblib_multi
 from Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 
@@ -129,6 +129,32 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
     
     return X, y
 
+
+def embed_data_multi(kmer_prefixes, kmer_suffix_sizes, nr_of_cores = 4):
+    file_suffix = ".parquet"
+    dir_list = os.listdir(input_data_directory)
+    dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
+
+    print(f'{dir_list=}')
+
+    data_dict = kmerize_parquet_joblib_multi(dir_list, kmer_prefixes, kmer_suffix_sizes, nr_of_cores = nr_of_cores)
+
+
+    #kmer_embeddings[genome_id][kmer_prefix][kmer_prefix]
+
+    
+    for prefix in data_dict:
+        for suffix_size in data_dict[prefix]:
+            ids = [gid for gid in data_dict[prefix][suffix_size].keys()]
+            X = [data_dict[prefix][suffix_size][gid] for gid in ids]
+
+            X_obj = np.array(X, dtype=object)
+            dataset_name = f'{prefix}_{suffix_size}' 
+            dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+            print(f"Saving embeddings to: {dataset_file_path=}")
+            np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
+
+    return
 
 def load_stored_embeddings(dataset_file_path):
     print(f"Loading embeddings from: {dataset_file_path=}")
@@ -561,10 +587,10 @@ kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG'
 kmer_suffix_sizes = [size for size in range(1,13)]
 
 if embed_only is True:
-    Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
-    # for prefix in kmer_prefixes:
-    #     for suffix_size in kmer_suffix_sizes:
-    #         embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
+    #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
+    for prefix in kmer_prefixes:
+        for suffix_size in kmer_suffix_sizes:
+            embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
 else:
     model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
