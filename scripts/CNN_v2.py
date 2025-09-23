@@ -65,7 +65,8 @@ def embed_data(prefix = None, suffix_size = None, reembed = None):
         if prefix is not None and suffix_size is not None:
             kmer_prefix = prefix
             kmer_suffix_size = suffix_size
-                
+            
+
         data_dict = dict()
 
         file_suffix = ".parquet"
@@ -94,6 +95,9 @@ def embed_data(prefix = None, suffix_size = None, reembed = None):
 
         if os.path.isfile(dataset_file_path):
             X, ids = load_stored_embeddings(dataset_file_path)
+        else: 
+            X, y = embed_data(prefix = prefix, suffix_size = suffix_size, reembed = True)
+            return X, y
                  
     elif os.path.isfile(dataset_file_path):
         # Don't reembed kmers
