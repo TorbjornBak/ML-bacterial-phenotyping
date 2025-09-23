@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from kmer_sampling import load_labels, kmerize_parquet_joblib, kmerize_parquet_joblib_multi
+from kmer_sampling import load_labels, kmerize_parquet_joblib
 from Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 
