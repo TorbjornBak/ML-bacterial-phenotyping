@@ -8,6 +8,7 @@ from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_se
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
+from joblib import Parallel, delayed
 
 from kmer_sampling import load_labels, kmerize_parquet_joblib
 from Transformers_and_S4Ms import TransformerKmerClassifier
@@ -61,6 +62,7 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
     if prefix is not None and suffix_size is not None:
         kmer_prefix = prefix
         kmer_suffix_size = suffix_size
+        print(f'Embedding dataset with {prefix=} and {suffix_size=}')
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
@@ -553,10 +555,10 @@ kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG'
 kmer_suffix_sizes = [size for size in range(1,13)]
 
 if embed_only is True:
-    for prefix in kmer_prefixes:
-        for suffix_size in kmer_suffix_sizes:
-            print(f'Embedding dataset with {prefix=} and {suffix_size=}')
-            embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
+    Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
+    # for prefix in kmer_prefixes:
+    #     for suffix_size in kmer_suffix_sizes:
+    #         embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
 else:
     model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
