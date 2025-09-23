@@ -584,7 +584,7 @@ embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_ar
 base_kmer = "CGTCACA"
 
 kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-kmer_suffix_sizes = [size for size in range(1,13)]
+kmer_suffix_sizes = [size for size in range(1,6)]
 
 if embed_only is True:
     #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
