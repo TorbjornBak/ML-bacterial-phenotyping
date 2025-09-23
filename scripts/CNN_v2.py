@@ -55,7 +55,7 @@ dataset_name = f'{kmer_prefix}_{kmer_suffix_size}'
 dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
 
-def embed_data(prefix = None, suffix_size = None, reembed = None):
+def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = False):
     # Should return X and y
 
     if prefix is not None and suffix_size is not None:
@@ -92,13 +92,18 @@ def embed_data(prefix = None, suffix_size = None, reembed = None):
         dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
         dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
+        
         if os.path.isfile(dataset_file_path):
+            if no_loading is True:
+                return True
             X, ids = load_stored_embeddings(dataset_file_path)
         else: 
             X, y = embed_data(prefix = prefix, suffix_size = suffix_size, reembed = True)
             return X, y
                  
     elif os.path.isfile(dataset_file_path):
+        if no_loading is True:
+            return True
         # Don't reembed kmers
         # Load np array instead
         X, ids = load_stored_embeddings(dataset_file_path)
@@ -551,7 +556,7 @@ if embed_only:
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Embedding dataset with {prefix=} and {suffix_size=}')
-            embed_data(prefix=prefix, suffix_size=suffix_size)
+            embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
 else:
     model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
