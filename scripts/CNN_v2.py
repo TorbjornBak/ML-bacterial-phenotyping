@@ -11,7 +11,7 @@ from sklearn.metrics import balanced_accuracy_score, classification_report, roc_
 
 from kmer_sampling import load_labels, kmerize_parquet_joblib
 from Transformers_and_S4Ms import TransformerKmerClassifier
-
+from tqdm import tqdm
 
 
 if torch.cuda.is_available(): 
@@ -55,12 +55,17 @@ dataset_name = f'{kmer_prefix}_{kmer_suffix_size}'
 dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
 
-def embed_data():
+def embed_data(prefix = None, suffix_size = None, reembed = None):
     # Should return X and y
-    
+    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
-    if "--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE":
+    if ("--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE") or reembed is True:
 
+        if prefix is not None and suffix_size is not None:
+            kmer_prefix = prefix
+            kmer_suffix_size = suffix_size
+                
         data_dict = dict()
 
         file_suffix = ".parquet"
@@ -75,19 +80,25 @@ def embed_data():
         X = [data_dict[gid] for gid in ids]
             
         X_obj = np.array(X, dtype=object)
-
+        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
         print(f"Saving embeddings to: {dataset_file_path=}")
         np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
-        
+    
+    elif prefix is not None and suffix_size is not None:
+        kmer_prefix = prefix
+        kmer_suffix_size = suffix_size
+
+        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+
+        if os.path.isfile(dataset_file_path):
+            X, ids = load_stored_embeddings(dataset_file_path)
+                 
     elif os.path.isfile(dataset_file_path):
         # Don't reembed kmers
         # Load np array instead
-        print(f"Loading embeddings from: {dataset_file_path=}")
-        z = np.load(dataset_file_path, allow_pickle=True)
-
-        X = list(z["X"])  # object array → list of arrays 
-        ids = list(z["ids"])  # map labels from current dict
-        
+        X, ids = load_stored_embeddings(dataset_file_path)
        
     else:
         raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
@@ -103,7 +114,13 @@ def embed_data():
     return X, y
 
 
+def load_stored_embeddings(dataset_file_path):
+    print(f"Loading embeddings from: {dataset_file_path=}")
+    z = np.load(dataset_file_path, allow_pickle=True)
 
+    X = list(z["X"])  # object array → list of arrays 
+    ids = list(z["ids"])  # map labels from current dict
+    return X, ids
 
 print(f"Using {device} device")
 
@@ -353,7 +370,7 @@ def fit_model(
     # ----- Training loop -----
 
     early_stop_counter = 0
-    patience = 10
+    patience = 15
     for epoch in range(num_epochs):
         model.train()
         running_loss = 0.0
@@ -418,30 +435,14 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN"):
-    # ----- Split into train/test only -----
-
-
-    X, y = embed_data()
-
-    num_classes = len(np.unique(y))
-
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 42, test_size= 0.2)
-    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
-
-    num_epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 5
-    learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
-    # Build DataLoaders
-    bs = int(cli_arguments.get("--BATCH_SIZE", batch_size))
-    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-
-
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
             "model_name",
+            "kmer_prefix",
+            "kmer_suffix_size",
+            "seed",
             "f1_score_weighted",
             "f1_score_macro",
             "precision_weighted",
@@ -457,60 +458,92 @@ def get_model_performance(model_type = "CNN"):
             "n_classes",
         ]
     )
+    for prefix in kmer_prefixes:
+        for suffix_size in kmer_suffix_sizes:
+            print(f'Training models with {prefix=} and {suffix_size=}')
+            X, y = embed_data(prefix=prefix, suffix_size=suffix_size)
+            num_classes = len(np.unique(y))
+            # Learning rates as well?
+            try:
+                for seed in tqdm(range(n_seeds)):
+                    print(f'{seed=}')
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
+                    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
 
-    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-    test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    num_epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 50
+                    learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
+                    # Build DataLoaders
+                    bs = int(cli_arguments.get("--BATCH_SIZE", batch_size))
+                    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+                    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+                    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
-    
-    binc = np.bincount(y_train, minlength=num_classes).astype(np.float64)
-    # Avoid div by zero if a class is missing in train
-    binc[binc == 0] = 1.0
-    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+                    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    
+                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float64)
+                    # Avoid div by zero if a class is missing in train
+                    binc[binc == 0] = 1.0
+                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
-    y_test_pred = fit_model(train_loader, val_loader, test_loader,
-                            device=device,
-                            num_epochs=num_epochs,
-                            learning_rate=learning_rate, 
-                            class_weight=class_weight,
-                            num_classes=num_classes,
-                            model_type=model_type)
-    
-    report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
+                    y_test_pred = fit_model(train_loader, val_loader, test_loader,
+                                            device=device,
+                                            num_epochs=num_epochs,
+                                            learning_rate=learning_rate, 
+                                            class_weight=class_weight,
+                                            num_classes=num_classes,
+                                            model_type=model_type)
+                    
+                    report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
-    
-    y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-    auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
-    auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
+                    
+                    y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+                    auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
+                    auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
 
-    # Calculate balanced accuracy
-    balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
+                    # Calculate balanced accuracy
+                    balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
 
-    # Store results
-    results_df.loc[len(results_df)] = pd.Series(
-        {
-            "phenotype": phenotype,
-            "model_name": model_type,
-            "f1_score_weighted": report["weighted avg"]["f1-score"],
-            "f1_score_macro": report["macro avg"]["f1-score"],
-            "precision_weighted": report["weighted avg"]["precision"],
-            "precision_macro": report["macro avg"]["precision"],
-            "recall_weighted": report["weighted avg"]["recall"],
-            "recall_macro": report["macro avg"]["recall"],
-            "accuracy": report["accuracy"],
-            "balanced_accuracy": balanced_accuracy,
-            "auc_weighted": auc_weighted,
-            "auc_macro": auc_macro,
-            "n_classes": len(np.unique(y_train)),
-        }
-    )
+                    # Store results
+                    results_df.loc[len(results_df)] = pd.Series(
+                        {
+                            "phenotype": phenotype,
+                            "model_name": model_type,
+                            "kmer_prefix": prefix,
+                            "kmer_suffix_size": suffix_size,
+                            "seed": seed,
+                            "f1_score_weighted": report["weighted avg"]["f1-score"],
+                            "f1_score_macro": report["macro avg"]["f1-score"],
+                            "precision_weighted": report["weighted avg"]["precision"],
+                            "precision_macro": report["macro avg"]["precision"],
+                            "recall_weighted": report["weighted avg"]["recall"],
+                            "recall_macro": report["macro avg"]["recall"],
+                            "accuracy": report["accuracy"],
+                            "balanced_accuracy": balanced_accuracy,
+                            "auc_weighted": auc_weighted,
+                            "auc_macro": auc_macro,
+                            "n_classes": len(np.unique(y_train)),
+                        }
+                    )
+            except torch.OutOfMemoryError as error:
+                print(f'Torch memory error: Continuing with next combination of parameters after this error: {error=}')
+
+            except MemoryError as error:
+                print(f'Memory error: Continuing with next combination of parameters after this error: {error=}')
 
     return results_df
 
-    
+
 
 model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
-results_df = get_model_performance(model_type=model_type)
+
+base_kmer = "CGTCACA"
+
+kmer_prefixes = [base_kmer[:i] for i in range(2,len(base_kmer)+1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
+kmer_suffix_sizes = [size for size in range(1,13)]
+results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefix, kmer_suffix_sizes=kmer_suffix_sizes)
+
 path = f'{output_directory}/{dataset_name}.csv'
 results_df.to_csv(path_or_buf=path)
 print(results_df)
