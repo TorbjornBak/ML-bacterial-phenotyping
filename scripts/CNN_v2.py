@@ -539,7 +539,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
 
 
 
-embed_only = cli_arguments["--embed_only"].upper() == "TRUE" if "--embed_only" in cli_arguments else False
+embed_only = cli_arguments["--EMBED_ONLY"].upper() == "TRUE" if "--embed_only" in cli_arguments else False
 
 
 base_kmer = "CGTCACA"
