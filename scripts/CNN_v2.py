@@ -57,15 +57,19 @@ dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
 def embed_data(prefix = None, suffix_size = None, reembed = None):
     # Should return X and y
+
+    if prefix is not None and suffix_size is not None:
+        kmer_prefix = prefix
+        kmer_suffix_size = suffix_size
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
     if ("--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE") or reembed is True:
 
-        if prefix is not None and suffix_size is not None:
-            kmer_prefix = prefix
-            kmer_suffix_size = suffix_size
-            
+        
+         
+
+   
 
         data_dict = dict()
 
