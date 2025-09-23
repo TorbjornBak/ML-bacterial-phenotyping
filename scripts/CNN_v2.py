@@ -544,7 +544,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
 
 
 
-embed_only = cli_arguments["--EMBED_ONLY"].upper() == "TRUE" if "--embed_only" in cli_arguments else False
+embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
 
 
 base_kmer = "CGTCACA"
@@ -552,7 +552,7 @@ base_kmer = "CGTCACA"
 kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
 kmer_suffix_sizes = [size for size in range(1,13)]
 
-if embed_only:
+if embed_only is True:
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Embedding dataset with {prefix=} and {suffix_size=}')
