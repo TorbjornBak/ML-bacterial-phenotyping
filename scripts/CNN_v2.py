@@ -548,9 +548,10 @@ model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments el
 
 base_kmer = "CGTCACA"
 
-kmer_prefixes = [base_kmer[:i+2] for i in range(len(base_kmer)-1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
+kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
 kmer_suffix_sizes = [size for size in range(1,13)]
-results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefix, kmer_suffix_sizes=kmer_suffix_sizes)
+print(kmer_prefixes)
+results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
 
 path = f'{output_directory}/{dataset_name}.csv'
 results_df.to_csv(path_or_buf=path)
