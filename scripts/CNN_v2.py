@@ -20,12 +20,17 @@ if torch.cuda.is_available():
     labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
     input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
-# elif torch.backends.mps.is_available(): 
-#     device = torch.device("mps")
-else: 
+elif torch.backends.mps.is_available(): 
+    #device = torch.device("mps")
     device = torch.device("cpu")
     labels_path = "downloads/labels.csv"
     input_data_directory = "downloads"
+
+else: 
+    # On CPU server
+    #device = torch.device("cpu")
+    labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+    input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
 
 def parse_cli():
