@@ -240,9 +240,7 @@ class CNNKmerClassifier(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout1d(dropout),
 
-            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, padding=self.pad, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Dropout1d(dropout),
+            
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
         self.fc = nn.Linear(conv_dim, num_classes)
@@ -359,8 +357,8 @@ def fit_model(
     
 
     
-    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 256
-    emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 128
+    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 128
+    emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 64
 
 
 
