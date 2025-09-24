@@ -252,16 +252,8 @@ class CNNKmerClassifier(nn.Module):
 
         z = self.conv(x)                 # [B, C, T']
 
-        if mask is not None:
-            # Downsample mask to conv time steps and masked-average pool
-            m = mask.to(z.device).to(dtype=z.dtype).unsqueeze(1)
-            t_out = int(z.size(-1)); assert t_out >= 1  # [B,1,T]
-            m = F.adaptive_avg_pool1d(m, output_size=t_out)  # [B,1,T']
-            w = (m > 0.5).to(z.dtype)                            # [B,1,T']
-            denom = w.sum(dim=-1).clamp_min(1.0)                # [B,1]
-            feat = (z * w).sum(dim=-1) / denom                  # [B, C]
-        else:
-            feat = self.pool(z).squeeze(-1)     # [B, C]
+        
+        feat = self.pool(z).squeeze(-1)     # [B, C]
         
         logits = self.fc(self.head_dropout(feat))              # [B, num_classes]
         return logits
