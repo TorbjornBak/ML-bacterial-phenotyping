@@ -371,7 +371,7 @@ def fit_model(
                             kernel_size=kernel_size, 
                             num_classes=num_classes, 
                             pad_id=pad_id,
-                            use_mask=True).to(device)
+                            use_mask=False).to(device)
     
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=V, 
