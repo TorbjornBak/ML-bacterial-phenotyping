@@ -585,19 +585,20 @@ if __name__ == "__main__":
     base_kmer = "CGTCACA"
 
     kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_suffix_sizes = [size for size in range(3,6)]
+    kmer_suffix_sizes = [size for size in range(1,3)]
+    
 
     if embed_only is True:
         #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
-                result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
+                result = embed_data(prefix=prefix, suffix_size=2, no_loading=True)
     else:
         model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
 
-        dataset_name = "CNN_test_range_prefix_5_6"
+        dataset_name = "CNN_test_range_prefix_continued"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
         print(results_df)
