@@ -254,9 +254,10 @@ class CNNKmerClassifier(nn.Module):
 
         if mask is not None:
             # Downsample mask to conv time steps and masked-average pool
-            m = mask.float().unsqueeze(1)                       # [B,1,T]
-            m = F.adaptive_avg_pool1d(m, output_size=z.size(-1))  # [B,1,T']
-            w = (m > 0.5).float()                               # [B,1,T']
+            m = mask.to(z.device).to(dtype=z.dtype).unsqueeze(1)
+            t_out = int(z.size(-1)); assert t_out >= 1  # [B,1,T]
+            m = F.adaptive_avg_pool1d(m, output_size=t_out)  # [B,1,T']
+            w = (m > 0.5).to(z.dtype)                            # [B,1,T']
             denom = w.sum(dim=-1).clamp_min(1.0)                # [B,1]
             feat = (z * w).sum(dim=-1) / denom                  # [B, C]
         else:
@@ -369,7 +370,8 @@ def fit_model(
                             conv_dim=hidden_dim, 
                             kernel_size=kernel_size, 
                             num_classes=num_classes, 
-                            pad_id=pad_id).to(device)
+                            pad_id=pad_id,
+                            use_mask=True).to(device)
     
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=V, 
