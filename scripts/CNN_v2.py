@@ -592,11 +592,11 @@ if __name__ == "__main__":
         #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
-                result = embed_data(prefix=prefix, suffix_size=2, no_loading=True)
+                result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
     else:
         model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes="CGTC", kmer_suffix_sizes=[5])
 
         dataset_name = "CNN_test_range_prefix_continued"
         path = f'{output_directory}/{dataset_name}.csv'
