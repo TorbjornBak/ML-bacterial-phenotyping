@@ -130,31 +130,31 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
     return X, y
 
 
-def embed_data_multi(kmer_prefixes, kmer_suffix_sizes, nr_of_cores = 4):
-    file_suffix = ".parquet"
-    dir_list = os.listdir(input_data_directory)
-    dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
+# def embed_data_multi(kmer_prefixes, kmer_suffix_sizes, nr_of_cores = 4):
+#     file_suffix = ".parquet"
+#     dir_list = os.listdir(input_data_directory)
+#     dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
-    print(f'{dir_list=}')
+#     print(f'{dir_list=}')
 
-    data_dict = kmerize_parquet_joblib_multi(dir_list, kmer_prefixes, kmer_suffix_sizes, nr_of_cores = nr_of_cores)
+#     data_dict = kmerize_parquet_joblib_multi(dir_list, kmer_prefixes, kmer_suffix_sizes, nr_of_cores = nr_of_cores)
 
 
-    #kmer_embeddings[genome_id][kmer_prefix][kmer_prefix]
+#     #kmer_embeddings[genome_id][kmer_prefix][kmer_prefix]
 
     
-    for prefix in data_dict:
-        for suffix_size in data_dict[prefix]:
-            ids = [gid for gid in data_dict[prefix][suffix_size].keys()]
-            X = [data_dict[prefix][suffix_size][gid] for gid in ids]
+#     for prefix in data_dict:
+#         for suffix_size in data_dict[prefix]:
+#             ids = [gid for gid in data_dict[prefix][suffix_size].keys()]
+#             X = [data_dict[prefix][suffix_size][gid] for gid in ids]
 
-            X_obj = np.array(X, dtype=object)
-            dataset_name = f'{prefix}_{suffix_size}' 
-            dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-            print(f"Saving embeddings to: {dataset_file_path=}")
-            np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
+#             X_obj = np.array(X, dtype=object)
+#             dataset_name = f'{prefix}_{suffix_size}' 
+#             dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+#             print(f"Saving embeddings to: {dataset_file_path=}")
+#             np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
 
-    return
+#     return
 
 def load_stored_embeddings(dataset_file_path):
     print(f"Loading embeddings from: {dataset_file_path=}")
@@ -548,7 +548,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
 
                     # Store results
-                    results_df.loc[len(results_df)] = pd.Series(
+                    results = pd.Series(
                         {
                             "phenotype": phenotype,
                             "model_name": model_type,
@@ -568,12 +568,20 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             "n_classes": len(np.unique(y_train)),
                         }
                     )
+                    dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}"
+                    path = f'{output_directory}/{dataset_name}.csv'
+                    results.to_csv(path)
+                    print(results)
+                    results_df.loc[len(results_df)] = results
+            
             except torch.OutOfMemoryError as error:
-                print(f'Torch memory error: Continuing with next combination of parameters after this error: {error=}')
+                print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
+                      \nContinuing with next combination of parameters after this error: {error=}''')
 
             except MemoryError as error:
-                print(f'Memory error: Continuing with next combination of parameters after this error: {error=}')
-
+                print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
+                      \nContinuing with next combination of parameters after this error: {error=}''')
+           
     return results_df
 
 
@@ -597,6 +605,7 @@ if __name__ == "__main__":
 
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
 
+        dataset_name = "CNN_test_range"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
         print(results_df)
