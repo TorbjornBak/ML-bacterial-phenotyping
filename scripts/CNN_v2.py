@@ -512,7 +512,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     num_epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 50
                     learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
                     # Build DataLoaders
-                    bs = int(cli_arguments.get("--BATCH_SIZE", batch_size))
+                    bs = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 25
                     train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
                     val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
                     test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
