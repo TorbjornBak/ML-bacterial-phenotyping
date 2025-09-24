@@ -240,7 +240,6 @@ class CNNKmerClassifier(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout1d(dropout),
 
-            
         )
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
         self.fc = nn.Linear(conv_dim, num_classes)
@@ -590,8 +589,8 @@ if __name__ == "__main__":
 
     base_kmer = "CGTCACA"
 
-    kmer_prefixes = [base_kmer[:i] for i in range(3,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_suffix_sizes = [size for size in range(1,6)]
+    kmer_prefixes = [base_kmer[:i] for i in range(4,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
+    kmer_suffix_sizes = [size for size in range(2,6)]
 
     if embed_only is True:
         #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
