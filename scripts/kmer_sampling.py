@@ -371,7 +371,7 @@ def kmerize_and_embed_parquet_dataset_count(path, genome_col, dna_sequence_col, 
 	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
 		
 		dna_sequences = dna_sequences.split(" ")
-		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size)
+		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size))
 
 		kmer_counts[genome_id] = array
 		
