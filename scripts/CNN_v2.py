@@ -336,7 +336,7 @@ def fit_model(
     
 
     
-    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 64
+    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 128
     emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 64
 
 
@@ -566,10 +566,10 @@ if __name__ == "__main__":
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
 
 
-    base_kmer = "CGTCACA"
+   # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTC', 'CGTCA', 'CGTCAC', 'CGTCACA']
+    kmer_prefixes = ['CGTCA', 'CGTCAC', 'CGTCACA']
     kmer_suffix_sizes = [size for size in range(1,6)]
     
 
