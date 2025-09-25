@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import random
 from joblib import Parallel, delayed
+
 # Reads one fasta file
 
 # One-hot encoding.
@@ -82,6 +83,39 @@ def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size,
 	#print(f'Total kmers: {kmer_count}')
 	return array
 
+
+def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix_size, array_size):
+
+	array = np.zeros(array_size, dtype = np.uint16)
+	
+	kmer_prefix_size = len(kmer_prefix)
+	kmer_count = 0
+
+	for sequence in sequences:
+		sequence = sequence.replace(b"\n", b"")
+		table = bytes.maketrans(b"atcgmrykvhdbxnswMRYKVHDBXNSW",b"ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
+		sequence = sequence.translate(table)
+		
+		# Finds kmers and one-hot-encode them
+		current_kmer_prefix_location = sequence.find(kmer_prefix)
+
+		while current_kmer_prefix_location != -1:
+
+			kmer_count += 1
+			kmer_suffix_start_location = current_kmer_prefix_location + kmer_prefix_size
+			
+			kmer_suffix = sequence[kmer_suffix_start_location : kmer_suffix_start_location + kmer_suffix_size]
+			
+			if b'n' not in kmer_suffix:
+				# Converts dna to binary to use for indexing np.array
+				kmer_suffix_binary = dna_to_binary(kmer_suffix,	kmer_suffix_size)
+				
+				array[kmer_suffix_binary] += 1
+
+			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
+	#print(f'Total kmers: {kmer_count}')
+	return array
+
 	
 def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_suffix_size):
 	# The same as above, but should return a sequence by finding and concatenating all the kmers instead of using one-hot-encoded array. 
@@ -91,9 +125,7 @@ def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_s
 	
 	kmer_offset = 0 # Change this to change the offset
 	kmer_count = 0
-
 	
-
 	for sequence in sequences:
 		sequence = sequence.replace("\n", "")
 		table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSW","ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
@@ -117,6 +149,8 @@ def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_s
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
 	#print(f'Total kmers: {kmer_count}')
 	return kmers
+
+
 
 def dna_to_binary(dna, kmer_size):
 	
@@ -300,8 +334,7 @@ def read_parquet(parguet_path):
 	return df
 	
 def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
-	
-	
+
 	print(f"Kmerizing {path}")
 	
 	df = read_parquet(parguet_path=path)
@@ -325,6 +358,32 @@ def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_p
 	return kmer_embeddings
 
 
+
+def kmerize_and_embed_parquet_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+
+	print(f"Kmerizing {path}")
+	
+
+	df = read_parquet(parguet_path=path)
+	
+	kmer_counts = dict()
+
+	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
+		
+		dna_sequences = dna_sequences.split(" ")
+		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size)
+
+		kmer_counts[genome_id] = array
+		
+
+		#print(f'{genome_id} : {len(kmers)}')
+
+	
+	return kmer_counts
+
+
+
+
 def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
 
 	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
@@ -340,6 +399,20 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 	
 	return data_dict
 
+def kmerize_parquet_count_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
+
+	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+
+	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
+
+	data_dict = dict()
+	
+	for kmer_counts in joblib_results:
+		data_dict.update(kmer_counts)
+
+	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
+	
+	return data_dict
 
 if __name__ == "__main__":
 	# kmer_prefix = b"CGTGA"
