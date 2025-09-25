@@ -391,7 +391,7 @@ def fit_model(
 
     early_stop_counter = 0
     patience = 15
-    for epoch in range(num_epochs):
+    for epoch in tqdm(range(num_epochs)):
         model.train()
         running_loss = 0.0
         total = 0
@@ -569,7 +569,7 @@ if __name__ == "__main__":
     base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTC', 'CGTCA', 'CGTCAC', 'CGTCACA']
+    kmer_prefixes = ['CGTCAC', 'CGTCACA'] #['CGTC', 'CGTCA', 'CGTCAC', 'CGTCACA']
     kmer_suffix_sizes = [size for size in range(1,6)]
     
 
