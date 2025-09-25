@@ -92,8 +92,8 @@ def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix
 	kmer_count = 0
 
 	for sequence in sequences:
-		sequence = sequence.replace(b"\n", b"")
-		table = bytes.maketrans(b"atcgmrykvhdbxnswMRYKVHDBXNSW",b"ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
+		sequence = sequence.replace("\n", "")
+		table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSW","ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
 		sequence = sequence.translate(table)
 		
 		# Finds kmers and one-hot-encode them
@@ -106,9 +106,9 @@ def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix
 			
 			kmer_suffix = sequence[kmer_suffix_start_location : kmer_suffix_start_location + kmer_suffix_size]
 			
-			if b'n' not in kmer_suffix:
+			if 'n' not in kmer_suffix:
 				# Converts dna to binary to use for indexing np.array
-				kmer_suffix_binary = dna_to_binary(kmer_suffix,	kmer_suffix_size)
+				kmer_suffix_binary = dna_to_binary_str(kmer_suffix,	kmer_suffix_size)
 				
 				array[kmer_suffix_binary] += 1
 
@@ -152,6 +152,39 @@ def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_s
 
 
 
+def dna_to_binary_str(dna, kmer_size):
+	
+	t = 0b11
+	t <<= (kmer_size*2 - 2)
+	c = 0b01
+	c <<= (kmer_size*2 - 2)
+	g = 0b10
+	g <<= (kmer_size*2 - 2)
+
+	number = 0
+
+	for char in dna:
+		number >>= 2
+		# A
+		if char == "A":
+			pass
+		# T
+		elif char == "T":
+			number |= t
+		# C
+		elif char == "C":
+			number |= c
+		# G
+		elif char == "G":
+			number |= g
+		
+		else:
+			print("Illegal base in DNA sequence:", char)
+			sys.exit(1)
+		
+	#print(bin_to_dna(number, 10))
+	return number
+
 def dna_to_binary(dna, kmer_size):
 	
 	t = 0b11
@@ -184,7 +217,6 @@ def dna_to_binary(dna, kmer_size):
 		
 	#print(bin_to_dna(number, 10))
 	return number
-
 
 
 def bin_to_dna(number, kmer_size):
