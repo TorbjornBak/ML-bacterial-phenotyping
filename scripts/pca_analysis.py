@@ -5,7 +5,6 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-import torch
 import os
 
 from kmer_sampling import kmerize_parquet_count_joblib, load_labels
@@ -13,23 +12,10 @@ from CNN_v2 import load_stored_embeddings
 
 
 
-if torch.cuda.is_available(): 
-	device = torch.device("cuda")
-	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
-elif torch.backends.mps.is_available(): 
-	#device = torch.device("mps")
-	device = torch.device("cpu")
-	labels_path = "downloads/labels.csv"
-	input_data_directory = "downloads"
-
-else: 
-	# On CPU server
-	#device = torch.device("cpu")
-	device = "cpu"
-	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+device = "cpu"
+labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
 
 def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4):
@@ -83,7 +69,6 @@ if __name__ == "__main__":
 	label2id = {label: i for i, label in enumerate(labels) }
 
 	color_list = [label2id[l] for l in y]
-
 
 	plt.figure(figsize=(6,5))
 
