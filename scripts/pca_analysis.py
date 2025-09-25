@@ -7,9 +7,9 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import os
 
+import sys
+
 from kmer_sampling import kmerize_parquet_count_joblib, load_labels
-
-
 
 
 def load_stored_embeddings(dataset_file_path):
@@ -35,21 +35,24 @@ def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suff
 
 	return X, y
 
+def parse_cli():
+    if len(sys.argv) > 1:
+        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
+        print(cli_arguments)
+    else:
+        raise ValueError("No arguments was provided!")
 
+    return cli_arguments
 
 if __name__ == "__main__":
-	# file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
-	# #labels = load_labels(file_path="downloads/genome_lineage")
 
-	# X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
-	# #print()
-
-	# X_np = np.stack(X, axis=0)
 	device = "cpu"
 	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
 	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
-	phenotype = "madin_categorical_gram_stain"
+	cli_arguments = parse_cli()
+    
+	phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
 	label_dict_literal, label_dict = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
 
 
@@ -59,8 +62,8 @@ if __name__ == "__main__":
 
 	print(f'{dir_list=}')
 
-	kmer_prefix = "CGTCA"
-	kmer_suffix_size = 4
+	kmer_prefix = cli_arguments["--KMER"] if "--KMER" in cli_arguments else "CGTCA"
+	kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
 
 	
 	X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = 20)
