@@ -63,7 +63,7 @@ if __name__ == "__main__":
 	kmer_suffix_size = 4
 
 	
-	X, y = embed_data(label_dict=label_dict, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = 20)
+	X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = 20)
 
 
 	pca = PCA(n_components=2, random_state=0)
