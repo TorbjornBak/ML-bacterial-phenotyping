@@ -8,14 +8,17 @@ from sklearn.decomposition import PCA
 import os
 
 from kmer_sampling import kmerize_parquet_count_joblib, load_labels
-from CNN_v2 import load_stored_embeddings
 
 
 
 
-device = "cpu"
-labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+def load_stored_embeddings(dataset_file_path):
+    print(f"Loading embeddings from: {dataset_file_path=}")
+    z = np.load(dataset_file_path, allow_pickle=True)
+
+    X = list(z["X"])  # object array → list of arrays 
+    ids = list(z["ids"])  # map labels from current dict
+    return X, ids
 
 
 def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4):
@@ -42,6 +45,10 @@ if __name__ == "__main__":
 	# #print()
 
 	# X_np = np.stack(X, axis=0)
+	device = "cpu"
+	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+
 	phenotype = "madin_categorical_gram_stain"
 	label_dict_literal, label_dict = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
 
