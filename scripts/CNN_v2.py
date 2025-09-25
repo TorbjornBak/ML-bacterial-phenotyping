@@ -569,7 +569,7 @@ if __name__ == "__main__":
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTCA', 'CGTCAC', 'CGTCACA']
+    kmer_prefixes = ['CGTC']
     kmer_suffix_sizes = [size for size in range(1,6)]
     
 
