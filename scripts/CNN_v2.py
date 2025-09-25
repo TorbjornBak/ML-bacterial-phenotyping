@@ -267,7 +267,7 @@ class RNNKmerClassifier(nn.Module):
         self,
         vocab_size,
         emb_dim=128,
-        rnn_hidden=256,
+        rnn_hidden=128,
         num_layers=1,
         bidirectional=True,
         num_classes=2,
@@ -336,7 +336,7 @@ def fit_model(
     
 
     
-    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 128
+    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 64
     emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 64
 
 
@@ -569,7 +569,7 @@ if __name__ == "__main__":
     base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTCAC', 'CGTCACA'] #['CGTC', 'CGTCA', 'CGTCAC', 'CGTCACA']
+    kmer_prefixes = ['CGTC', 'CGTCA', 'CGTCAC', 'CGTCACA']
     kmer_suffix_sizes = [size for size in range(1,6)]
     
 
