@@ -223,12 +223,12 @@ def pad_collate(batch, pad_id: int = 0):
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, use_mask: bool = True):
+    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0):
         super().__init__()
         self.kernel_size = kernel_size
         # approximate 'same' padding per conv layer
         self.pad = kernel_size // 2
-        self.use_mask = use_mask
+        
         self.head_dropout = nn.Dropout(dropout)
         self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         # Reduce downsampling to avoid zero-length tensors. Use only two stride-2 stages and no max-pooling.
@@ -245,7 +245,7 @@ class CNNKmerClassifier(nn.Module):
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
         self.fc = nn.Linear(conv_dim, num_classes)
 
-    def forward(self, token_ids, mask: torch.Tensor | None = None):
+    def forward(self, token_ids):
         # token_ids: [B, T] Long
         x = self.emb(token_ids)          # [B, T, D]
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
@@ -272,11 +272,10 @@ class RNNKmerClassifier(nn.Module):
         bidirectional=True,
         num_classes=2,
         pad_id=0,
-        dropout=0.1,
-        use_mask: bool = True,
+        dropout=0.1
     ):
         super().__init__()
-        self.use_mask = use_mask
+       
         self.pad_id = pad_id
         self.bidirectional = bidirectional
         self.head_dropout = nn.Dropout(dropout)
@@ -293,33 +292,19 @@ class RNNKmerClassifier(nn.Module):
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
         self.fc = nn.Linear(feat_dim, num_classes)
 
-    def forward(self, token_ids: torch.Tensor, mask: torch.Tensor | None = None):
+    def forward(self, token_ids: torch.Tensor):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         B, T = token_ids.shape
         x = self.emb(token_ids)  # [B, T, D]
+        x = x.contiguous()
 
-        if self.use_mask and mask is not None:
-            # Compute true lengths from mask for packing
-            lengths = mask.long().sum(dim=1).clamp_min(1)  # [B]
-            # Enforce_sorted=False allows arbitrary batch ordering
-            packed = pack_padded_sequence(
-                x, lengths.cpu(), batch_first=True, enforce_sorted=False
-            )  # packed sequence for GRU [web:5][web:12]
-            packed_out, _ = self.gru(packed)  # GRU over packed input [web:13][web:16]
-            out, _ = pad_packed_sequence(packed_out, batch_first=True, total_length=T)
-            # out: [B, T, H*dir]
-        else:
-            # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
-            out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
+        
+        # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
+        out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
 
-        if mask is not None:
-            # Masked average pooling over time to mirror CNN masked pooling
-            w = (mask > 0).to(out.dtype).unsqueeze(-1)  # [B, T, 1]
-            denom = w.sum(dim=1).clamp_min(1.0)        # [B, 1]
-            feat = (out * w).sum(dim=1) / denom 
-        else:
-            # Global average over valid timesteps when lengths unknown
-            feat = out.mean(dim=1)  # [B, H*dir]
+        
+        # Global average over valid timesteps when lengths unknown
+        feat = out.mean(dim=1)  # [B, H*dir]
 
         logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
         return logits
@@ -363,7 +348,7 @@ def fit_model(
                             kernel_size=kernel_size, 
                             num_classes=num_classes, 
                             pad_id=pad_id,
-                            use_mask=False).to(device)
+                            ).to(device)
     
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=V, 
@@ -373,7 +358,7 @@ def fit_model(
                             bidirectional=True,
                             num_classes=num_classes, 
                             dropout=dropout,
-                            use_mask=True,
+                            
                             pad_id=pad_id).to(device)
     
     elif model_type == "TRANSFORMER":
@@ -412,10 +397,10 @@ def fit_model(
         correct = 0
         for xb, lengths, mask, yb in train_loader:
             xb = xb.to(device)
-            mask = mask.to(device)
+            #mask = mask.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
-            output = model(xb, mask)
+            output = model(xb)
             loss = criterion(output, yb)
             loss.backward()
             optimizer.step()
@@ -431,9 +416,8 @@ def fit_model(
             val_running = 0.0
             for xb, lengths, mask, yb in val_loader:
                 xb = xb.to(device)
-                mask = mask.to(device)
                 yb = yb.to(device)
-                out = model(xb, mask)
+                out = model(xb)
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 
@@ -461,8 +445,7 @@ def fit_model(
         outs = []
         for xb, lengths, mask, _ in test_loader:
             xb = xb.to(device)
-            mask = mask.to(device)
-            out = model(xb, mask)
+            out = model(xb)
             outs.append(out.cpu().numpy())
         test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
 
