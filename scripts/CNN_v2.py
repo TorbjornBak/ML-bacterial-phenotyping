@@ -300,6 +300,7 @@ class RNNKmerClassifier(nn.Module):
 
         
         # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
+        self.gru.flatten_parameters()
         out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
 
         
