@@ -596,7 +596,7 @@ if __name__ == "__main__":
     else:
         model_type = cli_arguments["--MODEL_TYPE"] if "--MODEL_TYPE" in cli_arguments else "CNN"
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes="CGTC", kmer_suffix_sizes=[5])
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes=["CGTC"], kmer_suffix_sizes=[1,5])
 
         dataset_name = "CNN_test_range_prefix_continued"
         path = f'{output_directory}/{dataset_name}.csv'
