@@ -242,7 +242,6 @@ def bin_to_dna(number, kmer_size):
 
 
 
-
 def get_array_size(alphabet_size, kmer_size):
 	# Load to numpy array, size is calculated based on total possible nr
 	# of k-mers for a given kmer size
@@ -373,6 +372,11 @@ def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_p
 	
 	kmer_embeddings = dict()
 
+	if get_array_size(alphabet_size=4, kmer_size = kmer_suffix_size) > 2**16-1:
+		data_type = np.uint16
+	else:
+		data_type = np.uint32
+
 	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
 		
 		dna_sequences = dna_sequences.split(" ")
@@ -380,7 +384,7 @@ def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_p
 
 		embeddings = [kmer_to_integer(kmer) for kmer in kmers]
 
-		embeddings_np = np.array(embeddings, dtype = np.int32)
+		embeddings_np = np.array(embeddings, dtype = data_type)
 
 		kmer_embeddings[genome_id] = embeddings_np
 
