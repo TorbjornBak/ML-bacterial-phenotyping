@@ -203,7 +203,7 @@ class SequenceDataset(Dataset):
                 else:
                     row = row[:1]
             xi = torch.as_tensor(row, dtype=torch.long)
-        yi = torch.as_tensor(self.y[idx], dtype=torch.ong)
+        yi = torch.as_tensor(self.y[idx], dtype=torch.long)
         return xi, yi
 
 
