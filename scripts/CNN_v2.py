@@ -496,7 +496,12 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
                     test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
-                    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    num_workers = min(8, os.cpu_count() or 2)
+                    
+                    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, 
+                                              collate_fn=lambda b: pad_collate(b, pad_id=pad_id),
+                                              num_workers=num_workers, pin_memory=(device.type=='cuda'),
+                                                persistent_workers=True)
                     val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
                     test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
                     
