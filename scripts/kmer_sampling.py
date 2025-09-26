@@ -372,7 +372,7 @@ def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_p
 	
 	kmer_embeddings = dict()
 
-	if get_array_size(alphabet_size=4, kmer_size = kmer_suffix_size) > 2**16-1:
+	if get_array_size(alphabet_size=4, kmer_size = kmer_suffix_size) < 2**16:
 		data_type = np.uint16
 	else:
 		data_type = np.uint32
