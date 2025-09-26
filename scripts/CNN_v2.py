@@ -121,7 +121,7 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
     
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
-    y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+    y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int32)
 
     print(f'{np.unique(y)=}')
     print(f'{len(y)=}')
@@ -192,7 +192,7 @@ class SequenceDataset(Dataset):
                         x = x[: nz[-1] + 1]
                     else:
                         x = x[:1]  # keep at least length 1 to avoid empty
-            xi = torch.as_tensor(x, dtype=torch.long)
+            xi = torch.as_tensor(x, dtype=torch.int32)
         else:
             # Row from 2D array
             row = np.asarray(x)
@@ -202,8 +202,8 @@ class SequenceDataset(Dataset):
                     row = row[: nz[-1] + 1]
                 else:
                     row = row[:1]
-            xi = torch.as_tensor(row, dtype=torch.long)
-        yi = torch.as_tensor(self.y[idx], dtype=torch.long)
+            xi = torch.as_tensor(row, dtype=torch.int32)
+        yi = torch.as_tensor(self.y[idx], dtype=torch.int32)
         return xi, yi
 
 
@@ -211,13 +211,13 @@ def pad_collate(batch, pad_id: int = 0):
     """Pad a batch of variable-length 1D LongTensors to the same length and build mask.
     Returns: seqs_padded [B,T], lengths [B], mask [B,T], labels [B]"""
     seqs, labels = zip(*batch)
-    seqs = [s if isinstance(s, torch.Tensor) else torch.as_tensor(s, dtype=torch.long) for s in seqs]
-    seqs = [s if s.numel() > 0 else torch.tensor([pad_id], dtype=torch.long) for s in seqs]
-    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
+    seqs = [s if isinstance(s, torch.Tensor) else torch.as_tensor(s, dtype=torch.int32) for s in seqs]
+    seqs = [s if s.numel() > 0 else torch.tensor([pad_id], dtype=torch.int32) for s in seqs]
+    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.int32)
     seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
     T = seqs_padded.size(1)
     mask = torch.arange(T).unsqueeze(0) < lengths.unsqueeze(1)
-    labels = torch.stack([torch.as_tensor(y, dtype=torch.long) for y in labels])
+    labels = torch.stack([torch.as_tensor(y, dtype=torch.int32) for y in labels])
     return seqs_padded, lengths, mask, labels
 
 
@@ -500,7 +500,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
                     test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
                     
-                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float64)
+                    binc = np.bincount(y_train, minlength=num_classes).astype(np.int32)
                     # Avoid div by zero if a class is missing in train
                     binc[binc == 0] = 1.0
                     class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
@@ -580,6 +580,7 @@ if __name__ == "__main__":
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
     else:
         model_type = "RNN"
+
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
         dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
