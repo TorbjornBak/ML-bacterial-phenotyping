@@ -15,24 +15,6 @@ from Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 
 
-if torch.cuda.is_available(): 
-    device = torch.device("cuda")
-    labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-    input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-
-elif torch.backends.mps.is_available(): 
-    #device = torch.device("mps")
-    device = torch.device("cpu")
-    labels_path = "downloads/labels.csv"
-    input_data_directory = "downloads"
-
-else: 
-    # On CPU server
-    #device = torch.device("cpu")
-    device = "cpu"
-    labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-    input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-print(f"Using {device=}")
 
 def parse_cli():
     if len(sys.argv) > 1:
@@ -44,26 +26,13 @@ def parse_cli():
     return cli_arguments
 
 
-cli_arguments = parse_cli()
-
-id = "genome_name"
-phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_"
-label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
-kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
-kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
-dropout = float(cli_arguments["--DROPOUT"]) if "--DROPOUT" in cli_arguments else 0.2
-nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
-output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
-
-dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-
-
-def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = False):
+def embed_data(prefix = None, suffix_size = None, input_data_directory = None, output_directory = None, reembed = None, no_loading = False, label_dict = None):
     # Should return X and y
+    if output_directory is None:
+        output_directory = input_data_directory
 
     if prefix is not None and suffix_size is not None:
         kmer_prefix = prefix
@@ -72,7 +41,7 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
-    if ("--REEMBED" in cli_arguments and cli_arguments["--REEMBED"].upper() == "TRUE") or reembed is True:
+    if reembed is True:
 
         data_dict = dict()
 
@@ -106,7 +75,7 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
                 return True
             X, ids = load_stored_embeddings(dataset_file_path)
         else: 
-            X, y = embed_data(prefix = prefix, suffix_size = suffix_size, reembed = True)
+            X, y = embed_data(prefix = prefix, suffix_size = suffix_size, input_data_directory=input_data_directory, output_directory=output_directory, label_dict=label_dict, reembed = True)
             return X, y
                  
     elif os.path.isfile(dataset_file_path):
@@ -118,6 +87,7 @@ def embed_data(prefix = None, suffix_size = None, reembed = None, no_loading = F
        
     else:
         raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
+    
     
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
@@ -223,7 +193,7 @@ def pad_collate(batch, pad_id: int = 0):
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0):
+    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, dropout = 0.2):
         super().__init__()
         self.kernel_size = kernel_size
         # approximate 'same' padding per conv layer
@@ -311,16 +281,6 @@ class RNNKmerClassifier(nn.Module):
         return logits
 
 
-# ----- Instantiate loader and model -----
-V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
-pad_id = 0          # reserve 0 for padding in tokenizer
-
-
-
-
-batch_size = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 16
-learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
-kernel_size = int(cli_arguments["--KERNEL_SIZE"]) if "--KERNEL_SIZE" in cli_arguments else 7
 
 
 def fit_model(
@@ -336,9 +296,10 @@ def fit_model(
     
 
     
-    hidden_dim = int(cli_arguments["--HIDDEN_DIM"]) if "--HIDDEN_DIM" in cli_arguments else 128
-    emb_dim = int(cli_arguments["--EMB_DIM"]) if "--EMB_DIM" in cli_arguments else 64
-
+    hidden_dim = 128
+    emb_dim = 64
+    kernel_size = 7
+    dropout = 0.2
 
 
     #Initialize model, optimizer, loss function
@@ -349,6 +310,7 @@ def fit_model(
                             kernel_size=kernel_size, 
                             num_classes=num_classes, 
                             pad_id=pad_id,
+                            dropout=dropout,
                             ).to(device)
     
     elif model_type == "RNN":
@@ -453,7 +415,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5, label_dict = None):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -479,19 +441,19 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
-            X, y = embed_data(prefix=prefix, suffix_size=suffix_size)
+            X, y = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict)
             num_classes = len(np.unique(y))
-            # Learning rates as well?
+            
             try:
                 for seed in tqdm(range(n_seeds)):
                     print(f'{seed=}')
                     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
                     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
 
-                    num_epochs = int(cli_arguments["--EPOCHS"]) if "--EPOCHS" in cli_arguments else 50
-                    learning_rate = float(cli_arguments["--LR"]) if "--LR" in cli_arguments else 1e-3
+                    num_epochs =  50
+                    learning_rate = 1e-3
                     # Build DataLoaders
-                    bs = int(cli_arguments["--BATCH_SIZE"]) if "--BATCH_SIZE" in cli_arguments else 25
+                    bs = 25
                     train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
                     val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
                     test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
@@ -568,6 +530,47 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
 
 if __name__ == "__main__":
 
+    if torch.cuda.is_available(): 
+        device = torch.device("cuda")
+        labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+        input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+
+    elif torch.backends.mps.is_available(): 
+        #device = torch.device("mps")
+        device = torch.device("cpu")
+        labels_path = "downloads/labels.csv"
+        input_data_directory = "downloads"
+
+    else: 
+        # On CPU server
+        #device = torch.device("cpu")
+        device = "cpu"
+        labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+        input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+    print(f"Using {device=}")
+
+
+    cli_arguments = parse_cli()
+
+    id = "genome_name"
+    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
+    label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
+
+
+    kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
+    kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
+    nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
+    output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
+
+    # ----- Instantiate loader and model -----
+    V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
+    pad_id = 0          # reserve 0 for padding in tokenizer
+
+
+
+    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
 
 
@@ -575,18 +578,18 @@ if __name__ == "__main__":
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
-    kmer_suffix_sizes = [6,7]
+    kmer_suffix_sizes = [8,9,10,11,12]
     
 
     if embed_only is True:
         #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
-                result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
+                result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
         model_type = "CNN"
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict)
         dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
