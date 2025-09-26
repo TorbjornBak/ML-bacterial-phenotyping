@@ -574,8 +574,8 @@ if __name__ == "__main__":
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTCA', 'CGTC']
-    kmer_suffix_sizes = [size for size in range(3,6)]
+    kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
+    kmer_suffix_sizes = [6,7]
     
 
     if embed_only is True:
@@ -584,7 +584,7 @@ if __name__ == "__main__":
             for suffix_size in kmer_suffix_sizes:
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
     else:
-        model_type = "RNN"
+        model_type = "CNN"
 
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
         dataset_name = f"{model_type}_train_full"
