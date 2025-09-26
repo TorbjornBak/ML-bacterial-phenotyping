@@ -569,8 +569,8 @@ if __name__ == "__main__":
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTC']
-    kmer_suffix_sizes = [size for size in range(1,6)]
+    kmer_prefixes = ['CGTCAC']
+    kmer_suffix_sizes = [size for size in range(3,6)]
     
 
     if embed_only is True:
@@ -580,9 +580,8 @@ if __name__ == "__main__":
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, no_loading=True)
     else:
         model_type = "RNN"
-
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes)
-        dataset_name = "RNN_train_full"
+        dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
         print(results_df)
