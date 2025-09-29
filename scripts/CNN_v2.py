@@ -553,7 +553,7 @@ if __name__ == "__main__":
     cli_arguments = parse_cli()
 
     id = "genome_name"
-    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
+    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "-categorical_gram_stain"
     label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
@@ -577,8 +577,10 @@ if __name__ == "__main__":
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
-    kmer_suffix_sizes = [8,9,10,11,12]
+    # kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
+    # kmer_suffix_sizes = [8,9,10,11,12]
+    kmer_prefixes = ['CGTCAC','CGTCA', 'CGTC']
+    kmer_suffix_sizes = [8]
     
 
     if embed_only is True:
