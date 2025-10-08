@@ -51,8 +51,8 @@ def read_fasta_binary(file_path):
 
 
 def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size):
-
-	array = np.zeros(array_size, dtype = np.uint8)
+	# Binary array (0 or 1)
+	array = np.zeros(array_size, dtype = np.bool)
 	
 	kmer_prefix_size = len(kmer_prefix)
 	kmer_count = 0
@@ -77,7 +77,7 @@ def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size,
 				# Converts dna to binary to use for indexing np.array
 				kmer_suffix_binary = dna_to_binary(kmer_suffix,	kmer_suffix_size)
 
-				array[kmer_suffix_binary] = 1
+				array[kmer_suffix_binary] = True
 
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
 	#print(f'Total kmers: {kmer_count}')
@@ -85,6 +85,7 @@ def kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size,
 
 
 def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix_size, array_size):
+	# np array with counts of each kmer
 
 	array = np.zeros(array_size, dtype = np.uint16)
 	
@@ -281,7 +282,6 @@ def int_to_kmer(x: int, k: int) -> str:
 
 def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8, labels = None, file_suffix = ".fna", sample_nr = None):
 	
-	
 	arrays = list()
 	y_labels = list()
 	array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
@@ -326,7 +326,6 @@ def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label 
 	
 	label2int = {label: i for i, label in enumerate(unique_labels)}
 
-	
 	label_dict_int = {id : label2int[label] for id, label in label_dict.items()}
 
 	return label_dict, label_dict_int
@@ -364,7 +363,7 @@ def read_parquet(parguet_path):
 	df = pd.read_parquet(parguet_path, engine = "fastparquet")
 	return df
 	
-def kmerize_and_embed_parquet_dataset(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_parquet_dataset_return_all(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
 
 	print(f"Kmerizing {path}")
 	
@@ -419,10 +418,31 @@ def kmerize_and_embed_parquet_dataset_count(path, genome_col, dna_sequence_col, 
 
 
 
+def kmerize_and_embed_parquet_dataset_binary(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+
+	print(f"Kmerizing {path}")
+	
+
+	df = read_parquet(parguet_path=path)
+	
+	kmer_counts = dict()
+
+	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
+		
+		dna_sequences = dna_sequences.split(" ")
+		array = kmerize_sequences_prefix_filtering(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size))
+
+		kmer_counts[genome_id] = array
+		
+
+		#print(f'{genome_id} : {len(kmers)}')
+
+	
+	return kmer_counts
 
 def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
 
-	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_return_all)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
 
 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
 
