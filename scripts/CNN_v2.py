@@ -293,7 +293,8 @@ def fit_model(
     class_weight = None,
     num_classes = 2, 
     model_type = "CNN",
-    vocab_size = None):
+    vocab_size = None,
+    pad_id=0):
     
 
     
@@ -485,7 +486,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                                 class_weight=class_weight,
                                                 num_classes=num_classes,
                                                 model_type=model_type,
-                                                vocab_size=vocab_size)
+                                                vocab_size=vocab_size,
+                                                pad_id=pad_id)
                         
                         report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
