@@ -292,7 +292,8 @@ def fit_model(
     learning_rate=0.001,
     class_weight = None,
     num_classes = 2, 
-    model_type = "CNN"):
+    model_type = "CNN",
+    vocab_size = None):
     
 
     
@@ -446,7 +447,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
             X, y = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict)
-
+            vocab_size = (4**kmer_suffix_size)+1 
             num_classes = len(np.unique(y))
             for lr in learning_rates:
                 try:
@@ -483,7 +484,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                                 learning_rate=learning_rate, 
                                                 class_weight=class_weight,
                                                 num_classes=num_classes,
-                                                model_type=model_type)
+                                                model_type=model_type,
+                                                vocab_size=vocab_size)
                         
                         report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
 
@@ -591,7 +593,7 @@ if __name__ == "__main__":
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
                         # ----- Instantiate loader and model -----
-                V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
+                     # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
                 pad_id = 0          # reserve 0 for padding in tokenizer
 
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
