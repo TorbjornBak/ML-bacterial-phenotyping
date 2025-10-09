@@ -297,7 +297,7 @@ def fit_model(
 
     
     hidden_dim = 128
-    emb_dim = 64
+    emb_dim = 16
     kernel_size = 7
     dropout = 0.2
 
@@ -327,8 +327,8 @@ def fit_model(
         model = TransformerKmerClassifier(
             vocab_size=V,
             emb_dim=emb_dim,
-            nhead=8,
-            ff_dim=512,
+            nhead=4,
+            ff_dim=128,
             num_layers=4,
             num_classes=num_classes,
             pad_id=pad_id,
