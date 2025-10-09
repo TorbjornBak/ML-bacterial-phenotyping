@@ -305,7 +305,7 @@ def fit_model(
 
     #Initialize model, optimizer, loss function
     if model_type == "CNN":
-        model = CNNKmerClassifier(vocab_size=V, 
+        model = CNNKmerClassifier(vocab_size=vocab_size, 
                             emb_dim=emb_dim, 
                             conv_dim=hidden_dim, 
                             kernel_size=kernel_size, 
@@ -315,7 +315,7 @@ def fit_model(
                             ).to(device)
     
     elif model_type == "RNN":
-        model = RNNKmerClassifier(vocab_size=V, 
+        model = RNNKmerClassifier(vocab_size=vocab_size, 
                             emb_dim=emb_dim, 
                             rnn_hidden=hidden_dim, 
                             num_layers=1,
@@ -326,7 +326,7 @@ def fit_model(
     
     elif model_type == "TRANSFORMER":
         model = TransformerKmerClassifier(
-            vocab_size=V,
+            vocab_size=vocab_size,
             emb_dim=emb_dim,
             nhead=4,
             ff_dim=128,
