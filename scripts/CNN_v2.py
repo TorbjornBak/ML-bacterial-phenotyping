@@ -521,7 +521,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                 "n_classes": len(np.unique(y_train)),
                             }
                         )
-                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}"
+                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}_{lr}"
                         path = f'{output_directory}/{dataset_name}.csv'
                         results.to_csv(path)
                         print(results)
