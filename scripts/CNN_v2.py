@@ -421,6 +421,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "model_name",
             "kmer_prefix",
             "kmer_suffix_size",
+            "learning_rate",
             "seed",
             "f1_score_weighted",
             "f1_score_macro",
@@ -434,11 +435,13 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "balanced_accuracy",
             "auc_weighted",
             "auc_macro",
-            "n_classes",
+            "n_classes"
+            
         ]
     )
 
     learning_rates = [1e-2, 1e-3, 1e-4]
+    pad_id = 0
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
@@ -499,6 +502,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                 "model_name": model_type,
                                 "kmer_prefix": prefix,
                                 "kmer_suffix_size": suffix_size,
+                                "learning_rate" : lr,
                                 "seed": seed,
                                 "f1_score_weighted": report["weighted avg"]["f1-score"],
                                 "f1_score_macro": report["macro avg"]["f1-score"],
@@ -578,8 +582,8 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     # kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGT']
-    kmer_suffix_sizes = [1]
+    kmer_prefixes = ['CGTCAC']
+    kmer_suffix_sizes = [1,3,5,7,9,11]
     
 
     if embed_only is True:
