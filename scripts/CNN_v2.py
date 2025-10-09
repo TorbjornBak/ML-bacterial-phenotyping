@@ -212,7 +212,7 @@ class CNNKmerClassifier(nn.Module):
             nn.Dropout1d(dropout),
 
         )
-        self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1]
+        self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1] (Maxpool?)
         self.fc = nn.Linear(conv_dim, num_classes)
 
     def forward(self, token_ids):
@@ -321,7 +321,6 @@ def fit_model(
                             bidirectional=True,
                             num_classes=num_classes, 
                             dropout=dropout,
-                            
                             pad_id=pad_id).to(device)
     
     elif model_type == "TRANSFORMER":
@@ -415,7 +414,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5, label_dict = None):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -438,94 +437,97 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "n_classes",
         ]
     )
+
+    learning_rates = [1e-2, 1e-3, 1e-4]
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
             X, y = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict)
+
             num_classes = len(np.unique(y))
+            for lr in learning_rates:
+                try:
+                    for seed in tqdm(range(n_seeds)):
+                        print(f'{seed=}')
+                        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
+                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
+
+                        num_epochs =  50
+                        learning_rate = lr
+                        # Build DataLoaders
+                        bs = 50
+                        train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+                        val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+                        test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+
+                        num_workers = min(8, os.cpu_count() or 2)
+                        
+                        train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, 
+                                                collate_fn=lambda b: pad_collate(b, pad_id=pad_id),
+                                                num_workers=num_workers, pin_memory=(device.type=='cuda'),
+                                                    persistent_workers=True)
+                        val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                        test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                        
+                        binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
+                        # Avoid div by zero if a class is missing in train
+                        binc[binc == 0] = 1.0
+                        class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+
+                        y_test_pred = fit_model(train_loader, val_loader, test_loader,
+                                                device=device,
+                                                num_epochs=num_epochs,
+                                                learning_rate=learning_rate, 
+                                                class_weight=class_weight,
+                                                num_classes=num_classes,
+                                                model_type=model_type)
+                        
+                        report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
+
+                        
+                        y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+                        auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
+                        auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
+
+                        # Calculate balanced accuracy
+                        balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
+
+                        # Store results
+                        results = pd.Series(
+                            {
+                                "phenotype": phenotype,
+                                "model_name": model_type,
+                                "kmer_prefix": prefix,
+                                "kmer_suffix_size": suffix_size,
+                                "seed": seed,
+                                "f1_score_weighted": report["weighted avg"]["f1-score"],
+                                "f1_score_macro": report["macro avg"]["f1-score"],
+                                "precision_weighted": report["weighted avg"]["precision"],
+                                "precision_macro": report["macro avg"]["precision"],
+                                "recall_weighted": report["weighted avg"]["recall"],
+                                "recall_macro": report["macro avg"]["recall"],
+                                "accuracy": report["accuracy"],
+                                "balanced_accuracy": balanced_accuracy,
+                                "auc_weighted": auc_weighted,
+                                "auc_macro": auc_macro,
+                                "n_classes": len(np.unique(y_train)),
+                            }
+                        )
+                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}"
+                        path = f'{output_directory}/{dataset_name}.csv'
+                        results.to_csv(path)
+                        print(results)
+                        results_df.loc[len(results_df)] = results
+                
+                except torch.OutOfMemoryError as error:
+                    print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
+                        \nContinuing with next combination of parameters after this error: {error=}''')
+
+                except MemoryError as error:
+                    print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
+                        \nContinuing with next combination of parameters after this error: {error=}''')
             
-            try:
-                for seed in tqdm(range(n_seeds)):
-                    print(f'{seed=}')
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-                    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
-
-                    num_epochs =  50
-                    learning_rate = 1e-3
-                    # Build DataLoaders
-                    bs = 25
-                    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-                    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-                    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-
-                    num_workers = min(8, os.cpu_count() or 2)
-                    
-                    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, 
-                                              collate_fn=lambda b: pad_collate(b, pad_id=pad_id),
-                                              num_workers=num_workers, pin_memory=(device.type=='cuda'),
-                                                persistent_workers=True)
-                    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-                    test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-                    
-                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
-                    # Avoid div by zero if a class is missing in train
-                    binc[binc == 0] = 1.0
-                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
-
-                    y_test_pred = fit_model(train_loader, val_loader, test_loader,
-                                            device=device,
-                                            num_epochs=num_epochs,
-                                            learning_rate=learning_rate, 
-                                            class_weight=class_weight,
-                                            num_classes=num_classes,
-                                            model_type=model_type)
-                    
-                    report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
-
-                    
-                    y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-                    auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
-                    auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
-
-                    # Calculate balanced accuracy
-                    balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
-
-                    # Store results
-                    results = pd.Series(
-                        {
-                            "phenotype": phenotype,
-                            "model_name": model_type,
-                            "kmer_prefix": prefix,
-                            "kmer_suffix_size": suffix_size,
-                            "seed": seed,
-                            "f1_score_weighted": report["weighted avg"]["f1-score"],
-                            "f1_score_macro": report["macro avg"]["f1-score"],
-                            "precision_weighted": report["weighted avg"]["precision"],
-                            "precision_macro": report["macro avg"]["precision"],
-                            "recall_weighted": report["weighted avg"]["recall"],
-                            "recall_macro": report["macro avg"]["recall"],
-                            "accuracy": report["accuracy"],
-                            "balanced_accuracy": balanced_accuracy,
-                            "auc_weighted": auc_weighted,
-                            "auc_macro": auc_macro,
-                            "n_classes": len(np.unique(y_train)),
-                        }
-                    )
-                    dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}"
-                    path = f'{output_directory}/{dataset_name}.csv'
-                    results.to_csv(path)
-                    print(results)
-                    results_df.loc[len(results_df)] = results
-            
-            except torch.OutOfMemoryError as error:
-                print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
-                      \nContinuing with next combination of parameters after this error: {error=}''')
-
-            except MemoryError as error:
-                print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
-                      \nContinuing with next combination of parameters after this error: {error=}''')
-           
-    return results_df
+        return results_df
 
 
 if __name__ == "__main__":
@@ -562,10 +564,7 @@ if __name__ == "__main__":
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
-    # ----- Instantiate loader and model -----
-    V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
-    pad_id = 0          # reserve 0 for padding in tokenizer
-
+ 
 
 
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
@@ -579,14 +578,18 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     # kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGTCAC','CGTCA', 'CGTC']
-    kmer_suffix_sizes = [8]
+    kmer_prefixes = ['CGT']
+    kmer_suffix_sizes = [1]
     
 
     if embed_only is True:
         #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
+                        # ----- Instantiate loader and model -----
+                V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
+                pad_id = 0          # reserve 0 for padding in tokenizer
+
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
         model_type = "CNN"
