@@ -538,7 +538,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                 print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
                     \nContinuing with next combination of parameters after this error: {error=}''')
         
-            return results_df
+    return results_df
 
 
 if __name__ == "__main__":
@@ -589,7 +589,7 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC','CGT','CG']
+    kmer_prefixes = ['CGTC','CGT','CG']
     kmer_suffix_sizes = [1,2]
     
 
