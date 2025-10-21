@@ -21,7 +21,8 @@ def parse_cli():
         cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
         print(cli_arguments)
     else:
-        raise ValueError("No arguments was provided!")
+        return dict()
+        #raise ValueError("No arguments was provided!")
 
     return cli_arguments
 
@@ -193,7 +194,14 @@ def pad_collate(batch, pad_id: int = 0):
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, dropout = 0.2):
+    def __init__(self, 
+                 vocab_size, 
+                 emb_dim=128, 
+                 conv_dim = 256, 
+                 kernel_size = 7, 
+                 num_classes=2, 
+                 pad_id=0, 
+                 dropout = 0.2):
         super().__init__()
         self.kernel_size = kernel_size
         # approximate 'same' padding per conv layer
@@ -236,7 +244,7 @@ class RNNKmerClassifier(nn.Module):
     def __init__(
         self,
         vocab_size,
-        emb_dim=128,
+        emb_dim=16,
         rnn_hidden=128,
         num_layers=1,
         bidirectional=True,
@@ -453,9 +461,10 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             num_classes = len(np.unique(y))
             
             try:
-                for seed in tqdm(range(n_seeds)):
-                    print(f'{seed=}')
-                    for lr in learning_rates:
+                for lr in learning_rates:
+                    for seed in tqdm(range(n_seeds)):
+                        print(f'{seed=}')
+                    
                     
                         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
                         X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
@@ -492,7 +501,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                                 vocab_size=vocab_size,
                                                 pad_id=pad_id)
                         
-                        report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True)
+                        report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
 
                         
                         y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
@@ -566,7 +575,7 @@ if __name__ == "__main__":
     cli_arguments = parse_cli()
 
     id = "genome_name"
-    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "-categorical_gram_stain"
+    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
     label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
@@ -582,6 +591,7 @@ if __name__ == "__main__":
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
+    model_ARCH = cli_arguments["--MODEL_ARCH"] == "TRUE" if "--MODEL_ARCH" in cli_arguments else "CNN"
 
 
    # base_kmer = "CGTCACA"
