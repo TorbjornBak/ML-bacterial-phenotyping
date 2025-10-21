@@ -192,6 +192,15 @@ def pad_collate(batch, pad_id: int = 0):
     return seqs_padded, lengths, mask, labels
 
 
+class PadCollate:
+    """Top-level callable wrapper to make collate_fn picklable for multiprocessing workers."""
+    def __init__(self, pad_id: int = 0):
+        self.pad_id = pad_id
+
+    def __call__(self, batch):
+        return pad_collate(batch, pad_id=self.pad_id)
+
+
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
     def __init__(self, 
@@ -479,12 +488,29 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
 
                         num_workers = min(8, os.cpu_count() or 2)
                         
-                        train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, 
-                                                collate_fn=lambda b: pad_collate(b, pad_id=pad_id),
-                                                num_workers=num_workers, pin_memory=(device.type=='cuda'),
-                                                    persistent_workers=True)
-                        val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-                        test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                        train_loader = DataLoader(
+                            train_ds,
+                            batch_size=bs,
+                            shuffle=True,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=num_workers,
+                            pin_memory=(device.type=='cuda'),
+                            persistent_workers=(num_workers > 0),
+                        )
+                        val_loader = DataLoader(
+                            val_ds,
+                            batch_size=bs,
+                            shuffle=False,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=0,
+                        )
+                        test_loader = DataLoader(
+                            test_ds,
+                            batch_size=bs,
+                            shuffle=False,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=0,
+                        )
                         
                         binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
                         # Avoid div by zero if a class is missing in train
@@ -558,15 +584,15 @@ if __name__ == "__main__":
         input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
 
     elif torch.backends.mps.is_available(): 
-        #device = torch.device("mps")
-        device = torch.device("cpu")
+        device = torch.device("mps")
+        #device = torch.device("cpu")
         labels_path = "downloads/labels.csv"
         input_data_directory = "downloads"
 
     else: 
         # On CPU server
         #device = torch.device("cpu")
-        device = "cpu"
+        device = torch.device("cpu")
         labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
         input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
     print(f"Using {device=}")
@@ -584,14 +610,13 @@ if __name__ == "__main__":
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
- 
 
 
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
-    model_ARCH = cli_arguments["--MODEL_ARCH"] == "TRUE" if "--MODEL_ARCH" in cli_arguments else "CNN"
+    model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
 
 
    # base_kmer = "CGTCACA"
@@ -599,7 +624,7 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGTC','CGT','CG']
+    kmer_prefixes = ['CGT','CG']
     kmer_suffix_sizes = [1,2]
     
 
@@ -613,7 +638,7 @@ if __name__ == "__main__":
 
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
-        model_type = "CNN"
+        
 
         results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict)
         dataset_name = f"{model_type}_train_full"
