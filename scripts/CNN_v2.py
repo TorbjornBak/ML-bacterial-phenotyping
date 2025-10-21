@@ -607,6 +607,7 @@ if __name__ == "__main__":
 
     kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else ["CGTCAT"]
     kmer_suffix_sizes = cli_arguments["--KMER_SUFFIX_SIZES"].split(",") if "--KMER_SUFFIX_SIZES" in cli_arguments else [8]
+    kmer_suffix_sizes = [int(size) for size in kmer_suffix_sizes]
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
