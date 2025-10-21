@@ -527,6 +527,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                                 vocab_size=vocab_size,
                                                 pad_id=pad_id)
                         
+                        print(f'{y_test=}')
+                        print(f'{y_test_pred=}')
                         report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
 
                         
