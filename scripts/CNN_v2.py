@@ -459,7 +459,10 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
         ]
     )
 
-    learning_rates = [1e-3, 1e-4]
+    if model_type == "CNN":
+         learning_rates = [1e-2, 1e-3, 1e-4]
+    else:
+        learning_rates = [1e-3, 1e-4]
     pad_id = 0
     num_epochs =  150
     for prefix in kmer_prefixes:
