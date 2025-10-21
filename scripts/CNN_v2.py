@@ -612,8 +612,7 @@ if __name__ == "__main__":
 
 
     kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else None
-    kmer_suffix_sizes = cli_arguments["--KMER_SUFFIX_SIZES"].split(",") if "--KMER_SUFFIX_SIZES" in cli_arguments else None
-    kmer_suffix_sizes = [int(size) for size in kmer_suffix_sizes]
+    kmer_suffix_sizes = [int(size) for size in cli_arguments["--KMER_SUFFIX_SIZES"].split(",")] if "--KMER_SUFFIX_SIZES" in cli_arguments else None
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
@@ -625,8 +624,7 @@ if __name__ == "__main__":
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
 
-    learning_rates = cli_arguments["--LR"].split(",") if "--LR" in cli_arguments else None
-    learning_rates = [int(lr) for lr in learning_rates]
+    learning_rates = [float(lr) for lr in cli_arguments["--LR"].split(",")] if "--LR" in cli_arguments else None
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
