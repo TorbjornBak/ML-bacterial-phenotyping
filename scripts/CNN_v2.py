@@ -466,7 +466,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
             X, y = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict)
-            vocab_size = (4**kmer_suffix_size)+1 
+            vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
             
             try:
