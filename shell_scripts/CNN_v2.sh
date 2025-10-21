@@ -1,6 +1,6 @@
 #!/bin/bash
 # Job name:
-#SBATCH --job-name=train_model
+#SBATCH --job-name=train_CNN
 #
 # Partition:
 #SBATCH --partition=gpu
