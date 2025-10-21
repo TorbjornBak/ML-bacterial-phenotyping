@@ -433,7 +433,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, learning_rates = None):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -458,9 +458,10 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             
         ]
     )
-
-    if model_type == "CNN":
-         learning_rates = [1e-2, 1e-3, 1e-4]
+    if learning_rates is not None:
+        learning_rates = learning_rates
+    elif model_type == "CNN":
+        learning_rates = [1e-2, 1e-3, 1e-4]
     else:
         learning_rates = [1e-3, 1e-4]
     pad_id = 0
@@ -610,8 +611,8 @@ if __name__ == "__main__":
     label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
-    kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else ["CGTCAT"]
-    kmer_suffix_sizes = cli_arguments["--KMER_SUFFIX_SIZES"].split(",") if "--KMER_SUFFIX_SIZES" in cli_arguments else [8]
+    kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else None
+    kmer_suffix_sizes = cli_arguments["--KMER_SUFFIX_SIZES"].split(",") if "--KMER_SUFFIX_SIZES" in cli_arguments else None
     kmer_suffix_sizes = [int(size) for size in kmer_suffix_sizes]
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
@@ -624,7 +625,8 @@ if __name__ == "__main__":
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
 
-
+    learning_rates = cli_arguments["--LR"].split(",") if "--LR" in cli_arguments else None
+    learning_rates = [int(lr) for lr in learning_rates]
    # base_kmer = "CGTCACA"
 
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
@@ -646,7 +648,7 @@ if __name__ == "__main__":
     else:
         
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict)
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, learning_rates=learning_rates)
         dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
