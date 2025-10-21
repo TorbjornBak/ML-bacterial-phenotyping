@@ -9,7 +9,7 @@ import os
 
 import sys
 
-from kmer_sampling import kmerize_parquet_count_joblib, load_labels
+from kmer_sampling import kmerize_parquet_joblib, load_labels
 
 
 def load_stored_embeddings(dataset_file_path):
@@ -23,7 +23,7 @@ def load_stored_embeddings(dataset_file_path):
 
 def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4):
 	if path is None:
-		data_dict = kmerize_parquet_count_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores)
+		data_dict = kmerize_parquet_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type="counts")
 		ids = [gid for gid in data_dict.keys()]
 		X = [data_dict[gid] for gid in ids]
 	else:
@@ -88,4 +88,4 @@ if __name__ == "__main__":
 	plt.title('PCA projection')
 	plt.legend(title='Label', frameon=False)
 	plt.tight_layout()
-	plt.savefig(f'results/pca_analysis_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
+	plt.savefig(f'results/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
