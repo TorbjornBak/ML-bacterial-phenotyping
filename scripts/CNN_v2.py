@@ -605,15 +605,15 @@ if __name__ == "__main__":
     label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
-    kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
-    kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
+    kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else ["CGTCAT"]
+    kmer_suffix_sizes = cli_arguments["--K_SIZES"].split(",") if "--K_SIZES" in cli_arguments else [8]
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
 
 
 
-    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+    #dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+    #dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
@@ -624,8 +624,8 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGT','CG']
-    kmer_suffix_sizes = [1,2]
+    #kmer_prefixes = ['CGT','CG']
+    #kmer_suffix_sizes = [1,2]
     
 
     if embed_only is True:
