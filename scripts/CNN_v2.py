@@ -462,7 +462,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                         
                         learning_rate = lr
                         # Build DataLoaders
-                        bs = 50
+                        bs = 50 if model_type == "CNN" else 25
                         train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
                         val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
                         test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
