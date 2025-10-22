@@ -618,7 +618,7 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 	
 	return data_dict
 
-def compress_integer_embeddings(integer_embeddings, ids, alphabet_size, kmer_suffix_size):
+def compress_integer_embeddings(integer_embeddings, alphabet_size, kmer_suffix_size):
 	# Function for compressing integer embedding vocab space, 
 	# Input: dict of the embeddings
 	print(f'Compressing embeddings')
@@ -634,19 +634,20 @@ def compress_integer_embeddings(integer_embeddings, ids, alphabet_size, kmer_suf
 	arr2 = [np.uint64(0)]
 	arr2.extend([a for a in arr1[1:] if a != 0]) # Remove zeros from original array
 	vocab_size = len(arr2)
-	mapping = {old_embedding:new_embedding for new_embedding, old_embedding in enumerate(arr2)} # Create array for mapping old embeddings to new embeddings
-	
-	
-	assert len(ids) == len(integer_embeddings), "ids and embeddings must have same size"
-	
-	X_compressed = dict()
-	for genome_id, embeddings_np in zip(ids, integer_embeddings):
-		X_compressed[genome_id] = np.array([mapping[emb] for emb in embeddings_np])
-	
-	print(f'Compressed vocabulary size: {len(arr2)}')
-	
-	
-	return X_compressed, vocab_size
+
+	if len(arr1) != len(arr2):
+		mapping = {old_embedding:new_embedding for new_embedding, old_embedding in enumerate(arr2)} # Create array for mapping old embeddings to new embeddings
+		
+		for embeddings_np in integer_embeddings:
+			X_compressed  = [np.array([mapping[emb] for emb in embeddings_np]) for embeddings_np in integer_embeddings]
+		
+		print(f'Compressed vocabulary size: {len(arr2)}')
+		
+		return X_compressed, vocab_size
+	else:
+		vocab_size = len(arr1)
+
+		return integer_embeddings, vocab_size
 
 
 def parquet_to_fasta(parquet_file_paths, genome_col, dna_sequence_col, kmer_prefix = None, kmer_suffix_size = None, output_path = None, nr_of_cores = 2):

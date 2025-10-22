@@ -97,13 +97,13 @@ def embed_data(kmer_prefix = None,
 
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
-    ids = [gid for gid in ids if gid in label_dict]
+    
     y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
 
     if compress_vocab_space is True:
-        X, vocab_size = compress_integer_embeddings(X, ids, alphabet_size=4, kmer_suffix_size=kmer_suffix_size)
+        X, vocab_size = compress_integer_embeddings(X, alphabet_size=4, kmer_suffix_size=kmer_suffix_size)
     else:
-        vocab_size = 4**kmer_suffix_size
+        vocab_size = 4**kmer_suffix_size+1
     print(f'{np.unique(y)=}')
     print(f'{len(y)=}')
     print(f'{len(X)=}')
@@ -264,9 +264,8 @@ class RNNKmerClassifier(nn.Module):
         
         x = self.emb(token_ids)  # [B, T, D]
                                               
-        print("x shape/stride", x.shape, x.stride())         # e.g., (B,T,D), (T*D,D,1) for contiguous [web:15]
-        with torch.backends.cudnn.flags(enabled=False):       # localize the issue to cuDNN backend [web:55]
-            out, _ = self.gru(x.contiguous())                    
+
+        out, _ = self.gru(x.contiguous())                    
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
@@ -444,9 +443,13 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
-            X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, compress_vocab_space=True)
+            X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
+                                          input_data_directory=input_data_directory, 
+                                          label_dict=label_dict, compress_vocab_space=True)
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
+            print(f'{vocab_size=}')
+            print(f'{X=}')
             
             
             for lr in learning_rates:
