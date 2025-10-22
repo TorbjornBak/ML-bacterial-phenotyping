@@ -281,15 +281,15 @@ class RNNKmerClassifier(nn.Module):
 
     def forward(self, token_ids: torch.Tensor):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
-        B, T = token_ids.shape
+        
         x = self.emb(token_ids)  # [B, T, D]
         x = x.contiguous()
 
         
         # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
-        self.gru.flatten_parameters()
+        #self.gru.flatten_parameters()
+        
         out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
-
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
