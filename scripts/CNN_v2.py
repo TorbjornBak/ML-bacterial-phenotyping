@@ -80,12 +80,11 @@ def embed_data(kmer_prefix = None,
                 return True
             X, ids = load_stored_embeddings(dataset_file_path)
         else: 
-            X, y = embed_data(kmer_prefix = kmer_prefix, kmer_suffix_size = kmer_suffix_size, 
+            return embed_data(kmer_prefix = kmer_prefix, kmer_suffix_size = kmer_suffix_size, 
                               input_data_directory=input_data_directory, output_directory=output_directory, 
                               label_dict=label_dict, reembed = True,
                               compress_vocab_space=compress_vocab_space)
-            return X, y
-                 
+            
     elif os.path.isfile(dataset_file_path):
         if no_loading is True:
             return True
@@ -445,8 +444,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
-            X, y = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, compress_vocab_space=True)
-            vocab_size = (4**suffix_size)+1 
+            X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, compress_vocab_space=True)
+            #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
             
             
