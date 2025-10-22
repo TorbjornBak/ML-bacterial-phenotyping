@@ -423,12 +423,12 @@ def read_sequence_file(file_path, file_type):
 		return df
 	
 def kmerize_and_embed_parquet_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
-
+	# Returns a dict with lists of kmers represented as integers.
 	print(f"Kmerizing {path}")
 	
 	df = read_sequence_file(file_path=path, file_type=".parquet")
 	
-	kmer_embeddings = dict()
+	integer_embeddings = dict()
 
 	if get_array_size(alphabet_size=4, kmer_size = kmer_suffix_size) < 2**16:
 		data_type = np.uint16
@@ -444,12 +444,12 @@ def kmerize_and_embed_parquet_dataset_return_integers(path, genome_col, dna_sequ
 
 		embeddings_np = np.array(embeddings, dtype = data_type)
 
-		kmer_embeddings[genome_id] = embeddings_np
+		integer_embeddings[genome_id] = embeddings_np
 
 		#print(f'{genome_id} : {len(kmers)}')
 
 	
-	return kmer_embeddings
+	return integer_embeddings
 
 
 def kmerize_and_embed_parquet_dataset_return_kmer_str(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
@@ -618,6 +618,35 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 	
 	return data_dict
 
+def compress_integer_embeddings(integer_embeddings, ids, alphabet_size, kmer_suffix_size):
+	# Function for compressing integer embedding vocab space, 
+	# Input: dict of the embeddings
+	print(f'Compressing embeddings')
+	print(f'Initial vocabulary size: {alphabet_size**kmer_suffix_size + 1}')
+	
+	arr1 = np.zeros(alphabet_size**kmer_suffix_size + 1, dtype = np.uint64)
+	# Detect which embeddings are used, which aren't
+	for embeddings_np in integer_embeddings:
+		unique_embeddings = np.unique(embeddings_np)
+		for embedding in unique_embeddings:
+			arr1[embedding] = embedding
+	
+	arr2 = [np.uint64(0)]
+	arr2.extend([a for a in arr1[1:] if a != 0]) # Remove zeros from original array
+	vocab_size = len(arr2)
+	mapping = {old_embedding:new_embedding for new_embedding, old_embedding in enumerate(arr2)} # Create array for mapping old embeddings to new embeddings
+	
+	
+	assert len(ids) == len(integer_embeddings), "ids and embeddings must have same size"
+	
+	X_compressed = dict()
+	for genome_id, embeddings_np in zip(ids, integer_embeddings):
+		X_compressed[genome_id] = np.array([mapping[emb] for emb in embeddings_np])
+	
+	print(f'Compressed vocabulary size: {len(arr2)}')
+	
+	
+	return X_compressed, vocab_size
 
 
 def parquet_to_fasta(parquet_file_paths, genome_col, dna_sequence_col, kmer_prefix = None, kmer_suffix_size = None, output_path = None, nr_of_cores = 2):
@@ -643,7 +672,6 @@ def parquet_to_fasta(parquet_file_paths, genome_col, dna_sequence_col, kmer_pref
 
 def write_fasta(id, sequences, output_path, metadata = None):
 	# Handles multiple sequences
-
 	file_name = f'{id}_{metadata}' if metadata is not None else f'{id}'
 
 	file_path = f'{output_path.strip("/")}/{file_name}.fna'
@@ -651,13 +679,10 @@ def write_fasta(id, sequences, output_path, metadata = None):
 	with open(file_path, mode = "w") as fasta_file:
 		for j, sequence in enumerate([sequences]):
 			sequence_identifier = f'>{id}_sect_{j}\n'
-			#print(sequence_identifier)
 			fasta_file.write(sequence_identifier)
 			sequence_formatted = "\n".join([sequence[i:i+line_width] for i in range(0,len(sequence), line_width)])
 			fasta_file.write(sequence_formatted)
 			fasta_file.write("\n")
-
-	
 
 # def kmerize_parquet_count_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
 

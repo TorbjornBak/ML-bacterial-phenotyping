@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from kmer_sampling import load_labels, kmerize_parquet_joblib
+from kmer_sampling import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
 from Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 
@@ -29,15 +29,20 @@ def parse_cli():
 
 
 
-def embed_data(prefix = None, suffix_size = None, input_data_directory = None, output_directory = None, reembed = None, no_loading = False, label_dict = None):
+def embed_data(kmer_prefix = None, 
+               kmer_suffix_size = None, 
+               input_data_directory = None, 
+               output_directory = None, 
+               reembed = None, 
+               no_loading = False, 
+               label_dict = None, 
+               compress_vocab_space = False):
     # Should return X and y
     if output_directory is None:
         output_directory = input_data_directory
 
-    if prefix is not None and suffix_size is not None:
-        kmer_prefix = prefix
-        kmer_suffix_size = suffix_size
-        print(f'Embedding dataset with {prefix=} and {suffix_size=}')
+    
+    print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=}')
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
@@ -62,9 +67,9 @@ def embed_data(prefix = None, suffix_size = None, input_data_directory = None, o
         print(f"Saving embeddings to: {dataset_file_path=}")
         np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
     
-    elif prefix is not None and suffix_size is not None:
-        kmer_prefix = prefix
-        kmer_suffix_size = suffix_size
+    elif kmer_prefix is not None and kmer_suffix_size is not None:
+        #kmer_prefix = prefix
+        #kmer_suffix_size = suffix_size
 
         dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
         dataset_file_path = f'{output_directory}/{dataset_name}.npz'
@@ -75,7 +80,10 @@ def embed_data(prefix = None, suffix_size = None, input_data_directory = None, o
                 return True
             X, ids = load_stored_embeddings(dataset_file_path)
         else: 
-            X, y = embed_data(prefix = prefix, suffix_size = suffix_size, input_data_directory=input_data_directory, output_directory=output_directory, label_dict=label_dict, reembed = True)
+            X, y = embed_data(kmer_prefix = kmer_prefix, kmer_suffix_size = kmer_suffix_size, 
+                              input_data_directory=input_data_directory, output_directory=output_directory, 
+                              label_dict=label_dict, reembed = True,
+                              compress_vocab_space=compress_vocab_space)
             return X, y
                  
     elif os.path.isfile(dataset_file_path):
@@ -87,44 +95,20 @@ def embed_data(prefix = None, suffix_size = None, input_data_directory = None, o
        
     else:
         raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
-    
-    
+
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
     y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
 
+    if compress_vocab_space is True:
+        X, vocab_size = compress_integer_embeddings(X, ids, alphabet_size=4, kmer_suffix_size=kmer_suffix_size)
+    else:
+        vocab_size = 4**kmer_suffix_size
     print(f'{np.unique(y)=}')
     print(f'{len(y)=}')
     print(f'{len(X)=}')
     
-    return X, y
-
-
-# def embed_data_multi(kmer_prefixes, kmer_suffix_sizes, nr_of_cores = 4):
-#     file_suffix = ".parquet"
-#     dir_list = os.listdir(input_data_directory)
-#     dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
-
-#     print(f'{dir_list=}')
-
-#     data_dict = kmerize_parquet_joblib_multi(dir_list, kmer_prefixes, kmer_suffix_sizes, nr_of_cores = nr_of_cores)
-
-
-#     #kmer_embeddings[genome_id][kmer_prefix][kmer_prefix]
-
-    
-#     for prefix in data_dict:
-#         for suffix_size in data_dict[prefix]:
-#             ids = [gid for gid in data_dict[prefix][suffix_size].keys()]
-#             X = [data_dict[prefix][suffix_size][gid] for gid in ids]
-
-#             X_obj = np.array(X, dtype=object)
-#             dataset_name = f'{prefix}_{suffix_size}' 
-#             dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-#             print(f"Saving embeddings to: {dataset_file_path=}")
-#             np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
-
-#     return
+    return X, y, vocab_size
 
 def load_stored_embeddings(dataset_file_path):
     print(f"Loading embeddings from: {dataset_file_path=}")
@@ -133,9 +117,6 @@ def load_stored_embeddings(dataset_file_path):
     X = list(z["X"])  # object array → list of arrays 
     ids = list(z["ids"])  # map labels from current dict
     return X, ids
-
-
-
 
 class SequenceDataset(Dataset):
     """Dataset that returns variable-length token sequences and labels.
