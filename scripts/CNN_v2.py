@@ -185,10 +185,10 @@ def pad_collate(batch, pad_id: int = 0):
     seqs = [s if isinstance(s, torch.Tensor) else torch.as_tensor(s, dtype=torch.long) for s in seqs]
     seqs = [s if s.numel() > 0 else torch.tensor([pad_id], dtype=torch.long) for s in seqs]
     lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
-    seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
+    seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id).contiguous()
     T = seqs_padded.size(1)
     mask = torch.arange(T).unsqueeze(0) < lengths.unsqueeze(1)
-    labels = torch.stack([torch.as_tensor(y, dtype=torch.long) for y in labels])
+    labels = torch.stack([torch.as_tensor(y, dtype=torch.long) for y in labels]).contiguous()
     return seqs_padded, lengths, mask, labels
 
 
