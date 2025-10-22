@@ -98,6 +98,7 @@ def embed_data(kmer_prefix = None,
 
     # Select only the rows where y is not None
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
+    ids = [gid for gid in ids if gid in label_dict]
     y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
 
     if compress_vocab_space is True:
