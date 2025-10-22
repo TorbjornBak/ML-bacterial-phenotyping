@@ -285,15 +285,21 @@ class RNNKmerClassifier(nn.Module):
         x = x.contiguous()
 
         
-        # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
-        #self.gru.flatten_parameters()
-        
         packed = pack_padded_sequence(
         x, lengths.cpu(), batch_first=True, enforce_sorted=False
-        )                                                        # pack expects CPU lengths [web:30]
-        # self.gru.flatten_parameters()                          # optional; often unnecessary [web:41]
-        packed_out, _ = self.gru(packed)                         # GRU with packed input [web:34]
-        out, _ = pad_packed_sequence(packed_out, batch_first=True)
+        )                            
+
+        assert x.is_contiguous(), x.stride()
+        for p in self.gru.parameters():
+            assert p.is_cuda == x.is_cuda                         
+                              
+        packed_out, _ = self.gru(packed)   
+        x = self.emb(token_ids)
+        print("x shape/stride", x.shape, x.stride())         # e.g., (B,T,D), (T*D,D,1) for contiguous [web:15]
+        with torch.backends.cudnn.flags(enabled=False):                        
+            out, _ = pad_packed_sequence(packed_out, batch_first=True)
+
+        
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
