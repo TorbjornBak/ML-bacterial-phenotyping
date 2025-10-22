@@ -448,8 +448,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                           label_dict=label_dict, compress_vocab_space=True)
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
-            print(f'{vocab_size=}')
-            print(f'{X=}')
+            #print(f'{vocab_size=}')
+            #print(f'{X=}')
             
             
             for lr in learning_rates:
