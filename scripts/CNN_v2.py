@@ -282,23 +282,16 @@ class RNNKmerClassifier(nn.Module):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         
         x = self.emb(token_ids)  # [B, T, D]
-        
-
-        
                                               
         print("x shape/stride", x.shape, x.stride())         # e.g., (B,T,D), (T*D,D,1) for contiguous [web:15]
         with torch.backends.cudnn.flags(enabled=False):       # localize the issue to cuDNN backend [web:55]
-            out, _ = self.gru(x.contiguous())
-                              
+            out, _ = self.gru(x.contiguous())                    
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
 
         logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
         return logits
-
-
-
 
 def fit_model(
     train_loader: DataLoader,
@@ -370,7 +363,7 @@ def fit_model(
     # ----- Training loop -----
 
     early_stop_counter = 0
-    patience = 15
+    patience = 30
     for epoch in tqdm(range(num_epochs)):
         model.train()
         running_loss = 0.0
