@@ -231,7 +231,7 @@ class CNNKmerClassifier(nn.Module):
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1] (Maxpool?)
         self.fc = nn.Linear(conv_dim, num_classes)
 
-    def forward(self, token_ids):
+    def forward(self, token_ids, lengths):
         # token_ids: [B, T] Long
         x = self.emb(token_ids)          # [B, T, D]
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
