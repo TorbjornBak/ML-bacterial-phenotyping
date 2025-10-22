@@ -465,7 +465,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     else:
         learning_rates = [1e-3, 1e-4]
     pad_id = 0
-    num_epochs =  150
+    num_epochs = 150
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
@@ -473,15 +473,14 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
             
-            try:
-                for lr in learning_rates:
-                    for seed in tqdm(range(n_seeds)):
-                        print(f'{seed=}')
-                    
+            
+            for lr in learning_rates:
+                for seed in tqdm(range(n_seeds)):
+                    try:
+                        print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}')
                     
                         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
-
+                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
                         
                         learning_rate = lr
                         # Build DataLoaders
@@ -570,15 +569,19 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                         results.to_csv(path)
                         print(results)
                         results_df.loc[len(results_df)] = results
-                
-            except torch.OutOfMemoryError as error:
-                print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
-                    \nContinuing with next combination of parameters after this error: {error=}''')
+            
+                    except torch.OutOfMemoryError as error:
+                        print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
+                            \nContinuing with next combination of parameters after this error: {error=}''')
 
-            except MemoryError as error:
-                print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}
-                    \nContinuing with next combination of parameters after this error: {error=}''')
-        
+                    except MemoryError as error:
+                        print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
+                            \nContinuing with next combination of parameters after this error: {error=}''')
+                    
+                    except ValueError as error:
+                        print(f'Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}')
+                        print(f'{error=}')
+            
     return results_df
 
 
