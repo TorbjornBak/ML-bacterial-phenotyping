@@ -282,24 +282,14 @@ class RNNKmerClassifier(nn.Module):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         
         x = self.emb(token_ids)  # [B, T, D]
-        x = x.contiguous()
+        
 
         
-        packed = pack_padded_sequence(
-        x, lengths.cpu(), batch_first=True, enforce_sorted=False
-        )                            
-
-        assert x.is_contiguous(), x.stride()
-        for p in self.gru.parameters():
-            assert p.is_cuda == x.is_cuda                         
-                              
-        packed_out, _ = self.gru(packed)   
-        x = self.emb(token_ids)
+                                              
         print("x shape/stride", x.shape, x.stride())         # e.g., (B,T,D), (T*D,D,1) for contiguous [web:15]
-        with torch.backends.cudnn.flags(enabled=False):                        
-            out, _ = pad_packed_sequence(packed_out, batch_first=True)
-
-        
+        with torch.backends.cudnn.flags(enabled=False):       # localize the issue to cuDNN backend [web:55]
+            out, _ = self.gru(x.contiguous())
+                              
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
