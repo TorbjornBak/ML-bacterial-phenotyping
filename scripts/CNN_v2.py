@@ -289,7 +289,7 @@ def fit_model(
 
     
     hidden_dim = 128
-    emb_dim = 16
+    emb_dim = vocab_size if vocab_size < 16 else 16
     kernel_size = 7
     dropout = 0.2
 
