@@ -15,7 +15,6 @@ from Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 
 
-
 def parse_cli():
     if len(sys.argv) > 1:
         cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
@@ -279,7 +278,7 @@ class RNNKmerClassifier(nn.Module):
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
         self.fc = nn.Linear(feat_dim, num_classes)
 
-    def forward(self, token_ids: torch.Tensor):
+    def forward(self, token_ids: torch.Tensor, lengths: torch.Tensor):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         
         x = self.emb(token_ids)  # [B, T, D]
@@ -289,7 +288,12 @@ class RNNKmerClassifier(nn.Module):
         # No packing when mask is absent; GRU will process padded positions but we’ll mask in pooling
         #self.gru.flatten_parameters()
         
-        out, _ = self.gru(x)  # [B, T, H*dir] [web:13][web:16]
+        packed = pack_padded_sequence(
+        x, lengths.cpu(), batch_first=True, enforce_sorted=False
+        )                                                        # pack expects CPU lengths [web:30]
+        # self.gru.flatten_parameters()                          # optional; often unnecessary [web:41]
+        packed_out, _ = self.gru(packed)                         # GRU with packed input [web:34]
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)
         
         # Global average over valid timesteps when lengths unknown
         feat = out.mean(dim=1)  # [B, H*dir]
@@ -378,10 +382,11 @@ def fit_model(
         correct = 0
         for xb, lengths, mask, yb in train_loader:
             xb = xb.to(device)
+
             #mask = mask.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
-            output = model(xb)
+            output = model(xb, lengths)
             loss = criterion(output, yb)
             loss.backward()
             optimizer.step()
@@ -398,7 +403,7 @@ def fit_model(
             for xb, lengths, mask, yb in val_loader:
                 xb = xb.to(device)
                 yb = yb.to(device)
-                out = model(xb)
+                out = model(xb, lengths)
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 
