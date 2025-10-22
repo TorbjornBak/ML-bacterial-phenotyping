@@ -212,7 +212,7 @@ class CNNKmerClassifier(nn.Module):
         self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1] (Maxpool?)
         self.fc = nn.Linear(conv_dim, num_classes)
 
-    def forward(self, token_ids, lengths):
+    def forward(self, token_ids):
         # token_ids: [B, T] Long
         x = self.emb(token_ids)          # [B, T, D]
         x = x.transpose(1, 2)            # [B, D, T] for Conv1d
@@ -259,7 +259,7 @@ class RNNKmerClassifier(nn.Module):
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
         self.fc = nn.Linear(feat_dim, num_classes)
 
-    def forward(self, token_ids: torch.Tensor, lengths: torch.Tensor):
+    def forward(self, token_ids: torch.Tensor):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         
         x = self.emb(token_ids)  # [B, T, D]
@@ -355,7 +355,7 @@ def fit_model(
             #mask = mask.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
-            output = model(xb, lengths)
+            output = model(xb)
             loss = criterion(output, yb)
             loss.backward()
             optimizer.step()
@@ -372,7 +372,7 @@ def fit_model(
             for xb, lengths, mask, yb in val_loader:
                 xb = xb.to(device)
                 yb = yb.to(device)
-                out = model(xb, lengths)
+                out = model(xb)
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 
