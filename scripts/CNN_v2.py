@@ -476,7 +476,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             shuffle=True,
                             collate_fn=PadCollate(pad_id=pad_id),
                             num_workers=num_workers,
-                            pin_memory=(device.type=='cuda'),
+                            pin_memory=False,
                             persistent_workers=(num_workers > 0),
                         )
                         val_loader = DataLoader(
