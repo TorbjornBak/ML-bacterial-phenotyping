@@ -458,7 +458,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                         print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}')
                     
                         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
+                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
                         
                         learning_rate = lr
                         # Build DataLoaders
@@ -467,7 +467,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                         val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
                         test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
-                        num_workers = min(8, os.cpu_count() or 2)
+                        #num_workers = min(8, os.cpu_count() or 2)
+                        num_workers = 2
                         
                         train_loader = DataLoader(
                             train_ds,
