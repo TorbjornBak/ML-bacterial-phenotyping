@@ -10,10 +10,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from scripts.embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
-from scripts.models.Transformers_and_S4Ms import TransformerKmerClassifier
-from scripts.models.CNN import CNNKmerClassifier
-from scripts.models.RNN import RNNKmerClassifier
+from embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
+from models.Transformers_and_S4Ms import TransformerKmerClassifier
+from models.CNN import CNNKmerClassifier
+from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 
 
