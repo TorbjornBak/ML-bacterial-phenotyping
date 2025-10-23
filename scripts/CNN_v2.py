@@ -407,7 +407,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, learning_rates = None):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, learning_rates = None, compress_vocab_space = False):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -428,8 +428,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "balanced_accuracy",
             "auc_weighted",
             "auc_macro",
-            "n_classes"
-            
+            "n_classes",
+            "vocab_compression",
         ]
     )
     if learning_rates is not None:
@@ -445,7 +445,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             print(f'Training models with {prefix=} and {suffix_size=}')
             X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
                                           input_data_directory=input_data_directory, 
-                                          label_dict=label_dict, compress_vocab_space=False)
+                                          label_dict=label_dict, compress_vocab_space=compress_vocab_space)
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
             #print(f'{vocab_size=}')
@@ -455,7 +455,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             for lr in learning_rates:
                 for seed in tqdm(range(n_seeds)):
                     try:
-                        print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}')
+                        print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
                     
                         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
                         X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
@@ -541,6 +541,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                 "auc_weighted": auc_weighted,
                                 "auc_macro": auc_macro,
                                 "n_classes": len(np.unique(y_train)),
+                                "vocab_compression": compress_vocab_space,
                             }
                         )
                         dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}_{lr}"
@@ -605,6 +606,7 @@ if __name__ == "__main__":
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
+    compress_vocab_space = cli_arguments["--COMPRESS"] == "TRUE" if "--COMPRESS" in cli_arguments else False
 
     learning_rates = [float(lr) for lr in cli_arguments["--LR"].split(",")] if "--LR" in cli_arguments else None
    # base_kmer = "CGTCACA"
@@ -628,7 +630,7 @@ if __name__ == "__main__":
     else:
         
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, learning_rates=learning_rates)
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, learning_rates=learning_rates, compress_vocab_space=compress_vocab_space)
         dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
