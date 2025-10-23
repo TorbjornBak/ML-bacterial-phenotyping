@@ -10,8 +10,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from kmer_sampling import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
-from Transformers_and_S4Ms import TransformerKmerClassifier
+from scripts.embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
+from scripts.models.Transformers_and_S4Ms import TransformerKmerClassifier
+from scripts.models.CNN import CNNKmerClassifier
+from scripts.models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 
 
@@ -24,8 +26,6 @@ def parse_cli():
         #raise ValueError("No arguments was provided!")
 
     return cli_arguments
-
-
 
 
 
@@ -181,97 +181,6 @@ class PadCollate:
         return pad_collate(batch, pad_id=self.pad_id)
 
 
-# ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
-class CNNKmerClassifier(nn.Module):
-    def __init__(self, 
-                 vocab_size, 
-                 emb_dim=128, 
-                 conv_dim = 256, 
-                 kernel_size = 7, 
-                 num_classes=2, 
-                 pad_id=0, 
-                 dropout = 0.2):
-        super().__init__()
-        self.kernel_size = kernel_size
-        # approximate 'same' padding per conv layer
-        self.pad = kernel_size // 2
-        
-        self.head_dropout = nn.Dropout(dropout)
-        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
-        # Reduce downsampling to avoid zero-length tensors. Use only two stride-2 stages and no max-pooling.
-        self.conv = nn.Sequential(
-            nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad, stride=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout1d(dropout),
-
-            nn.Conv1d(128, conv_dim, kernel_size=kernel_size, padding=self.pad, stride=2),
-            nn.ReLU(inplace=True),
-            nn.Dropout1d(dropout),
-
-        )
-        self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1] (Maxpool?)
-        self.fc = nn.Linear(conv_dim, num_classes)
-
-    def forward(self, token_ids):
-        # token_ids: [B, T] Long
-        x = self.emb(token_ids)          # [B, T, D]
-        x = x.transpose(1, 2)            # [B, D, T] for Conv1d
-
-        z = self.conv(x)                 # [B, C, T']
-
-        
-        feat = self.pool(z).squeeze(-1)     # [B, C]
-        
-        logits = self.fc(self.head_dropout(feat))              # [B, num_classes]
-        return logits
-
-
-
-
-# ----- RNN model: embedding -> BiGRU -> masked global pool -> classifier -----
-class RNNKmerClassifier(nn.Module):
-    def __init__(
-        self,
-        vocab_size,
-        emb_dim=16,
-        rnn_hidden=128,
-        num_layers=1,
-        bidirectional=True,
-        num_classes=2,
-        pad_id=0,
-        dropout=0.1
-    ):
-        super().__init__()
-       
-        self.pad_id = pad_id
-        self.bidirectional = bidirectional
-        self.head_dropout = nn.Dropout(dropout)
-
-        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
-        self.gru = nn.GRU(
-            input_size=emb_dim,
-            hidden_size=rnn_hidden,
-            num_layers=num_layers,
-            batch_first=True,
-            bidirectional=bidirectional,
-            dropout=dropout if num_layers > 1 else 0.0,
-        )
-        feat_dim = rnn_hidden * (2 if bidirectional else 1)
-        self.fc = nn.Linear(feat_dim, num_classes)
-
-    def forward(self, token_ids: torch.Tensor):
-        # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
-        
-        x = self.emb(token_ids)  # [B, T, D]
-                                              
-
-        out, _ = self.gru(x.contiguous())                    
-        
-        # Global average over valid timesteps when lengths unknown
-        feat = out.mean(dim=1)  # [B, H*dir]
-
-        logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
-        return logits
 
 def fit_model(
     train_loader: DataLoader,
@@ -454,113 +363,116 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             
             for lr in learning_rates:
                 for seed in tqdm(range(n_seeds)):
-                    try:
-                        print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
                     
-                        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
-                        
-                        learning_rate = lr
-                        # Build DataLoaders
-                        bs = 50 if model_type == "CNN" else 25
-                        train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-                        val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-                        test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+                    print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
+                
+                    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
+                    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
+                    
+                    learning_rate = lr
+                    # Build DataLoaders
+                    bs = 50 if model_type == "CNN" else 25
+                    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+                    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+                    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
-                        #num_workers = min(8, os.cpu_count() or 2)
-                        num_workers = 2
-                        
-                        train_loader = DataLoader(
-                            train_ds,
-                            batch_size=bs,
-                            shuffle=True,
-                            collate_fn=PadCollate(pad_id=pad_id),
-                            num_workers=num_workers,
-                            pin_memory=False,
-                            persistent_workers=(num_workers > 0),
-                        )
-                        val_loader = DataLoader(
-                            val_ds,
-                            batch_size=bs,
-                            shuffle=False,
-                            collate_fn=PadCollate(pad_id=pad_id),
-                            num_workers=0,
-                        )
-                        test_loader = DataLoader(
-                            test_ds,
-                            batch_size=bs,
-                            shuffle=False,
-                            collate_fn=PadCollate(pad_id=pad_id),
-                            num_workers=0,
-                        )
-                        
-                        binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
-                        # Avoid div by zero if a class is missing in train
-                        binc[binc == 0] = 1.0
-                        class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+                    #num_workers = min(8, os.cpu_count() or 2)
+                    num_workers = 2
+                    
+                    train_loader = DataLoader(
+                        train_ds,
+                        batch_size=bs,
+                        shuffle=True,
+                        collate_fn=PadCollate(pad_id=pad_id),
+                        num_workers=num_workers,
+                        pin_memory=False,
+                        persistent_workers=(num_workers > 0),
+                    )
+                    val_loader = DataLoader(
+                        val_ds,
+                        batch_size=bs,
+                        shuffle=False,
+                        collate_fn=PadCollate(pad_id=pad_id),
+                        num_workers=0,
+                    )
+                    test_loader = DataLoader(
+                        test_ds,
+                        batch_size=bs,
+                        shuffle=False,
+                        collate_fn=PadCollate(pad_id=pad_id),
+                        num_workers=0,
+                    )
+                    
+                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
+                    # Avoid div by zero if a class is missing in train
+                    binc[binc == 0] = 1.0
+                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
-                        y_test_pred = fit_model(train_loader, val_loader, test_loader,
-                                                device=device,
-                                                num_epochs=num_epochs,
-                                                learning_rate=learning_rate, 
-                                                class_weight=class_weight,
-                                                num_classes=num_classes,
-                                                model_type=model_type,
-                                                vocab_size=vocab_size,
-                                                pad_id=pad_id)
-                        
-                        print(f'{y_test=}')
-                        print(f'{y_test_pred=}')
-                        report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
+                    y_test_pred = fit_model(train_loader, val_loader, test_loader,
+                                            device=device,
+                                            num_epochs=num_epochs,
+                                            learning_rate=learning_rate, 
+                                            class_weight=class_weight,
+                                            num_classes=num_classes,
+                                            model_type=model_type,
+                                            vocab_size=vocab_size,
+                                            pad_id=pad_id)
+                    
+                    print(f'{y_test=}')
+                    print(f'{y_test_pred=}')
+                    report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
 
-                        
-                        y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-                        auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
-                        auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
+                    
+                    y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+                    auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
+                    auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
 
-                        # Calculate balanced accuracy
-                        balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
+                    # Calculate balanced accuracy
+                    balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
 
-                        # Store results
-                        results = pd.Series(
-                            {
-                                "phenotype": phenotype,
-                                "model_name": model_type,
-                                "kmer_prefix": prefix,
-                                "kmer_suffix_size": suffix_size,
-                                "learning_rate" : lr,
-                                "seed": seed,
-                                "f1_score_weighted": report["weighted avg"]["f1-score"],
-                                "f1_score_macro": report["macro avg"]["f1-score"],
-                                "precision_weighted": report["weighted avg"]["precision"],
-                                "precision_macro": report["macro avg"]["precision"],
-                                "recall_weighted": report["weighted avg"]["recall"],
-                                "recall_macro": report["macro avg"]["recall"],
-                                "accuracy": report["accuracy"],
-                                "balanced_accuracy": balanced_accuracy,
-                                "auc_weighted": auc_weighted,
-                                "auc_macro": auc_macro,
-                                "n_classes": len(np.unique(y_train)),
-                                "vocab_compression": compress_vocab_space,
-                            }
-                        )
-                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
-                        path = f'{output_directory}/{dataset_name}.csv'
-                        results.to_csv(path)
-                        print(results)
-                        results_df.loc[len(results_df)] = results
+                    # Store results
+                    results = pd.Series(
+                        {
+                            "phenotype": phenotype,
+                            "model_name": model_type,
+                            "kmer_prefix": prefix,
+                            "kmer_suffix_size": suffix_size,
+                            "learning_rate" : lr,
+                            "seed": seed,
+                            "f1_score_weighted": report["weighted avg"]["f1-score"],
+                            "f1_score_macro": report["macro avg"]["f1-score"],
+                            "precision_weighted": report["weighted avg"]["precision"],
+                            "precision_macro": report["macro avg"]["precision"],
+                            "recall_weighted": report["weighted avg"]["recall"],
+                            "recall_macro": report["macro avg"]["recall"],
+                            "accuracy": report["accuracy"],
+                            "balanced_accuracy": balanced_accuracy,
+                            "auc_weighted": auc_weighted,
+                            "auc_macro": auc_macro,
+                            "n_classes": len(np.unique(y_train)),
+                            "vocab_compression": compress_vocab_space,
+                        }
+                    )
+                    dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
+                    path = f'{output_directory}/{dataset_name}.csv'
+                    results.to_csv(path)
+                    print(results)
+                    results_df.loc[len(results_df)] = results
             
-                    except torch.OutOfMemoryError as error:
-                        print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
-                            \nContinuing with next combination of parameters after this error: {error=}''')
+                    # except torch.OutOfMemoryError as error:
+                    #     print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
+                    #         \nContinuing with next combination of parameters after this error: {error=}''')
 
-                    except MemoryError as error:
-                        print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
-                            \nContinuing with next combination of parameters after this error: {error=}''')
+                    # except MemoryError as error:
+                    #     print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
+                    #         \nContinuing with next combination of parameters after this error: {error=}''')
                     
-                    except ValueError as error:
-                        print(f'Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}')
-                        print(f'{error=}')
+                    # except ValueError as error:
+                    #     print(f'Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}')
+                    #     print(f'{error=}')
+
+                    # except error:
+                    #     print(f'{error}')
             
     return results_df
 
