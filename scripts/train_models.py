@@ -455,10 +455,11 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     )
                     dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
                     path = f'{output_directory}/{dataset_name}.csv'
+                    print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
                     results.to_csv(path)
                     print(results)
                     results_df.loc[len(results_df)] = results
-            
+                    #print()
                     # except torch.OutOfMemoryError as error:
                     #     print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
                     #         \nContinuing with next combination of parameters after this error: {error=}''')
