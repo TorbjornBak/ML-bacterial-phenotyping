@@ -146,6 +146,9 @@ def distance_matrix_old(X):
     return dist_matrix
         
 
+def save_clusters():
+    pass
+
 if __name__ == "__main__":
     prefix = 'CGTC'
     suffix_size = 6
@@ -171,7 +174,7 @@ if __name__ == "__main__":
                            dir_list=dir_list, 
                            kmer_prefix=prefix, 
                            kmer_suffix_size = suffix_size, 
-                           cores = 3, 
+                           cores = 1, 
                            output_type="bytearray", 
                            store=True)
 

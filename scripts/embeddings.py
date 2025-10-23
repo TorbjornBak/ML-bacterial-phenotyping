@@ -645,6 +645,7 @@ def compress_integer_embeddings(integer_embeddings, alphabet_size, kmer_suffix_s
 		
 		return X_compressed, vocab_size
 	else:
+		print(f'Cannot compress vocabulary size')
 		vocab_size = len(arr1)
 
 		return integer_embeddings, vocab_size

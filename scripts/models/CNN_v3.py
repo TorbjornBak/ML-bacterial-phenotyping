@@ -10,10 +10,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from kmer_sampling import load_labels, kmerize_parquet_joblib
-from Transformers_and_S4Ms import TransformerKmerClassifier
+from scripts.embeddings import load_labels, kmerize_parquet_joblib
+from scripts.models.Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
-
+import re
 
 
 def parse_cli():
@@ -28,182 +28,129 @@ def parse_cli():
 
 
 
+def create_embeddings(input_data_directory, kmer_prefix, kmer_suffix_size, nr_of_cores = 20):
 
-def embed_data(prefix = None, suffix_size = None, input_data_directory = None, output_directory = None, reembed = None, no_loading = False, label_dict = None):
-    # Should return X and y
-    if output_directory is None:
-        output_directory = input_data_directory
+    file_suffix = ".parquet"
+    dir_list = os.listdir(input_data_directory)
+    dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
-    if prefix is not None and suffix_size is not None:
-        kmer_prefix = prefix
-        kmer_suffix_size = suffix_size
-        print(f'Embedding dataset with {prefix=} and {suffix_size=}')
-    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+    X_dict = kmerize_parquet_joblib(dir_list, 
+                                       kmer_prefix, 
+                                       kmer_suffix_size, 
+                                       nr_of_cores = nr_of_cores,
+                                       output_type="one-hot")
 
-    if reembed is True:
+    return X_dict
 
-        data_dict = dict()
 
-        file_suffix = ".parquet"
-        dir_list = os.listdir(input_data_directory)
-        dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
-        print(f'{dir_list=}')
-
-        data_dict = kmerize_parquet_joblib(dir_list, kmer_prefix, kmer_suffix_size, nr_of_cores = nr_of_cores)
-        
-        ids = [gid for gid in data_dict.keys()]
-        X = [data_dict[gid] for gid in ids]
-            
-        X_obj = np.array(X, dtype=object)
-        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-        print(f"Saving embeddings to: {dataset_file_path=}")
-        np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
+def filter_embeddings(X_dict, label_dict):
+    X_dict = {gid:x for gid, x in X_dict.items() if gid in label_dict}
+    #X = [x for gid, x in X_dict.items() if gid in label_dict]
+    y_dict = {gid: label_dict[gid] for gid in X_dict.keys() if gid in label_dict}
     
-    elif prefix is not None and suffix_size is not None:
-        kmer_prefix = prefix
-        kmer_suffix_size = suffix_size
+    print(f'{len(X_dict)=}')
+    print(f'{len(y_dict)=}')
+    return X_dict, y_dict
 
-        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
-        
-        if os.path.isfile(dataset_file_path):
-            if no_loading is True:
-                return True
-            X, ids = load_stored_embeddings(dataset_file_path)
-        else: 
-            X, y = embed_data(prefix = prefix, suffix_size = suffix_size, input_data_directory=input_data_directory, output_directory=output_directory, label_dict=label_dict, reembed = True)
-            return X, y
-                 
-    elif os.path.isfile(dataset_file_path):
-        if no_loading is True:
-            return True
-        # Don't reembed kmers
-        # Load np array instead
-        X, ids = load_stored_embeddings(dataset_file_path)
-       
+def save_embeddings(X_dict, dataset_path):
+    print(f"Saving embeddings to: {dataset_path=}")
+    np.savez_compressed(dataset_path, X_dict=X_dict)
+    return
+
+
+def load_saved_embeddings(path):
+    z = np.load(path, allow_pickle=True)
+    X_dict = dict(z["X_dict"].item()) # object array → list of arrays 
+    return X_dict
+
+def load_embeddings(input_data_directory, output_data_directory, kmer_prefix, kmer_suffix_size, label_dict, nr_of_cores = 20, store = True):
+    file_path = dataset_file_path(output_data_directory, kmer_prefix, kmer_suffix_size, args = "encoding_one-hot")
+    if os.path.isfile(file_path):
+        X_dict = load_saved_embeddings(file_path)
     else:
-        raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
+        X_dict = create_embeddings(input_data_directory, kmer_prefix, kmer_suffix_size, nr_of_cores)
+        
+        if store:
+            save_embeddings(X_dict, dataset_path=file_path)
     
-    
-    # Select only the rows where y is not None
-    X = [x for gid, x in zip(ids, X) if gid in label_dict]
-    y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+    X_dict, y_dict = filter_embeddings(X_dict, label_dict)
 
-    print(f'{np.unique(y)=}')
-    print(f'{len(y)=}')
-    print(f'{len(X)=}')
-    
-    return X, y
+    return X_dict, y_dict
 
-
-# def embed_data_multi(kmer_prefixes, kmer_suffix_sizes, nr_of_cores = 4):
-#     file_suffix = ".parquet"
-#     dir_list = os.listdir(input_data_directory)
-#     dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
-
-#     print(f'{dir_list=}')
-
-#     data_dict = kmerize_parquet_joblib_multi(dir_list, kmer_prefixes, kmer_suffix_sizes, nr_of_cores = nr_of_cores)
-
-
-#     #kmer_embeddings[genome_id][kmer_prefix][kmer_prefix]
-
-    
-#     for prefix in data_dict:
-#         for suffix_size in data_dict[prefix]:
-#             ids = [gid for gid in data_dict[prefix][suffix_size].keys()]
-#             X = [data_dict[prefix][suffix_size][gid] for gid in ids]
-
-#             X_obj = np.array(X, dtype=object)
-#             dataset_name = f'{prefix}_{suffix_size}' 
-#             dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-#             print(f"Saving embeddings to: {dataset_file_path=}")
-#             np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
-
-#     return
-
-def load_stored_embeddings(dataset_file_path):
-    print(f"Loading embeddings from: {dataset_file_path=}")
-    z = np.load(dataset_file_path, allow_pickle=True)
-
-    X = list(z["X"])  # object array → list of arrays 
-    ids = list(z["ids"])  # map labels from current dict
-    return X, ids
-
-
+def dataset_file_path(path, kmer_prefix, kmer_suffix_size, args = "encoding_unknown", file_extension = "npz"):
+    return f'{path}/{args}_prefix_{kmer_prefix}_suffix-size_{kmer_suffix_size}.{file_extension}'
 
 
 class SequenceDataset(Dataset):
-    """Dataset that returns variable-length token sequences and labels.
-    If X is 2D padded with pad_id=0, trailing zeros are trimmed per sample.
-    If X is an object array/list of 1D arrays, those are returned directly."""
-    def __init__(self, X, y, pad_id: int = 0):
-        assert len(X) == len(y), "X and y must have same length"
-        self.X = X
-        self.y = y
-        self.pad_id = pad_id
+    def __init__(self, X_dict, y_dict=None, y_list=None, keys=None, dtype=torch.long):
+        assert (y_dict is not None) ^ (y_list is not None), "Provide exactly one of y_dict or y_list"
+        self.keys = list(X_dict.keys()) if keys is None else list(keys)
+        self.X = X_dict
+       
+        self.y = y_dict
+        print(y_dict)
+        self._use_y_dict = True
+        
+        self.dtype = dtype
 
     def __len__(self):
-        return len(self.X)
+        return len(self.keys)
 
-    def __getitem__(self, idx: int):
-        x = self.X[idx]
-        if isinstance(x, np.ndarray) and x.ndim == 1:
-            # If padded, trim trailing pad tokens (== pad_id)
-            if x.size > 0 and x.dtype != object:
-                if self.pad_id == 0:
-                    # Find last non-zero index
-                    nz = np.nonzero(x)[0]
-                    if nz.size > 0:
-                        x = x[: nz[-1] + 1]
-                    else:
-                        x = x[:1]  # keep at least length 1 to avoid empty
-            xi = torch.as_tensor(x, dtype=torch.long)
-        else:
-            # Row from 2D array
-            row = np.asarray(x)
-            if self.pad_id == 0:
-                nz = np.nonzero(row)[0]
-                if nz.size > 0:
-                    row = row[: nz[-1] + 1]
-                else:
-                    row = row[:1]
-            xi = torch.as_tensor(row, dtype=torch.long)
-        yi = torch.as_tensor(self.y[idx], dtype=torch.long)
+    def __getitem__(self, idx):
+        k = self.keys[idx]
+        x = self.X[k]         # np.ndarray (R, C_i)
+        y = self.y[k]    
+        xi = torch.as_tensor(x, dtype=self.dtype)  # no padding here
+        yi = torch.as_tensor(y, dtype=torch.long)
+       
         return xi, yi
 
+# REMOVE
+# def pad_collate_deprecated(batch, pad_id: int = 0):
+#     """Pad a batch of variable-length 1D LongTensors to the same length and build mask.
+#     Returns: seqs_padded [B,T], lengths [B], mask [B,T], labels [B]"""
+#     seqs, labels = zip(*batch)
+#     seqs = [s if isinstance(s, torch.Tensor) else torch.as_tensor(s, dtype=torch.long) for s in seqs]
+#     seqs = [s if s.numel() > 0 else torch.tensor([pad_id], dtype=torch.long) for s in seqs]
+#     lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
+#     seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
+#     T = seqs_padded.size(1)
+#     mask = torch.arange(T).unsqueeze(0) < lengths.unsqueeze(1)
+#     labels = torch.stack([torch.as_tensor(y, dtype=torch.long) for y in labels])
+#     return seqs_padded, lengths, mask, labels
 
 def pad_collate(batch, pad_id: int = 0):
-    """Pad a batch of variable-length 1D LongTensors to the same length and build mask.
-    Returns: seqs_padded [B,T], lengths [B], mask [B,T], labels [B]"""
-    seqs, labels = zip(*batch)
-    seqs = [s if isinstance(s, torch.Tensor) else torch.as_tensor(s, dtype=torch.long) for s in seqs]
-    seqs = [s if s.numel() > 0 else torch.tensor([pad_id], dtype=torch.long) for s in seqs]
-    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
-    seqs_padded = pad_sequence(seqs, batch_first=True, padding_value=pad_id)
-    T = seqs_padded.size(1)
-    mask = torch.arange(T).unsqueeze(0) < lengths.unsqueeze(1)
-    labels = torch.stack([torch.as_tensor(y, dtype=torch.long) for y in labels])
-    return seqs_padded, lengths, mask, labels
+    # batch is list of (xi, yi), with xi shape (R, C_i)
+    xs, ys = zip(*batch)
+    R = xs[0].shape[0]
+    widths = torch.tensor([x.shape[1] for x in xs], dtype=torch.long)
+    Cmax = int(widths.max())
+    B = len(xs)
+
+    padded = xs[0].new_full((B, R, Cmax), fill_value=pad_id)
+    for i, x in enumerate(xs):
+        c = x.shape[1]
+        padded[i, :, :c] = x
+
+    ys = torch.as_tensor(ys, dtype=torch.long)
+    return padded, ys, widths  # widths can be used to build masks
 
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
 class CNNKmerClassifier(nn.Module):
-    def __init__(self, vocab_size, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, dropout = 0.2):
+    def __init__(self, emb_dim=128, conv_dim = 256, kernel_size = 7, num_classes=2, pad_id=0, dropout = 0.2):
         super().__init__()
         self.kernel_size = kernel_size
         # approximate 'same' padding per conv layer
         self.pad = kernel_size // 2
         
         self.head_dropout = nn.Dropout(dropout)
-        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
+        #self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
         # Reduce downsampling to avoid zero-length tensors. Use only two stride-2 stages and no max-pooling.
         self.conv = nn.Sequential(
-            nn.Conv1d(emb_dim, 128, kernel_size=kernel_size, padding=self.pad, stride=1),
+            nn.Conv1d(16, 128, kernel_size=kernel_size, padding=self.pad, stride=1),
             nn.ReLU(inplace=True),
             nn.Dropout1d(dropout),
 
@@ -304,7 +251,7 @@ def fit_model(
 
     #Initialize model, optimizer, loss function
     if model_type == "CNN":
-        model = CNNKmerClassifier(vocab_size=V, 
+        model = CNNKmerClassifier(
                             emb_dim=emb_dim, 
                             conv_dim=hidden_dim, 
                             kernel_size=kernel_size, 
@@ -313,28 +260,28 @@ def fit_model(
                             dropout=dropout,
                             ).to(device)
     
-    elif model_type == "RNN":
-        model = RNNKmerClassifier(vocab_size=V, 
-                            emb_dim=emb_dim, 
-                            rnn_hidden=hidden_dim, 
-                            num_layers=1,
-                            bidirectional=True,
-                            num_classes=num_classes, 
-                            dropout=dropout,
-                            pad_id=pad_id).to(device)
+    # elif model_type == "RNN":
+    #     model = RNNKmerClassifier(vocab_size=V, 
+    #                         emb_dim=emb_dim, 
+    #                         rnn_hidden=hidden_dim, 
+    #                         num_layers=1,
+    #                         bidirectional=True,
+    #                         num_classes=num_classes, 
+    #                         dropout=dropout,
+    #                         pad_id=pad_id).to(device)
     
-    elif model_type == "TRANSFORMER":
-        model = TransformerKmerClassifier(
-            vocab_size=V,
-            emb_dim=emb_dim,
-            nhead=8,
-            ff_dim=512,
-            num_layers=4,
-            num_classes=num_classes,
-            pad_id=pad_id,
-            dropout=dropout,
-            use_mask=True
-            ).to(device)
+    # elif model_type == "TRANSFORMER":
+    #     model = TransformerKmerClassifier(
+    #         vocab_size=V,
+    #         emb_dim=emb_dim,
+    #         nhead=8,
+    #         ff_dim=512,
+    #         num_layers=4,
+    #         num_classes=num_classes,
+    #         pad_id=pad_id,
+    #         dropout=dropout,
+    #         use_mask=True
+    #         ).to(device)
     else:
         raise ValueError("No model type was specified. Aborting...")
 
@@ -358,6 +305,8 @@ def fit_model(
         total = 0
         correct = 0
         for xb, lengths, mask, yb in train_loader:
+            print(xb)
+            print(yb)
             xb = xb.to(device)
             #mask = mask.to(device)
             yb = yb.to(device)
@@ -414,7 +363,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5, label_dict = None):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 5, label_dict = None, nr_of_cores = 2, token_size = 2):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -440,31 +389,39 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
-            X, y = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict)
-            num_classes = len(np.unique(y))
+            X_dict, y_dict = load_embeddings(input_data_directory=input_data_directory, output_data_directory=input_data_directory, kmer_prefix=prefix, kmer_suffix_size=suffix_size, label_dict=label_dict, nr_of_cores=nr_of_cores, store=True)
+            num_classes = len(set(y_dict.values()))
+            print(f'{num_classes=}')
             
             try:
                 for seed in tqdm(range(n_seeds)):
                     print(f'{seed=}')
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
+                    keys = list(X_dict.keys())
+                    X_train, X_test, y_train, y_test = train_test_split(X_dict, y_dict, random_state = seed, test_size= 0.2)
                     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size= 1/8) # Weird with the 1/8th if it should 60, 20, 20
-
+                    print(f'{len(X_train)=}')
+                    print(f'{len(X_val)=}')
+                    print(f'{len(X_test)=}')
+                    
                     num_epochs =  50
                     learning_rate = 1e-3
                     # Build DataLoaders
                     bs = 25
-                    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-                    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-                    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+                    train_ds = SequenceDataset(X_dict, y_dict = y_train, keys = X_train)
+                    val_ds = SequenceDataset(X_dict, y_dict = y_val, keys = X_val)
+                    test_ds = SequenceDataset(X_dict, y_dict = y_test, keys = X_test)
 
-                    num_workers = min(8, os.cpu_count() or 2)
+
+                    num_workers = 1
                     
                     train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, 
-                                              collate_fn=lambda b: pad_collate(b, pad_id=pad_id),
+                                              collate_fn=pad_collate,
                                               num_workers=num_workers, pin_memory=(device.type=='cuda'),
                                                 persistent_workers=True)
-                    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
-                    test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn=lambda b: pad_collate(b, pad_id=pad_id))
+                    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, collate_fn= pad_collate)
+                    test_loader = DataLoader(test_ds, batch_size=bs, shuffle=False, collate_fn= pad_collate)
+                    
+                    print(train_loader)
                     
                     binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
                     # Avoid div by zero if a class is missing in train
@@ -549,28 +506,19 @@ if __name__ == "__main__":
     print(f"Using {device=}")
 
 
-    cli_arguments = parse_cli()
+
 
     id = "genome_name"
-    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "-categorical_gram_stain"
+    phenotype = "madin_categorical_gram_stain"
     label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
-    kmer_prefix = cli_arguments["--KMER_PREFIX"] if "--KMER_PREFIX" in cli_arguments else "CGTCAT"
-    kmer_suffix_size = int(cli_arguments["--K_SIZE"]) if "--K_SIZE" in cli_arguments else 8
-    nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
-    output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
+  
+    nr_of_cores = 2
+    output_directory = input_data_directory
 
-    # ----- Instantiate loader and model -----
-    V = (4**kmer_suffix_size)+1      # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
-    pad_id = 0          # reserve 0 for padding in tokenizer
-
-
-
-    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-
-    embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
+   
+    pad_id = 0 # reserve 0 for padding in tokenizer
 
 
    # base_kmer = "CGTCACA"
@@ -578,20 +526,14 @@ if __name__ == "__main__":
     #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
     # kmer_prefixes = ['CGTCACA','CGTCAC','CGTCA', 'CGTC']
     # kmer_suffix_sizes = [8,9,10,11,12]
-    kmer_prefixes = ['CGT']
-    kmer_suffix_sizes = [1]
+    kmer_prefixes = ['CGTCAC']
+    kmer_suffix_sizes = [4]
     
+    
+    model_type = "CNN"
 
-    if embed_only is True:
-        #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
-        for prefix in kmer_prefixes:
-            for suffix_size in kmer_suffix_sizes:
-                result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
-    else:
-        model_type = "CNN"
-
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict)
-        dataset_name = f"{model_type}_train_full"
-        path = f'{output_directory}/{dataset_name}.csv'
-        results_df.to_csv(path_or_buf=path)
-        print(results_df)
+    results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, nr_of_cores=1, token_size=2)
+    dataset_name = f"{model_type}_train_full"
+    path = f'{output_directory}/{dataset_name}.csv'
+    results_df.to_csv(path_or_buf=path)
+    print(results_df)

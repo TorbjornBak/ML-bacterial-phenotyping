@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from kmer_sampling import kmer_sampling_multiple_files, find_files_to_kmerize
+from scripts.embeddings import kmer_sampling_multiple_files, find_files_to_kmerize
 # Create PyTorch datasets and dataloaders
 from torch.utils.data import TensorDataset, DataLoader
 

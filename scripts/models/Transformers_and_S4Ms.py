@@ -7,8 +7,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+# Fix this max_length thing
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 10000, dropout: float = 0.1):
+    def __init__(self, d_model: int, max_len: int = 15000, dropout: float = 0.1):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
         pe = torch.zeros(max_len, d_model)            # [L, D]
