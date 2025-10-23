@@ -544,7 +544,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                 "vocab_compression": compress_vocab_space,
                             }
                         )
-                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{prefix}_{suffix_size}_{seed}_{lr}"
+                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
                         path = f'{output_directory}/{dataset_name}.csv'
                         results.to_csv(path)
                         print(results)
