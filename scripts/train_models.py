@@ -347,6 +347,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "auc_macro",
             "n_classes",
             "vocab_compression",
+            "onehot_encoded",
         ]
     )
     if learning_rates is not None:
@@ -363,8 +364,11 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
                                           input_data_directory=input_data_directory, 
                                           label_dict=label_dict, compress_vocab_space=compress_vocab_space)
-            y = F.one_hot(y, num_classes = 2)
-            print(f'Onehot encoded {y=}')
+            
+            onehotencoded = True
+            if onehotencoded:
+                y = F.one_hot(y, num_classes = 2)
+                print(f'Onehot encoded {y=}')
 
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
@@ -462,6 +466,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             "auc_macro": auc_macro,
                             "n_classes": len(np.unique(y_train)),
                             "vocab_compression": compress_vocab_space,
+                            "onehot_encoded" : onehotencoded,
                         }
                     )
                     dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
@@ -495,6 +500,7 @@ if __name__ == "__main__":
         device = torch.device("cuda")
         labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
         input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+        output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
 
     elif torch.backends.mps.is_available(): 
         device = torch.device("mps")
@@ -521,8 +527,7 @@ if __name__ == "__main__":
     kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else None
     kmer_suffix_sizes = [int(size) for size in cli_arguments["--KMER_SUFFIX_SIZES"].split(",")] if "--KMER_SUFFIX_SIZES" in cli_arguments else None
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
-    output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else input_data_directory
-
+    output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else output_data_directory
 
 
     #dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
