@@ -17,6 +17,8 @@ from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 
 
+
+
 def parse_cli():
     if len(sys.argv) > 1:
         cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
@@ -361,6 +363,9 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
                                           input_data_directory=input_data_directory, 
                                           label_dict=label_dict, compress_vocab_space=compress_vocab_space)
+            y = F.one_hot(y, num_classes = 2)
+            print(f'Onehot encoded {y=}')
+
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
             #print(f'{vocab_size=}')
