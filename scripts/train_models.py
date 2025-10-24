@@ -8,6 +8,7 @@ from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_se
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
+from sklearn.metrics import confusion_matrix
 from joblib import Parallel, delayed
 
 from embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
@@ -15,6 +16,7 @@ from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
+
 
 
 
@@ -324,7 +326,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, learning_rates = None, compress_vocab_space = False):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, int2label = None, learning_rates = None, compress_vocab_space = False):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -347,7 +349,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "auc_macro",
             "n_classes",
             "vocab_compression",
-            
+            "confusion_matrix",
+            "int2label",
         ]
     )
     if learning_rates is not None:
@@ -357,7 +360,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     else:
         learning_rates = [1e-3, 1e-4]
     pad_id = 0
-    num_epochs = 150
+    num_epochs = 2
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
@@ -433,6 +436,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     print(f'{y_test=}')
                     print(f'{y_test_pred=}')
                     report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
+                    conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
 
                     
                     y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
@@ -463,7 +467,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             "auc_macro": auc_macro,
                             "n_classes": len(np.unique(y_train)),
                             "vocab_compression": compress_vocab_space,
-                            
+                            "confusion_matrix" : conf_matrix,
+                            "int2label" : int2label,
                         }
                     )
                     dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
@@ -522,7 +527,7 @@ if __name__ == "__main__":
 
     id = "genome_name"
     phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
-    label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
+    label_dict_literal, label_dict, int2label = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
 
 
     kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else None
@@ -530,11 +535,12 @@ if __name__ == "__main__":
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].rstrip("/") if "--DATA_OUTPUT" in cli_arguments else output_data_directory
 
-    print(output_directory)
+    assert os.path.isdir(output_directory), f"Selected output directory does not exist: {output_directory}"
+    assert os.path.isdir(input_data_directory), f"Selected input directory does not exist: {input_data_directory}"
+    assert os.path.isfile(labels_path), f"Path to labels does not exist: {labels_path}"
 
 
-    #dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    #dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
@@ -542,27 +548,20 @@ if __name__ == "__main__":
 
     learning_rates = [float(lr) for lr in cli_arguments["--LR"].split(",")] if "--LR" in cli_arguments else None
    # base_kmer = "CGTCACA"
-
-    #kmer_prefixes = [base_kmer[:i] for i in range(5,len(base_kmer)+1,1)] # Fx. ['CG', 'CGT', 'CGTC', 'CGTCA', 'CGTCAC']
-    
-    # kmer_suffix_sizes = [8,9,10,11,12]
-    #kmer_prefixes = ['CGT','CG']
-    #kmer_suffix_sizes = [1,2]
     
 
     if embed_only is True:
-        #Parallel(n_jobs = 4)(delayed(embed_data)(prefix, suffix_size, no_loading = True) for prefix in kmer_prefixes for suffix_size in kmer_suffix_sizes)
+        
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
-                        # ----- Instantiate loader and model -----
-                     # vocab size; 4**k + 1 (Adding 1 to make space for the padding which is 0)
+                  
                 pad_id = 0          # reserve 0 for padding in tokenizer
 
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
         
 
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, learning_rates=learning_rates, compress_vocab_space=compress_vocab_space)
+        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, int2label = int2label, learning_rates=learning_rates, compress_vocab_space=compress_vocab_space)
         dataset_name = f"{model_type}_train_full"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)

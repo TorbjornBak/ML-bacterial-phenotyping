@@ -363,7 +363,6 @@ def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label 
 
 	df = pd.read_csv(file_path, sep = sep)
 
-
 	df = df.dropna(subset = [id, label])
 
 	label_dict = dict(zip(df[id].apply(str), df[label])) 
@@ -372,9 +371,11 @@ def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label 
 	
 	label2int = {label: i for i, label in enumerate(unique_labels)}
 
+	int2label = {i : label for i, label in enumerate(unique_labels)}
+
 	label_dict_int = {id : label2int[label] for id, label in label_dict.items()}
 
-	return label_dict, label_dict_int
+	return label_dict, label_dict_int, int2label
 
 
 def find_files_to_kmerize(directory, file_suffix = ".fna", id = "genome_id", label = "class"):
