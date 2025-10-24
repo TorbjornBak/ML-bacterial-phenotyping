@@ -289,7 +289,7 @@ def fit_model(
                 best_val_loss = val_loss
                 best_model_state = model.state_dict()
             else:
-                if val_loss < best_val_loss:
+                if val_loss < best_val_loss and val_loss is not np.nan:
                     best_val_loss = val_loss
                     best_model_state = model.state_dict()
                 else:
@@ -299,6 +299,12 @@ def fit_model(
                         print(f"Early stopping at epoch {epoch + 1}")
                         model.load_state_dict(best_model_state)
                         break
+                    elif val_loss is np.nan:
+                        print(f"Early stopping at epoch {epoch + 1} due to validation loss being nan")
+                        model.load_state_dict(best_model_state)
+                        break
+                    
+        
 
         train_acc = correct / total if total > 0 else 0.0
         print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
