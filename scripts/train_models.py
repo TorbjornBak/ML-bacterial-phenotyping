@@ -124,7 +124,7 @@ class SequenceDataset(Dataset):
     """Dataset that returns variable-length token sequences and labels.
     If X is 2D padded with pad_id=0, trailing zeros are trimmed per sample.
     If X is an object array/list of 1D arrays, those are returned directly."""
-    def __init__(self, X, y, pad_id: int = 0):
+    def __init__(self, X, y, pad_id: int = 0,):
         assert len(X) == len(y), "X and y must have same length"
         self.X = X
         self.y = y
@@ -232,7 +232,7 @@ def fit_model(
             emb_dim=emb_dim,
             nhead=4,
             ff_dim=128,
-            num_layers=4,
+            num_layers=2,
             num_classes=num_classes,
             pad_id=pad_id,
             dropout=dropout,
@@ -347,7 +347,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "auc_macro",
             "n_classes",
             "vocab_compression",
-            "onehot_encoded",
+            
         ]
     )
     if learning_rates is not None:
@@ -365,10 +365,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                           input_data_directory=input_data_directory, 
                                           label_dict=label_dict, compress_vocab_space=compress_vocab_space)
             
-            onehotencoded = True
-            if onehotencoded:
-                y = F.one_hot(y, num_classes = 2)
-                print(f'Onehot encoded {y=}')
+            
 
             #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
@@ -466,7 +463,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             "auc_macro": auc_macro,
                             "n_classes": len(np.unique(y_train)),
                             "vocab_compression": compress_vocab_space,
-                            "onehot_encoded" : onehotencoded,
+                            
                         }
                     )
                     dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
@@ -507,6 +504,8 @@ if __name__ == "__main__":
         #device = torch.device("cpu")
         labels_path = "downloads/labels.csv"
         input_data_directory = "downloads"
+        output_data_directory = input_data_directory
+        
 
     else: 
         # On CPU server
@@ -514,6 +513,8 @@ if __name__ == "__main__":
         device = torch.device("cpu")
         labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
         input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+        output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
+    
     print(f"Using {device=}")
 
 
@@ -528,6 +529,8 @@ if __name__ == "__main__":
     kmer_suffix_sizes = [int(size) for size in cli_arguments["--KMER_SUFFIX_SIZES"].split(",")] if "--KMER_SUFFIX_SIZES" in cli_arguments else None
     nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
     output_directory = cli_arguments["--DATA_OUTPUT"].strip("/") if "--DATA_OUTPUT" in cli_arguments else output_data_directory
+
+
 
 
     #dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
