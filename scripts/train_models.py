@@ -360,7 +360,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
     else:
         learning_rates = [1e-3, 1e-4]
     pad_id = 0
-    num_epochs = 2
+    num_epochs = 150
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
