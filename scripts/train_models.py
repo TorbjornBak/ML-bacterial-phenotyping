@@ -326,7 +326,7 @@ def fit_model(
     return test_outputs
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, int2label = None, learning_rates = None, compress_vocab_space = False):
+def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, int2label = None, learning_rates = None, input_data_directory=None, output_directory = None, compress_vocab_space = False):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -368,13 +368,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                           input_data_directory=input_data_directory, 
                                           label_dict=label_dict, compress_vocab_space=compress_vocab_space)
             
-            
-
-            #vocab_size = (4**suffix_size)+1 
             num_classes = len(np.unique(y))
-            #print(f'{vocab_size=}')
-            #print(f'{X=}')
-            
             
             for lr in learning_rates:
                 for seed in tqdm(range(n_seeds)):
@@ -475,23 +469,10 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     path = f'{output_directory}/{dataset_name}.csv'
                     print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
                     results.to_csv(path)
-                    print(results)
+                    print(f'Saved tmp result to {path=}')
+                    print(f'{results=}')
                     results_df.loc[len(results_df)] = results
-                    #print()
-                    # except torch.OutOfMemoryError as error:
-                    #     print(f'''Torch memory error. Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
-                    #         \nContinuing with next combination of parameters after this error: {error=}''')
-
-                    # except MemoryError as error:
-                    #     print(f'''Memory error: Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}
-                    #         \nContinuing with next combination of parameters after this error: {error=}''')
                     
-                    # except ValueError as error:
-                    #     print(f'Parameters for failed training: {model_type=}, {phenotype=}, {prefix=}, {suffix_size=}, {seed=}, {lr=}')
-                    #     print(f'{error=}')
-
-                    # except error:
-                    #     print(f'{error}')
             
     return results_df
 
@@ -539,7 +520,9 @@ if __name__ == "__main__":
     assert os.path.isdir(input_data_directory), f"Selected input directory does not exist: {input_data_directory}"
     assert os.path.isfile(labels_path), f"Path to labels does not exist: {labels_path}"
 
-
+    print(f'{labels_path=}')
+    print(f'{input_data_directory=}')
+    print(f'{output_directory=}')
 
 
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
@@ -559,10 +542,16 @@ if __name__ == "__main__":
 
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
-        
-
-        results_df = get_model_performance(model_type=model_type, kmer_prefixes=kmer_prefixes, kmer_suffix_sizes=kmer_suffix_sizes, label_dict=label_dict, int2label = int2label, learning_rates=learning_rates, compress_vocab_space=compress_vocab_space)
-        dataset_name = f"{model_type}_train_full"
+        results_df = get_model_performance(model_type=model_type, 
+                                           kmer_prefixes=kmer_prefixes, 
+                                           kmer_suffix_sizes=kmer_suffix_sizes, 
+                                           label_dict=label_dict, 
+                                           int2label = int2label, 
+                                           learning_rates=learning_rates, 
+                                           input_data_directory=input_data_directory, 
+                                           output_directory=output_directory, 
+                                           compress_vocab_space=compress_vocab_space)
+        dataset_name = f"{model_type}_train_grid_search_results"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
         print(results_df)
