@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 def parse_cli():
     if len(sys.argv) > 1:
-        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
+        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:] if "--" in arg.split("=")[0].upper()}
         print(cli_arguments)
     else:
         return dict()
@@ -217,6 +217,8 @@ def fit_model(
                             pad_id=pad_id,
                             dropout=dropout,
                             ).to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+
     
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=vocab_size, 
@@ -227,6 +229,8 @@ def fit_model(
                             num_classes=num_classes, 
                             dropout=dropout,
                             pad_id=pad_id).to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+
     
     elif model_type == "TRANSFORMER":
         model = TransformerKmerClassifier(
@@ -240,6 +244,8 @@ def fit_model(
             dropout=dropout,
             use_mask=True
             ).to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
     else:
         raise ValueError("No model type was specified. Aborting...")
 
@@ -248,7 +254,8 @@ def fit_model(
     if class_weight is not None:
         weight = torch.tensor(class_weight, dtype=torch.float32).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+
+    
     criterion = nn.CrossEntropyLoss(weight=weight)
 
     print(model)

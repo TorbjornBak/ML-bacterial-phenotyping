@@ -35,8 +35,7 @@ class RNNKmerClassifier(nn.Module):
     def forward(self, token_ids: torch.Tensor):
         # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
         
-        x = self.emb(token_ids)  # [B, T, D]
-                                              
+        x = self.emb(token_ids)  # [B, T, D]                            
 
         out, _ = self.gru(x.contiguous())                    
         
