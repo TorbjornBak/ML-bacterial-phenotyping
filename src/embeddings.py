@@ -636,7 +636,7 @@ def compress_integer_embeddings(integer_embeddings, alphabet_size, kmer_suffix_s
 	arr2.extend([a for a in arr1[1:] if a != 0]) # Remove zeros from original array
 	vocab_size = len(arr2)
 
-	if len(arr1) != len(arr2):
+	if len(arr1) > len(arr2):
 		mapping = {old_embedding:new_embedding for new_embedding, old_embedding in enumerate(arr2)} # Create array for mapping old embeddings to new embeddings
 		
 		for embeddings_np in integer_embeddings:

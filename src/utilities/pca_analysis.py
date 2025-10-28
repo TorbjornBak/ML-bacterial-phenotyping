@@ -5,11 +5,14 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+import umap
+import umap.plot
 import os
+import torch
 
 import sys
 
-from kmer_sampling import kmerize_parquet_joblib, load_labels
+from embeddings import kmerize_parquet_joblib, load_labels
 
 
 def load_stored_embeddings(dataset_file_path):
@@ -46,15 +49,34 @@ def parse_cli():
 
 if __name__ == "__main__":
 
-	device = "cpu"
-	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+	if torch.cuda.is_available(): 
+		device = torch.device("cuda")
+		labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+		input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+		output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
+
+	elif torch.backends.mps.is_available(): 
+		device = torch.device("mps")
+		#device = torch.device("cpu")
+		labels_path = "downloads/labels.csv"
+		input_data_directory = "downloads"
+		output_data_directory = input_data_directory
+
+
+	else: 
+		# On CPU server
+		#device = torch.device("cpu")
+		device = torch.device("cpu")
+		labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+		input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+		output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
+
+	print(f"Using {device=}")
 
 	cli_arguments = parse_cli()
     
 	phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
 	label_dict_literal, label_dict = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
-
 
 	file_suffix = ".parquet"
 	dir_list = os.listdir(input_data_directory)
@@ -88,4 +110,9 @@ if __name__ == "__main__":
 	plt.title('PCA projection')
 	plt.legend(title='Label', frameon=False)
 	plt.tight_layout()
-	plt.savefig(f'results/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
+	plt.savefig(f'{output_data_directory}/eda/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
+
+	mapper = umap.UMAP().fit(X)
+
+	ax = umap.plot.points(mapper, labels = y)
+	ax.figure.savefig(f'{output_data_directory}/eda/umap.png')

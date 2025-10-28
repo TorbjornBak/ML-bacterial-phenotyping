@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bact_pheno"
+version = "0.1.0"
+description = "Bact pheno package"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Torbjorn Regueira", email = "s203555@dtu.dk" }]
+dependencies = []
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
