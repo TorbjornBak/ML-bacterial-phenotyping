@@ -29,7 +29,7 @@ class CNNKmerClassifier(nn.Module):
             nn.Dropout1d(dropout),
 
         )
-        self.pool = nn.AdaptiveMaxPool1d(1)  # → [B, C, 1] (Maxpool?)
+        self.pool = nn.AdaptiveAvgPool1d(1)  # → [B, C, 1] (Maxpool?)
         self.fc = nn.Linear(conv_dim, num_classes)
 
     def forward(self, token_ids):
