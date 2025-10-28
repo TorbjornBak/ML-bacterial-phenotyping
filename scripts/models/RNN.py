@@ -39,14 +39,10 @@ class RNNKmerClassifier(nn.Module):
     def forward(self, token_ids: torch.Tensor):
         # token_ids: [B, T] Long
         x = self.emb(token_ids)  # [B, T, D]
-
-        out, _ = self.gru(x.contiguous())  # [B, T, F]
-        # Temporal BatchNorm: normalize features at each time step
-        out = out.transpose(1, 2)          # [B, F, T]
-        out = self.bn_time(out)            # BN over feature dim per time step
-        out = out.transpose(1, 2).contiguous()  # [B, T, F]
+        out, _ = self.gru(x.contiguous())  # [B, T, H*dir]
         
-        feat = out.mean(dim=1)  # [B, F]
-
+        feat = out.mean(dim=1)  # [B, H*dir]
+        feat = self.bn(feat)    # BatchNorm on features
+        
         logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
         return logits
