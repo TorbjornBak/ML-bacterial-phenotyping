@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-# ----- RNN model: embedding -> BiGRU -> masked global pool -> classifier -----
+# ----- RNN model: embedding -> BiGRU -> temporal BatchNorm -> global pool -> classifier -----
 class RNNKmerClassifier(nn.Module):
     def __init__(
         self,
@@ -29,18 +29,24 @@ class RNNKmerClassifier(nn.Module):
             bidirectional=bidirectional,
             dropout=dropout if num_layers > 1 else 0.0,
         )
+        
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
+        # BatchNorm1d over features per time step: apply to [B, F, T]
+        self.bn_time = nn.BatchNorm1d(feat_dim)
+
         self.fc = nn.Linear(feat_dim, num_classes)
 
     def forward(self, token_ids: torch.Tensor):
-        # token_ids: [B, T] Long; mask: [B, T] Bool or 0/1
-        
-        x = self.emb(token_ids)  # [B, T, D]                            
+        # token_ids: [B, T] Long
+        x = self.emb(token_ids)  # [B, T, D]
 
-        out, _ = self.gru(x.contiguous())                    
+        out, _ = self.gru(x.contiguous())  # [B, T, F]
+        # Temporal BatchNorm: normalize features at each time step
+        out = out.transpose(1, 2)          # [B, F, T]
+        out = self.bn_time(out)            # BN over feature dim per time step
+        out = out.transpose(1, 2).contiguous()  # [B, T, F]
         
-        # Global average over valid timesteps when lengths unknown
-        feat = out.mean(dim=1)  # [B, H*dir]
+        feat = out.mean(dim=1)  # [B, F]
 
         logits = self.fc(self.head_dropout(feat))  # [B, num_classes]
         return logits
