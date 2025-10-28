@@ -31,8 +31,8 @@ class RNNKmerClassifier(nn.Module):
         )
         
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
-        # BatchNorm1d over features per time step: apply to [B, F, T]
-        self.bn_time = nn.BatchNorm1d(feat_dim)
+        # BatchNorm over pooled features
+        self.bn = nn.BatchNorm1d(feat_dim)
 
         self.fc = nn.Linear(feat_dim, num_classes)
 
