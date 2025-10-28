@@ -219,7 +219,6 @@ def fit_model(
                             ).to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
 
-    
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=vocab_size, 
                             emb_dim=emb_dim, 
@@ -229,7 +228,7 @@ def fit_model(
                             num_classes=num_classes, 
                             dropout=dropout,
                             pad_id=pad_id).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-2)
 
     
     elif model_type == "TRANSFORMER":
@@ -244,7 +243,7 @@ def fit_model(
             dropout=dropout,
             use_mask=True
             ).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-2)
 
     else:
         raise ValueError("No model type was specified. Aborting...")
