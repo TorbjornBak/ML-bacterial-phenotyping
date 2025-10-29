@@ -205,7 +205,10 @@ def fit_model(
     emb_dim = vocab_size if vocab_size < 16 else 16
     kernel_size = 7
     dropout = 0.2
+    
+    patience = 30
 
+    memory_usage = {"peak_allocated_gib": 0, "peak_reserved_gib" : 0}
 
     #Initialize model, optimizer, loss function
     if model_type == "CNN":
@@ -253,7 +256,6 @@ def fit_model(
     if class_weight is not None:
         weight = torch.tensor(class_weight, dtype=torch.float32).to(device)
 
-
     
     criterion = nn.CrossEntropyLoss(weight=weight)
 
@@ -262,7 +264,6 @@ def fit_model(
     # ----- Training loop -----
 
     early_stop_counter = 0
-    patience = 30
     for epoch in tqdm(range(num_epochs)):
         model.train()
         running_loss = 0.0
@@ -270,8 +271,6 @@ def fit_model(
         correct = 0
         for xb, lengths, mask, yb in train_loader:
             xb = xb.to(device)
-
-            #mask = mask.to(device)
             yb = yb.to(device)
             optimizer.zero_grad()
             output = model(xb)
@@ -318,7 +317,17 @@ def fit_model(
 
         train_acc = correct / total if total > 0 else 0.0
         print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
-
+        
+        # memory stats
+        if torch.device("cuda") == device:
+            torch.cuda.synchronize(device)
+            peak_alloc_gib = torch.cuda.max_memory_allocated() / (1024 ** 3)
+            peak_res_gib = torch.cuda.max_memory_reserved()  / (1024 ** 3)
+            if peak_alloc_gib > memory_usage["peak_allocated_gib"]:
+                memory_usage["peak_allocated_gib"] = peak_alloc_gib
+            if peak_res_gib > memory_usage["peak_reserved_gib"]:
+                memory_usage["peak_reserved_gib"] = peak_res_gib
+            print(f"epoch {epoch}: peak alloc {peak_alloc_gib:.3f} GiB, peak reserved {peak_res_gib:.3f} GiB")
     # Test evaluation after training loop
     model.eval()
     with torch.no_grad():
@@ -329,7 +338,7 @@ def fit_model(
             outs.append(out.cpu().numpy())
         test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
 
-    return test_outputs
+    return test_outputs, memory_usage
 
 
 def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, int2label = None, learning_rates = None, input_data_directory=None, output_directory = None, compress_vocab_space = False):
@@ -357,6 +366,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
             "vocab_compression",
             "confusion_matrix",
             "int2label",
+            "peak_allocated_gib",
+            "peak_reserved_gib",
         ]
     )
     if learning_rates is not None:
@@ -423,7 +434,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     binc[binc == 0] = 1.0
                     class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
-                    y_test_pred = fit_model(train_loader, val_loader, test_loader,
+                    y_test_pred, memory_usage = fit_model(train_loader, val_loader, test_loader,
                                             device=device,
                                             num_epochs=num_epochs,
                                             learning_rate=learning_rate, 
@@ -469,6 +480,8 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                             "vocab_compression": compress_vocab_space,
                             "confusion_matrix" : conf_matrix,
                             "int2label" : int2label,
+                            "peak_allocated_gib" : memory_usage["peak_allocated_gib"],
+                            "peak_reserved_gib": memory_usage["peak_reserved_gib"],
                         }
                     )
                     dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
