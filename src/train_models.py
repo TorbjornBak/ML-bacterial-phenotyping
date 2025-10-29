@@ -372,12 +372,12 @@ def get_model_performance(model_type = "CNN",
             "peak_reserved_gib",
         ]
     )
-    if learning_rates is not None:
-        learning_rates = learning_rates
-    elif model_type == "CNN":
-        learning_rates = [1e-2, 1e-3, 1e-4]
-    else:
-        learning_rates = [1e-3, 1e-4]
+    
+    #learning_rates = learning_rates
+    # elif model_type == "CNN":
+    #     learning_rates = [1e-2, 1e-3, 1e-4]
+    # else:
+    #     learning_rates = [1e-3, 1e-4]
     
     pad_id = 0
     num_epochs = epochs
@@ -548,7 +548,7 @@ if __name__ == "__main__":
     learning_rates = parser.lr
     epochs = parser.epochs
     dropout = parser.dropout
-    
+
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
     print(f'{compress_vocab_space=}')

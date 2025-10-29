@@ -51,13 +51,14 @@ class ArgParser():
     def train_model_arguments(self, parser):
         parser = self.default_arguments(parser)
         parser.add_argument("--model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
-        parser.add_argument("--lr", default = [1e-3], type = float, nargs = '+', help = "List of learning rates for given model")
+        parser.add_argument("--lr", "--learning_rates", default = -1.0, type = float, nargs = '+', help = "List of learning rates for given model")
         parser.add_argument("--kmer_prefixes", required = True, type = str, nargs = '+', help = "Comma separated list of kmer prefixes")
         parser.add_argument("--kmer_suffix_sizes", required = True, type = int, nargs = '+', help = "Comma seaparated list of kmer suffix sizes")
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
         parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to training for, for each model")
+        parser.add_argument("--dropout", default = 0.2, type = float, help = "% to dropout for each layer")
         return parser
         
     def pca_arguments(self, parser):
