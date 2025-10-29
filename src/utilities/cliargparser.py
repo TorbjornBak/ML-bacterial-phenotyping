@@ -7,17 +7,11 @@ import argparse, os
 class ArgParser():
 
     def __init__(self, module = None):
-        
-        parser = argparse.ArgumentParser(
-                                        prog='bact-pheno',
-                                        description='Toolbox of different ml models for downsampled genomes',
-                                        epilog='Made by Torbjørn Regueira',
-                                        )
-        
+   
         if module == "train_models":
-            parser = self.train_model_arguments(parser)
+            parser = self.train_model_arguments()
         elif module == "pca_analysis":
-            parser = self.pca_arguments(parser)
+            parser = self.pca_arguments()
         elif module is not None:
             raise ValueError(f"Unknown module '{module}'")
                              
@@ -48,7 +42,13 @@ class ArgParser():
 
         return parser
     
-    def train_model_arguments(self, parser):
+    def train_model_arguments(self):
+        parser = argparse.ArgumentParser(
+                                        prog='train_models.py',
+                                        description='Toolbox of different ml models for downsampled genomes',
+                                        epilog='Made by Torbjørn Regueira',
+                                        )
+        
         parser = self.default_arguments(parser)
         parser.add_argument("--model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
         parser.add_argument("--lr", "--learning_rates", default = -1.0, type = float, nargs = '+', help = "List of learning rates for given model")
@@ -61,7 +61,12 @@ class ArgParser():
         parser.add_argument("--dropout", default = 0.2, type = float, help = "% to dropout for each layer")
         return parser
         
-    def pca_arguments(self, parser):
+    def pca_arguments(self):
+        parser = argparse.ArgumentParser(
+                                        prog='src/utilities/pca_analysis.py',
+                                        description='Toolbox of different ml models for downsampled genomes',
+                                        epilog='Made by Torbjørn Regueira',
+                                        )
         parser = self.default_arguments(parser)
         parser.add_argument("--kmer_prefix", required = True, help = "Kmer prefix to use for pca and umap")
         parser.add_argument("--kmer_suffix_size", required = True, type = int, help = "Kmer suffix size to use for pca and umap")
