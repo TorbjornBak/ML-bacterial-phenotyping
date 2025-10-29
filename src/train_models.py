@@ -185,14 +185,15 @@ def fit_model(
     model_type = "CNN",
     vocab_size = None,
     pad_id=0, 
-    trace_memory_usage = False):
+    trace_memory_usage = False,
+    dropout = 0.2):
     
 
     
     hidden_dim = 128
     emb_dim = vocab_size if vocab_size < 16 else 16
     kernel_size = 7
-    dropout = 0.2
+
     
     patience = 30
 
@@ -341,7 +342,8 @@ def get_model_performance(model_type = "CNN",
                           output_directory = None, 
                           compress_vocab_space = False,
                           trace_memory_usage = False,
-                          epochs = None):
+                          epochs = None,
+                          dropout = 0.2):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -444,7 +446,8 @@ def get_model_performance(model_type = "CNN",
                                             model_type=model_type,
                                             vocab_size=vocab_size,
                                             pad_id=pad_id, 
-                                            trace_memory_usage=trace_memory_usage)
+                                            trace_memory_usage=trace_memory_usage,
+                                            dropout = dropout)
                     
                     y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
                     
@@ -544,6 +547,8 @@ if __name__ == "__main__":
     trace_memory_usage = parser.trace_memory
     learning_rates = parser.lr
     epochs = parser.epochs
+    dropout = parser.dropout
+    
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
     print(f'{compress_vocab_space=}')
@@ -570,7 +575,8 @@ if __name__ == "__main__":
                                            output_directory=output_directory, 
                                            compress_vocab_space=compress_vocab_space,
                                            trace_memory_usage=trace_memory_usage,
-                                           epochs = epochs)
+                                           epochs = epochs,
+                                           dropout = dropout)
         dataset_name = f"{model_type}_train_grid_search_results"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
