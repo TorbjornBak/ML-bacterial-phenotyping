@@ -197,7 +197,8 @@ def fit_model(
     num_classes = 2, 
     model_type = "CNN",
     vocab_size = None,
-    pad_id=0):
+    pad_id=0, 
+    trace_memory_usage = False):
     
 
     
@@ -319,7 +320,7 @@ def fit_model(
         print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
         
         # memory stats
-        if torch.device("cuda") == device:
+        if trace_memory_usage and torch.device("cuda") == device:
             torch.cuda.synchronize(device)
             peak_alloc_gib = torch.cuda.max_memory_allocated() / (1024 ** 3)
             peak_res_gib = torch.cuda.max_memory_reserved()  / (1024 ** 3)
@@ -338,10 +339,21 @@ def fit_model(
             outs.append(out.cpu().numpy())
         test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
 
-    return test_outputs, memory_usage
+    fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
+    return fit_model_results
 
 
-def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_sizes = None, n_seeds = 3, label_dict = None, int2label = None, learning_rates = None, input_data_directory=None, output_directory = None, compress_vocab_space = False):
+def get_model_performance(model_type = "CNN", 
+                          kmer_prefixes = None, 
+                          kmer_suffix_sizes = None, 
+                          n_seeds = 3, 
+                          label_dict = None, 
+                          int2label = None, 
+                          learning_rates = None, 
+                          input_data_directory=None, 
+                          output_directory = None, 
+                          compress_vocab_space = False,
+                          trace_memory_usage = False):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -434,7 +446,7 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                     binc[binc == 0] = 1.0
                     class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
-                    y_test_pred, memory_usage = fit_model(train_loader, val_loader, test_loader,
+                    training_result = fit_model(train_loader, val_loader, test_loader,
                                             device=device,
                                             num_epochs=num_epochs,
                                             learning_rate=learning_rate, 
@@ -442,7 +454,10 @@ def get_model_performance(model_type = "CNN", kmer_prefixes = None, kmer_suffix_
                                             num_classes=num_classes,
                                             model_type=model_type,
                                             vocab_size=vocab_size,
-                                            pad_id=pad_id)
+                                            pad_id=pad_id, 
+                                            trace_memory_usage=trace_memory_usage)
+                    
+                    y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
                     
                     print(f'{y_test=}')
                     print(f'{y_test_pred=}')
@@ -547,8 +562,9 @@ if __name__ == "__main__":
     embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
     model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
     compress_vocab_space = cli_arguments["--COMPRESS"] == "TRUE" if "--COMPRESS" in cli_arguments else False
-
+    trace_memory_usage = cli_arguments["--TRACE_MEMORY"] == "TRUE" if "--TRACE_MEMORY" in cli_arguments else False
     learning_rates = [float(lr) for lr in cli_arguments["--LR"].split(",")] if "--LR" in cli_arguments else None
+   
    # base_kmer = "CGTCACA"
     
 
@@ -557,7 +573,7 @@ if __name__ == "__main__":
         for prefix in kmer_prefixes:
             for suffix_size in kmer_suffix_sizes:
                   
-                pad_id = 0          # reserve 0 for padding in tokenizer
+                pad_id = 0 # reserve 0 for padding in tokenizer
 
                 result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
     else:
@@ -569,7 +585,8 @@ if __name__ == "__main__":
                                            learning_rates=learning_rates, 
                                            input_data_directory=input_data_directory, 
                                            output_directory=output_directory, 
-                                           compress_vocab_space=compress_vocab_space)
+                                           compress_vocab_space=compress_vocab_space,
+                                           trace_memory_usage=trace_memory_usage)
         dataset_name = f"{model_type}_train_grid_search_results"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)
