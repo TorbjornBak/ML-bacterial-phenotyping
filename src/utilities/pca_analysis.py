@@ -1,16 +1,15 @@
-from kmer_sampling import find_files_to_kmerize, kmer_sampling_multiple_files, load_labels
 
+from utilities.cliargparser import ArgParser
 
-import numpy as np
 
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 import umap
 import umap.plot
 import os
-import torch
+import numpy as np
 
-import sys
+
 
 from embeddings import kmerize_parquet_joblib, load_labels
 
@@ -38,45 +37,44 @@ def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suff
 
 	return X, y
 
-def parse_cli():
-    if len(sys.argv) > 1:
-        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:]}
-        print(cli_arguments)
-    else:
-        raise ValueError("No arguments was provided!")
 
-    return cli_arguments
 
 if __name__ == "__main__":
 
-	if torch.cuda.is_available(): 
-		device = torch.device("cuda")
-		labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-		input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-		output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
+	# if torch.cuda.is_available(): 
+	# 	# On cuda gpu node
+	# 	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+	# 	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+	# 	output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
 
-	elif torch.backends.mps.is_available(): 
-		device = torch.device("mps")
-		#device = torch.device("cpu")
-		labels_path = "downloads/labels.csv"
-		input_data_directory = "downloads"
-		output_data_directory = input_data_directory
+	# elif torch.backends.mps.is_available(): 
+	# 	# On Mac
+	# 	labels_path = "downloads/labels.csv"
+	# 	input_data_directory = "downloads"
+	# 	output_data_directory = input_data_directory
+
+	# else: 
+	# 	# On CPU node
+	# 	labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
+	# 	input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
+	# 	output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
 
 
-	else: 
-		# On CPU server
-		#device = torch.device("cpu")
-		device = torch.device("cpu")
-		labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-		input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-		output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
-
-	print(f"Using {device=}")
-
-	cli_arguments = parse_cli()
+	#cli_arguments = parse_cli()
+	parser = ArgParser(module = "pca_analysis")
+	parser = parser.parser
+	
     
-	phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
-	label_dict_literal, label_dict = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
+	#phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
+	phenotype = parser.phenotype
+	labels_path = parser.labels_path
+	labels_id = parser.labels_id
+	input_data_directory = parser.input
+	output_data_directory = parser.output
+
+
+	label_return = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+	label_dict_literal, label_dict = label_return["label_dict"], label_return["label_dict_int"]
 
 	file_suffix = ".parquet"
 	dir_list = os.listdir(input_data_directory)
@@ -84,11 +82,12 @@ if __name__ == "__main__":
 
 	print(f'{dir_list=}')
 
-	kmer_prefix = cli_arguments["--KMER"] if "--KMER" in cli_arguments else "CGTCA"
-	kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
-
+	#kmer_prefix = cli_arguments["--KMER"] if "--KMER" in cli_arguments else "CGTCA"
+	kmer_prefix = parser.kmer_prefix
+	#kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
+	kmer_suffix_size = parser.kmer_suffix_size
 	
-	X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = 20)
+	X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = parser.cores)
 
 
 	pca = PCA(n_components=2, random_state=0)
@@ -98,7 +97,7 @@ if __name__ == "__main__":
 
 	labels = np.unique(y)
 
-	label2id = {label: i for i, label in enumerate(labels) }
+	label2id = {label: i for i, label in enumerate(labels)}
 
 	color_list = [label2id[l] for l in y]
 
@@ -110,9 +109,9 @@ if __name__ == "__main__":
 	plt.title('PCA projection')
 	plt.legend(title='Label', frameon=False)
 	plt.tight_layout()
-	plt.savefig(f'{output_data_directory}/eda/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
+	plt.savefig(f'{output_data_directory}/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
 
 	mapper = umap.UMAP().fit(X)
 
 	ax = umap.plot.points(mapper, labels = y)
-	ax.figure.savefig(f'{output_data_directory}/eda/umap.png')
+	ax.figure.savefig(f'{output_data_directory}/umap.png')

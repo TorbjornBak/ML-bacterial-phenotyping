@@ -4,33 +4,19 @@ import os, sys
 import pandas as pd
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
-import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence
+
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
-from joblib import Parallel, delayed
+
 
 from embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
-
-
-
-
-
-def parse_cli():
-    if len(sys.argv) > 1:
-        cli_arguments = {arg.split("=")[0].upper() : arg.split("=")[1] for arg in sys.argv[1:] if "--" in arg.split("=")[0].upper()}
-        print(cli_arguments)
-    else:
-        return dict()
-        #raise ValueError("No arguments was provided!")
-
-    return cli_arguments
-
+from utilities.cliargparser import ArgParser
 
 
 def embed_data(kmer_prefix = None, 
@@ -40,7 +26,8 @@ def embed_data(kmer_prefix = None,
                reembed = None, 
                no_loading = False, 
                label_dict = None, 
-               compress_vocab_space = False):
+               compress_vocab_space = False,
+               file_type = ".parquet"):
     # Should return X and y
     if output_directory is None:
         output_directory = input_data_directory
@@ -54,9 +41,9 @@ def embed_data(kmer_prefix = None,
 
         data_dict = dict()
 
-        file_suffix = ".parquet"
+        
         dir_list = os.listdir(input_data_directory)
-        dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
+        dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_type in file]
 
         print(f'{dir_list=}')
 
@@ -353,7 +340,8 @@ def get_model_performance(model_type = "CNN",
                           input_data_directory=None, 
                           output_directory = None, 
                           compress_vocab_space = False,
-                          trace_memory_usage = False):
+                          trace_memory_usage = False,
+                          epochs = None):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -388,8 +376,9 @@ def get_model_performance(model_type = "CNN",
         learning_rates = [1e-2, 1e-3, 1e-4]
     else:
         learning_rates = [1e-3, 1e-4]
+    
     pad_id = 0
-    num_epochs = 150
+    num_epochs = epochs
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
@@ -515,55 +504,49 @@ if __name__ == "__main__":
 
     if torch.cuda.is_available(): 
         device = torch.device("cuda")
-        labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-        input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-        output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
-
+        
     elif torch.backends.mps.is_available(): 
         device = torch.device("mps")
-        #device = torch.device("cpu")
-        labels_path = "downloads/labels.csv"
-        input_data_directory = "downloads"
-        output_data_directory = input_data_directory
-        
 
     else: 
         # On CPU server
-        #device = torch.device("cpu")
         device = torch.device("cpu")
-        labels_path = "/home/projects2/bact_pheno/bacbench_data/labels.csv"
-        input_data_directory = "/home/projects2/bact_pheno/bacbench_data"
-        output_data_directory = "/home/projects2/bact_pheno/bacbench_data/results/"
+        
     
     print(f"Using {device=}")
 
 
-    cli_arguments = parse_cli()
+    parser = ArgParser(module = "train_models")
+    parser = parser.parser
+    labels_id = parser.labels_id
+    labels_path = parser.labels_path
+    input_directory = parser.input
+    phenotype = parser.phenotype
+    labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+    label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
-    id = "genome_name"
-    phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
-    label_dict_literal, label_dict, int2label = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
+    kmer_prefixes = parser.kmer_prefixes
+    kmer_suffix_sizes = parser.kmer_suffix_sizes
+    print(f'{kmer_prefixes=}')
+    print(f'{kmer_suffix_sizes=}')
+    
+    nr_of_cores = parser.cores
+    output_directory = parser.output
 
-
-    kmer_prefixes = cli_arguments["--KMER_PREFIXES"].split(",") if "--KMER_PREFIXES" in cli_arguments else None
-    kmer_suffix_sizes = [int(size) for size in cli_arguments["--KMER_SUFFIX_SIZES"].split(",")] if "--KMER_SUFFIX_SIZES" in cli_arguments else None
-    nr_of_cores = int(cli_arguments["--CORES"]) if "--CORES" in cli_arguments else 2
-    output_directory = cli_arguments["--DATA_OUTPUT"].rstrip("/") if "--DATA_OUTPUT" in cli_arguments else output_data_directory
-
-    assert os.path.isdir(output_directory), f"Selected output directory does not exist: {output_directory}"
-    assert os.path.isdir(input_data_directory), f"Selected input directory does not exist: {input_data_directory}"
-    assert os.path.isfile(labels_path), f"Path to labels does not exist: {labels_path}"
 
     print(f'{labels_path=}')
-    print(f'{input_data_directory=}')
+    print(f'{input_directory=}')
     print(f'{output_directory=}')
 
-
-    embed_only = cli_arguments["--EMBED_ONLY"] == "TRUE" if "--EMBED_ONLY" in cli_arguments else False
-    model_type = cli_arguments["--MODEL_ARCH"] if "--MODEL_ARCH" in cli_arguments else "CNN"
-    compress_vocab_space = cli_arguments["--COMPRESS"] == "TRUE" if "--COMPRESS" in cli_arguments else False
-    trace_memory_usage = cli_arguments["--TRACE_MEMORY"] == "TRUE" if "--TRACE_MEMORY" in cli_arguments else False
-    learning_rates = [float(lr) for lr in cli_arguments["--LR"].split(",")] if "--LR" in cli_arguments else None
+    embed_only = parser.embed_only
+    model_type = parser.model_arch
+    compress_vocab_space = parser.compress
+    trace_memory_usage = parser.trace_memory
+    learning_rates = parser.lr
+    epochs = parser.epochs
+    print(f'{trace_memory_usage=}')
+    print(f"{learning_rates=}")
+    print(f'{compress_vocab_space=}')
    
    # base_kmer = "CGTCACA"
     
@@ -575,7 +558,7 @@ if __name__ == "__main__":
                   
                 pad_id = 0 # reserve 0 for padding in tokenizer
 
-                result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_data_directory, label_dict=label_dict, no_loading=True)
+                result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
     else:
         results_df = get_model_performance(model_type=model_type, 
                                            kmer_prefixes=kmer_prefixes, 
@@ -583,10 +566,11 @@ if __name__ == "__main__":
                                            label_dict=label_dict, 
                                            int2label = int2label, 
                                            learning_rates=learning_rates, 
-                                           input_data_directory=input_data_directory, 
+                                           input_data_directory=input_directory, 
                                            output_directory=output_directory, 
                                            compress_vocab_space=compress_vocab_space,
-                                           trace_memory_usage=trace_memory_usage)
+                                           trace_memory_usage=trace_memory_usage,
+                                           epochs = epochs)
         dataset_name = f"{model_type}_train_grid_search_results"
         path = f'{output_directory}/{dataset_name}.csv'
         results_df.to_csv(path_or_buf=path)

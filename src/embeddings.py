@@ -375,25 +375,11 @@ def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label 
 
 	label_dict_int = {id : label2int[label] for id, label in label_dict.items()}
 
-	return label_dict, label_dict_int, int2label
-
-
-def find_files_to_kmerize(directory, file_suffix = ".fna", id = "genome_id", label = "class"):
-
-	dir_list = os.listdir(directory)
-
-
-
-	dir_list = [file for file in dir_list if file_suffix in file]
-
-
-	labels = load_labels(id = id, label = label)
-
+	return_dict = {"label_dict":label_dict, "label_dict_int": label_dict_int, "int2label":int2label}
 	
-	dir_list = [dir for dir in dir_list if dir.replace(file_suffix, "") in labels]
+	return return_dict
 
 
-	return dir_list, labels
 	
 
 def save_kmerized_files_with_numpy(X, X_file_path, y, y_file_path):
@@ -422,12 +408,15 @@ def read_sequence_file(file_path, file_type):
 	if file_type == ".parquet":
 		df = read_parquet(file_path)
 		return df
+	elif file_type == ".fasta":
+		return NotImplementedError # Not implemented yet (see read_fasta above)
+
 	
-def kmerize_and_embed_parquet_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
 	# Returns a dict with lists of kmers represented as integers.
 	print(f"Kmerizing {path}")
 	
-	df = read_sequence_file(file_path=path, file_type=".parquet")
+	df = read_sequence_file(file_path=path, file_type = file_type)
 	
 	integer_embeddings = dict()
 
@@ -453,11 +442,11 @@ def kmerize_and_embed_parquet_dataset_return_integers(path, genome_col, dna_sequ
 	return integer_embeddings
 
 
-def kmerize_and_embed_parquet_dataset_return_kmer_str(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_dataset_return_kmer_str(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
 
 	print(f"Kmerizing {path}")
 	
-	df = read_sequence_file(file_path=path, file_type=".parquet")
+	df = read_sequence_file(file_path=path, file_type = file_type)
 	
 	kmer_embeddings = dict()
 
@@ -470,7 +459,7 @@ def kmerize_and_embed_parquet_dataset_return_kmer_str(path, genome_col, dna_sequ
 	
 	return kmer_embeddings
 
-def kmerize_and_embed_parquet_dataset_return_tokens(path, 
+def kmerize_and_embed_dataset_return_tokens(path, 
 													genome_col, 
 													dna_sequence_col, 
 													kmer_prefix = "CGTGAT", 
@@ -544,12 +533,12 @@ def byte_pair_encoding():
 
 	pass
 
-def kmerize_and_embed_parquet_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = ".parquet"):
 
 	print(f"Kmerizing {path}")
 	
 
-	df = read_sequence_file(file_path=path, file_type=".parquet")
+	df = read_sequence_file(file_path=path, file_type=file_type)
 	
 	kmer_counts = dict()
 
@@ -568,12 +557,12 @@ def kmerize_and_embed_parquet_dataset_count(path, genome_col, dna_sequence_col, 
 
 
 
-def kmerize_and_embed_parquet_dataset_bytearray(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8):
+def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
 
 	print(f"Kmerizing {path}")
 	
 
-	df = read_sequence_file(file_path=path, file_type=".parquet")
+	df = read_sequence_file(file_path=path, file_type=file_type)
 	
 	kmer_arrays = dict()
 
@@ -590,22 +579,51 @@ def kmerize_and_embed_parquet_dataset_bytearray(path, genome_col, dna_sequence_c
 	
 	return kmer_arrays
 
+# Deprecated function, still works, use kmerize_joblib instead
 def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers"):
 
 	if output_type == "kmers":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
 	
 	elif output_type == "str":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
 
 	elif output_type == "one-hot":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, results_path = "./results") for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, results_path = "./results", file_type = ".parquet") for path in file_paths)
 
 	elif output_type == "bytearray":
-			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
 
 	elif output_type == "counts":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
+
+	
+	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
+
+	data_dict = dict()
+	
+	for kmer_dict in joblib_results:
+		data_dict.update(kmer_dict)
+
+	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
+	
+	return data_dict
+
+def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers", file_type = ".parquet"):
+	if output_type == "kmers":
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+	
+	elif output_type == "str":
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+
+	elif output_type == "one-hot":
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, results_path = "./results", file_type = file_type) for path in file_paths)
+
+	elif output_type == "bytearray":
+			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+
+	elif output_type == "counts":
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 
 	
 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
@@ -737,7 +755,6 @@ if __name__ == "__main__":
 	# 									28901.2926,
 	# 									28901.2927,
 	# 									28901.2928])
-	# file_names, labels = find_files_to_kmerize(directory="/home/projects2/s203555/bv-brc-data", file_suffix = ".fna")
 	# #labels = load_labels(file_path="downloads/genome_lineage")
 	
 	# X, y = kmer_sampling_multiple_files(directory="/home/projects2/s203555/bv-brc-data", file_names=file_names, labels = labels, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8)
