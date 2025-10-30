@@ -33,13 +33,13 @@ class ArgParser():
         self.parser = parser
 
     def default_arguments(self, parser):
-        parser.add_argument("--phenotype", help = "Phenotype target from file", required = True)
+        parser.add_argument("--phenotype", type = str, nargs = "+", help = "Phenotype - target from file", required = True)
         parser.add_argument("--cores", default=2, type = int, help="nr of cores to use for embedding")
         parser.add_argument("--input", required = True, help = "Path to input directory containing files for training")
         parser.add_argument("--labels_path", required = True, help = "Path to file containing labels for training")
-        parser.add_argument("--labels_id", default = "genome_name", help = "Name of column containing ids for labels")
+        parser.add_argument("--labels_id", default = "genome_name", type = str, help = "Name of column containing ids for labels")
         parser.add_argument("--output", required = True, help = "Path to output directory for training results")
-
+        parser.add_argument("--file_type", required = True, help = "fx .parquet / .fasta, the file ending to look for in the input folder")
         return parser
     
     def train_model_arguments(self):
@@ -58,7 +58,8 @@ class ArgParser():
         parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to training for, for each model")
-        parser.add_argument("--dropout", default = 0.2, type = float, help = "% to dropout for each layer")
+        parser.add_argument("--dropout", default = 0.2, type = float, help = "%% to dropout for each layer")
+        parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
         return parser
         
     def pca_arguments(self):

@@ -167,8 +167,9 @@ if __name__ == "__main__":
     dir_list = os.listdir(input_data_directory)
     dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 	
-    label_dict_literal, label_dict = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
-
+    labels = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
+    label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"]
+    
     X, y, ids = embed_data(label_dict=label_dict, 
                            path = "results/homology", 
                            dir_list=dir_list, 

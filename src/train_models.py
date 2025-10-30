@@ -23,7 +23,7 @@ def embed_data(kmer_prefix = None,
                kmer_suffix_size = None, 
                input_data_directory = None, 
                output_directory = None, 
-               reembed = None, 
+               reembed = False, 
                no_loading = False, 
                label_dict = None, 
                compress_vocab_space = False,
@@ -37,7 +37,7 @@ def embed_data(kmer_prefix = None,
     dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
     dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 
-    if reembed is True:
+    if reembed:
 
         data_dict = dict()
 
@@ -336,7 +336,6 @@ def get_model_performance(model_type = "CNN",
                           kmer_suffix_sizes = None, 
                           n_seeds = 3, 
                           label_dict = None, 
-                          int2label = None, 
                           learning_rates = None, 
                           input_data_directory=None, 
                           output_directory = None, 
@@ -505,6 +504,9 @@ def get_model_performance(model_type = "CNN",
 
 if __name__ == "__main__":
 
+    parser = ArgParser(module = "train_models")
+    parser = parser.parser
+
     if torch.cuda.is_available(): 
         device = torch.device("cuda")
         
@@ -519,14 +521,14 @@ if __name__ == "__main__":
     print(f"Using {device=}")
 
 
-    parser = ArgParser(module = "train_models")
-    parser = parser.parser
+    
+
     labels_id = parser.labels_id
     labels_path = parser.labels_path
     input_directory = parser.input
-    phenotype = parser.phenotype
-    labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
-    label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
+    phenotypes = parser.phenotype
+    
+    
 
     kmer_prefixes = parser.kmer_prefixes
     kmer_suffix_sizes = parser.kmer_suffix_sizes
@@ -548,6 +550,7 @@ if __name__ == "__main__":
     learning_rates = parser.lr
     epochs = parser.epochs
     dropout = parser.dropout
+    k_folds = parser.k_folds
 
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
@@ -555,29 +558,38 @@ if __name__ == "__main__":
    
    # base_kmer = "CGTCACA"
     
-
+  
     if embed_only is True:
-        
-        for prefix in kmer_prefixes:
-            for suffix_size in kmer_suffix_sizes:
-                  
-                pad_id = 0 # reserve 0 for padding in tokenizer
+                
+        for phenotype in phenotypes:
+            labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+            label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
-                result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
+            for prefix in kmer_prefixes:
+                for suffix_size in kmer_suffix_sizes:
+                    
+                    pad_id = 0 # reserve 0 for padding in tokenizer
+                    
+
+                    result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
     else:
-        results_df = get_model_performance(model_type=model_type, 
-                                           kmer_prefixes=kmer_prefixes, 
-                                           kmer_suffix_sizes=kmer_suffix_sizes, 
-                                           label_dict=label_dict, 
-                                           int2label = int2label, 
-                                           learning_rates=learning_rates, 
-                                           input_data_directory=input_directory, 
-                                           output_directory=output_directory, 
-                                           compress_vocab_space=compress_vocab_space,
-                                           trace_memory_usage=trace_memory_usage,
-                                           epochs = epochs,
-                                           dropout = dropout)
-        dataset_name = f"{model_type}_train_grid_search_results"
-        path = f'{output_directory}/{dataset_name}.csv'
-        results_df.to_csv(path_or_buf=path)
-        print(results_df)
+        for phenotype in phenotypes:
+            labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+            label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
+
+            results_df = get_model_performance(model_type=model_type, 
+                                            kmer_prefixes=kmer_prefixes, 
+                                            kmer_suffix_sizes=kmer_suffix_sizes, 
+                                            n_seeds = k_folds,
+                                            label_dict=label_dict,
+                                            learning_rates=learning_rates, 
+                                            input_data_directory=input_directory, 
+                                            output_directory=output_directory, 
+                                            compress_vocab_space=compress_vocab_space,
+                                            trace_memory_usage=trace_memory_usage,
+                                            epochs = epochs,
+                                            dropout = dropout)
+            dataset_name = f"{model_type}_train_grid_search_results"
+            path = f'{output_directory}/{dataset_name}.csv'
+            results_df.to_csv(path_or_buf=path)
+            print(results_df)
