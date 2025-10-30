@@ -109,9 +109,14 @@ if __name__ == "__main__":
 	plt.title('PCA projection')
 	plt.legend(title='Label', frameon=False)
 	plt.tight_layout()
-	plt.savefig(f'{output_data_directory}/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg')
+	pca_save_path = f'{output_data_directory}/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg'
+	plt.savefig(pca_save_path)
+
+	print(f'{pca_save_path=}')
 
 	mapper = umap.UMAP().fit(X)
 
 	ax = umap.plot.points(mapper, labels = y)
-	ax.figure.savefig(f'{output_data_directory}/umap.png')
+	umap_save_path = f'{output_data_directory}/umap_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.png'
+	ax.figure.savefig(umap_save_path)
+	print(f'{umap_save_path=}')
