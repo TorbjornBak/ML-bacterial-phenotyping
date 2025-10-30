@@ -9,6 +9,7 @@ from torch.nn.utils.rnn import pad_sequence
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
+from sklearn.preprocessing import LabelEncoder
 
 
 from embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
@@ -397,6 +398,19 @@ def get_model_performance(model_type = "CNN",
                     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
                     X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
                     
+                    label_encoder = LabelEncoder()
+
+                    y_train = label_encoder.fit_transform(y_train)
+                    y_test = label_encoder.transform(y_test)
+                    y_val = label_encoder.transform(y_val)
+
+                    
+                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
+                    # Avoid div by zero if a class is missing in train
+                    binc[binc == 0] = 1.0
+                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+
+
                     learning_rate = lr
                     # Build DataLoaders
                     bs = 50 if model_type == "CNN" else 25
@@ -431,11 +445,6 @@ def get_model_performance(model_type = "CNN",
                         num_workers=0,
                     )
                     
-                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
-                    # Avoid div by zero if a class is missing in train
-                    binc[binc == 0] = 1.0
-                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
-
                     training_result = fit_model(train_loader, val_loader, test_loader,
                                             device=device,
                                             num_epochs=num_epochs,
