@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 # ----- RNN model: embedding -> BiGRU -> temporal BatchNorm -> global pool -> classifier -----
+@torch.compile
 class RNNKmerClassifier(nn.Module):
     def __init__(
         self,

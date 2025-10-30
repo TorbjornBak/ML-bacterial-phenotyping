@@ -2,6 +2,7 @@ import torch
 from torch import nn
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----
+
 class CNNKmerClassifier(nn.Module):
     def __init__(self, 
                  vocab_size, 
