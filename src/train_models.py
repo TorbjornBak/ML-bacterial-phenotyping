@@ -315,7 +315,7 @@ def fit_model(
                 out = model(xb)
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
-
+            train_acc = correct / total if total > 0 else 0.0
             run.log({"epoch": epoch, "train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
             if epoch == 0:
                 best_val_loss = val_loss
@@ -339,8 +339,8 @@ def fit_model(
                     
         
 
-        train_acc = correct / total if total > 0 else 0.0
-        print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
+        
+            print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
         
         # memory stats
         if trace_memory_usage and torch.device("cuda") == device:
