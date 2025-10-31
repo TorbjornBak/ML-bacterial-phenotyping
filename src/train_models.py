@@ -188,8 +188,10 @@ def fit_model(
     vocab_size = None,
     pad_id=0, 
     trace_memory_usage = False,
-    dropout = 0.2):
+    dropout = 0.2,
+    wandb_run = None):
     
+
 
     
     #hidden_dim = 128
@@ -223,7 +225,7 @@ def fit_model(
                             pad_id=pad_id,
                             dropout=dropout,
                             ).to(device)
-        weight_decay = 1e-4
+        weight_decay = 1e-2
         optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
     elif model_type == "RNN":
@@ -267,21 +269,9 @@ def fit_model(
 
     print(model)
     
-    wandb.login()
-    run = wandb.init(
-        # Set the wandb entity where your project will be logged (generally your team name).
-        entity="torbjornbak-technical-university-of-denmark",
-        # Set the wandb project where this run will be logged.
-        project="Phenotyping bacteria",
-        # Track hyperparameters and run metadata.
-        config={
-            "learning_rate": learning_rate,
-            "weight_decay" : weight_decay,
-            "architecture": model_type,
-            "dataset": phenotype,
-            "epochs": epochs,
-        },
-    )
+   
+
+    
 
     # ----- Training loop -----
 
@@ -316,7 +306,7 @@ def fit_model(
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
             train_acc = correct / total if total > 0 else 0.0
-            run.log({"epoch": epoch, "train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
+            wandb_run.log({"train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
             if epoch == 0:
                 best_val_loss = val_loss
                 best_model_state = model.state_dict()
@@ -336,9 +326,6 @@ def fit_model(
                         print(f"Early stopping at epoch {epoch + 1} due to validation loss being nan")
                         model.load_state_dict(best_model_state)
                         break
-                    
-        
-
         
             print(f"Epoch {epoch+1}/{num_epochs} | Loss: {loss.item():.4f} | Val loss: {val_loss.item():.4f} | Train Acc: {train_acc:.4f}")
         
@@ -356,14 +343,16 @@ def fit_model(
     model.eval()
     with torch.no_grad():
         outs = []
-        for xb, lengths, mask, _ in test_loader:
+        for xb, lengths, mask, yb in test_loader:
             xb = xb.to(device)
             out = model(xb)
             outs.append(out.cpu().numpy())
+            
+            
         test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
-
+        
     fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
-    run.finish()
+        
     return fit_model_results
 
 
@@ -428,120 +417,133 @@ def get_model_performance(model_type = "CNN",
             for lr in learning_rates:
                 for seed in tqdm(range(n_seeds)):
                     
-                    print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
-                
-                    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-                    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
+                    with wandb.init(project="Phenotyping bacteria",
+                    entity="torbjornbak-technical-university-of-denmark",
+                    config={
+                    "learning_rate": lr,
+                    "architecture": model_type,
+                    "dataset": phenotype,
+                    "epochs": epochs,
+                    },
+                    ) as run:
+                        print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
                     
-                    label_encoder = LabelEncoder()
+                        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
+                        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
+                        
+                        label_encoder = LabelEncoder()
 
-                    y_train = label_encoder.fit_transform(y_train)
-                    y_test = label_encoder.transform(y_test)
-                    y_val = label_encoder.transform(y_val)
+                        y_train = label_encoder.fit_transform(y_train)
+                        y_test = label_encoder.transform(y_test)
+                        y_val = label_encoder.transform(y_val)
 
-                    
-                    binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
-                    # Avoid div by zero if a class is missing in train
-                    binc[binc == 0] = 1.0
-                    class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+                        
+                        binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
+                        # Avoid div by zero if a class is missing in train
+                        binc[binc == 0] = 1.0
+                        class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
 
-                    learning_rate = lr
-                    # Build DataLoaders
-                    bs = 50 if model_type == "CNN" else 25
-                    train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-                    val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-                    test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+                        learning_rate = lr
+                        # Build DataLoaders
+                        bs = 50 if model_type == "CNN" else 25
+                        train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+                        val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+                        test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
-                    #num_workers = min(8, os.cpu_count() or 2)
-                    num_workers = 2
-                    
-                    train_loader = DataLoader(
-                        train_ds,
-                        batch_size=bs,
-                        shuffle=True,
-                        collate_fn=PadCollate(pad_id=pad_id),
-                        num_workers=num_workers,
-                        pin_memory=False,
-                        persistent_workers=(num_workers > 0),
-                    )
-                    val_loader = DataLoader(
-                        val_ds,
-                        batch_size=bs,
-                        shuffle=False,
-                        collate_fn=PadCollate(pad_id=pad_id),
-                        num_workers=0,
-                    )
-                    test_loader = DataLoader(
-                        test_ds,
-                        batch_size=bs,
-                        shuffle=False,
-                        collate_fn=PadCollate(pad_id=pad_id),
-                        num_workers=0,
-                    )
-                    
-                    training_result = fit_model(train_loader, val_loader, test_loader,
-                                            device=device,
-                                            num_epochs=num_epochs,
-                                            learning_rate=learning_rate, 
-                                            class_weight=class_weight,
-                                            num_classes=num_classes,
-                                            model_type=model_type,
-                                            vocab_size=vocab_size,
-                                            pad_id=pad_id, 
-                                            trace_memory_usage=trace_memory_usage,
-                                            dropout = dropout)
-                    
-                    y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
-                    
-                    print(f'{y_test=}')
-                    print(f'{y_test_pred=}')
-                    report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
-                    conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
+                        #num_workers = min(8, os.cpu_count() or 2)
+                        num_workers = 2
+                        
+                        train_loader = DataLoader(
+                            train_ds,
+                            batch_size=bs,
+                            shuffle=True,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=num_workers,
+                            pin_memory=False,
+                            persistent_workers=(num_workers > 0),
+                        )
+                        val_loader = DataLoader(
+                            val_ds,
+                            batch_size=bs,
+                            shuffle=False,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=0,
+                        )
+                        test_loader = DataLoader(
+                            test_ds,
+                            batch_size=bs,
+                            shuffle=False,
+                            collate_fn=PadCollate(pad_id=pad_id),
+                            num_workers=0,
+                        )
+                        
+                        training_result = fit_model(train_loader, val_loader, test_loader,
+                                                device=device,
+                                                num_epochs=num_epochs,
+                                                learning_rate=learning_rate, 
+                                                class_weight=class_weight,
+                                                num_classes=num_classes,
+                                                model_type=model_type,
+                                                vocab_size=vocab_size,
+                                                pad_id=pad_id, 
+                                                trace_memory_usage=trace_memory_usage,
+                                                dropout = dropout,
+                                                wandb_run = run)
+                        
+                        y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
+                        
+                        print(f'{y_test=}')
+                        print(f'{y_test_pred=}')
+                        report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
+                        conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
 
-                    
-                    y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-                    auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
-                    auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
+                        
+                        y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+                        auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
+                        auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
 
-                    # Calculate balanced accuracy
-                    balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
+                        # Calculate balanced accuracy
+                        balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
 
-                    # Store results
-                    results = pd.Series(
-                        {
-                            "phenotype": phenotype,
-                            "model_name": model_type,
-                            "kmer_prefix": prefix,
-                            "kmer_suffix_size": suffix_size,
-                            "learning_rate" : lr,
-                            "seed": seed,
-                            "f1_score_weighted": report["weighted avg"]["f1-score"],
-                            "f1_score_macro": report["macro avg"]["f1-score"],
-                            "precision_weighted": report["weighted avg"]["precision"],
-                            "precision_macro": report["macro avg"]["precision"],
-                            "recall_weighted": report["weighted avg"]["recall"],
-                            "recall_macro": report["macro avg"]["recall"],
-                            "accuracy": report["accuracy"],
-                            "balanced_accuracy": balanced_accuracy,
-                            "auc_weighted": auc_weighted,
-                            "auc_macro": auc_macro,
-                            "n_classes": len(np.unique(y_train)),
-                            "vocab_compression": compress_vocab_space,
-                            "confusion_matrix" : conf_matrix,
-                            "int2label" : int2label,
-                            "peak_allocated_gib" : memory_usage["peak_allocated_gib"],
-                            "peak_reserved_gib": memory_usage["peak_reserved_gib"],
-                        }
-                    )
-                    dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
-                    path = f'{output_directory}/{dataset_name}.csv'
-                    print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
-                    results.to_csv(path)
-                    print(f'Saved tmp result to {path=}')
-                    print(f'{results=}')
-                    results_df.loc[len(results_df)] = results
-                    
+                        # Store results
+                        results = pd.Series(
+                            {
+                                "phenotype": phenotype,
+                                "model_name": model_type,
+                                "kmer_prefix": prefix,
+                                "kmer_suffix_size": suffix_size,
+                                "learning_rate" : lr,
+                                "seed": seed,
+                                "f1_score_weighted": report["weighted avg"]["f1-score"],
+                                "f1_score_macro": report["macro avg"]["f1-score"],
+                                "precision_weighted": report["weighted avg"]["precision"],
+                                "precision_macro": report["macro avg"]["precision"],
+                                "recall_weighted": report["weighted avg"]["recall"],
+                                "recall_macro": report["macro avg"]["recall"],
+                                "accuracy": report["accuracy"],
+                                "balanced_accuracy": balanced_accuracy,
+                                "auc_weighted": auc_weighted,
+                                "auc_macro": auc_macro,
+                                "n_classes": len(np.unique(y_train)),
+                                "vocab_compression": compress_vocab_space,
+                                "confusion_matrix" : conf_matrix,
+                                "int2label" : int2label,
+                                "peak_allocated_gib" : memory_usage["peak_allocated_gib"],
+                                "peak_reserved_gib": memory_usage["peak_reserved_gib"],
+                            }
+                        )
+                        
+
+                        dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}"
+                        path = f'{output_directory}/{dataset_name}.csv'
+                        print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
+                        results.to_csv(path)
+                        print(f'Saved tmp result to {path=}')
+                        print(f'{results=}')
+                        results_df.loc[len(results_df)] = results
+                        
+                        
             
     return results_df
 
@@ -550,6 +552,7 @@ if __name__ == "__main__":
 
     parser = ArgParser(module = "train_models")
     parser = parser.parser
+    wandb.login()
 
     if torch.cuda.is_available(): 
         device = torch.device("cuda")
