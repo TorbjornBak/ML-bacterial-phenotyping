@@ -17,9 +17,9 @@ class ArgParser():
                              
         self.parser = parser.parse_args()
         
-        self.check_exists()
+        self.check_inputs()
 
-    def check_exists(self):
+    def check_inputs(self):
         parser = self.parser
         labels_path = parser.labels_path
         parser.input = parser.input.rstrip("/")
@@ -37,7 +37,7 @@ class ArgParser():
         parser.add_argument("--cores", default=2, type = int, help="nr of cores to use for embedding")
         parser.add_argument("--input", required = True, help = "Path to input directory containing files for training")
         parser.add_argument("--labels_path", required = True, help = "Path to file containing labels for training")
-        parser.add_argument("--labels_id", default = "genome_name", type = str, help = "Name of column containing ids for labels")
+        parser.add_argument("--id_column", default = "genome_name", type = str, help = "Name of column containing ids for labels")
         parser.add_argument("--output", required = True, help = "Path to output directory for training results")
         parser.add_argument("--file_type", default = ".parquet", help = "fx .parquet / .fasta, the file ending to look for in the input folder")
         return parser

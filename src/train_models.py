@@ -12,7 +12,7 @@ from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
 
-from embeddings import load_labels, kmerize_parquet_joblib, compress_integer_embeddings
+from embeddings import load_labels, check_id_and_labels_exist, kmerize_parquet_joblib, compress_integer_embeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier
 from models.RNN import RNNKmerClassifier
@@ -532,11 +532,10 @@ if __name__ == "__main__":
 
     
 
-    labels_id = parser.labels_id
+    id_column = parser.id_column
     labels_path = parser.labels_path
     input_directory = parser.input
     phenotypes = parser.phenotype
-    
     
 
     kmer_prefixes = parser.kmer_prefixes
@@ -567,23 +566,22 @@ if __name__ == "__main__":
    
    # base_kmer = "CGTCACA"
     
+    check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")
+
   
     if embed_only is True:
-                
         for phenotype in phenotypes:
-            labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
             label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
             for prefix in kmer_prefixes:
                 for suffix_size in kmer_suffix_sizes:
-                    
                     pad_id = 0 # reserve 0 for padding in tokenizer
-                    
-
                     result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
     else:
         for phenotype in phenotypes:
-            labels = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+            print(f'{phenotype=}')
+            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
             label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
             results_df = get_model_performance(model_type=model_type, 

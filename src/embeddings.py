@@ -358,8 +358,19 @@ def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None
 	
 	return arrays, y_labels
 	
+def check_id_and_labels_exist(file_path, id, labels : list, sep = "\t"):
+	df = pd.read_csv(file_path, sep = sep)
+	
+	assert id in df, f'{id=} was not found in the columns of the supplied file \n{df.columns=}'
 
-def load_labels(file_path = "downloads/genome_lineage", id = "genome_id", label = "class", sep = "\t"):
+	for label in labels:
+		assert label in df, f'{label=} was not found in the columns of the supplied file.\n{df.columns=}'
+	
+	return
+
+
+
+def load_labels(file_path, id = "genome_id", label = "class", sep = "\t"):
 
 	df = pd.read_csv(file_path, sep = sep)
 
