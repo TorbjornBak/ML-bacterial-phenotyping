@@ -14,7 +14,7 @@ from sklearn.preprocessing import LabelEncoder
 
 from embeddings import load_labels, check_id_and_labels_exist, kmerize_parquet_joblib, compress_integer_embeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
-from models.CNN import CNNKmerClassifier
+from models.CNN import CNNKmerClassifier, CNNKmerClassifierLarge
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
@@ -191,7 +191,7 @@ def fit_model(
     
 
     
-    hidden_dim = 128
+    #hidden_dim = 128
     emb_dim = vocab_size if vocab_size < 16 else 16
     kernel_size = 7
 
@@ -204,7 +204,18 @@ def fit_model(
     if model_type == "CNN":
         model = CNNKmerClassifier(vocab_size=vocab_size, 
                             emb_dim=emb_dim, 
-                            conv_dim=hidden_dim, 
+                            #conv_dim=hidden_dim, 
+                            kernel_size=kernel_size, 
+                            num_classes=num_classes, 
+                            pad_id=pad_id,
+                            dropout=dropout,
+                            ).to(device)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+
+    elif model_type == "CNN_LARGE":
+        model = CNNKmerClassifierLarge(vocab_size=vocab_size, 
+                            emb_dim=emb_dim, 
+                            #conv_dim=hidden_dim, 
                             kernel_size=kernel_size, 
                             num_classes=num_classes, 
                             pad_id=pad_id,
@@ -215,7 +226,7 @@ def fit_model(
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=vocab_size, 
                             emb_dim=emb_dim, 
-                            rnn_hidden=hidden_dim, 
+                            #rnn_hidden=hidden_dim, 
                             num_layers=1,
                             bidirectional=True,
                             num_classes=num_classes, 
