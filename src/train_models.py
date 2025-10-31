@@ -11,6 +11,7 @@ from sklearn.metrics import balanced_accuracy_score, classification_report, roc_
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
+import wandb
 
 from embeddings import load_labels, check_id_and_labels_exist, kmerize_parquet_joblib, compress_integer_embeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
@@ -210,7 +211,8 @@ def fit_model(
                             pad_id=pad_id,
                             dropout=dropout,
                             ).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+        weight_decay = 1e-4
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
     elif model_type == "CNN_LARGE":
         model = CNNKmerClassifierLarge(vocab_size=vocab_size, 
@@ -221,7 +223,8 @@ def fit_model(
                             pad_id=pad_id,
                             dropout=dropout,
                             ).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-4)
+        weight_decay = 1e-4
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
     elif model_type == "RNN":
         model = RNNKmerClassifier(vocab_size=vocab_size, 
@@ -232,7 +235,8 @@ def fit_model(
                             num_classes=num_classes, 
                             dropout=dropout,
                             pad_id=pad_id).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-2)
+        weight_decay = 1e-2
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
     
     elif model_type == "TRANSFORMER":
@@ -247,7 +251,8 @@ def fit_model(
             dropout=dropout,
             use_mask=True
             ).to(device)
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = 1e-2)
+        weight_decay = 1e-2
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
     else:
         raise ValueError("No model type was specified. Aborting...")
@@ -261,6 +266,21 @@ def fit_model(
     criterion = nn.CrossEntropyLoss(weight=weight)
 
     print(model)
+
+    run = wandb.init(
+        # Set the wandb entity where your project will be logged (generally your team name).
+        entity="torbjornbak-technical-university-of-denmark",
+        # Set the wandb project where this run will be logged.
+        project="Phenotyping bacteria",
+        # Track hyperparameters and run metadata.
+        config={
+            "learning_rate": learning_rate,
+            "weight_decay" : weight_decay,
+            "architecture": model_type,
+            "dataset": phenotype,
+            "epochs": epochs,
+        },
+    )
 
     # ----- Training loop -----
 
@@ -295,6 +315,7 @@ def fit_model(
                 val_running += criterion(out, yb).item()
             val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 
+            run.log({"epoch": epoch, "train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
             if epoch == 0:
                 best_val_loss = val_loss
                 best_model_state = model.state_dict()
@@ -304,7 +325,6 @@ def fit_model(
                     best_model_state = model.state_dict()
                     early_stop_counter = 0
                 else:
-
                     early_stop_counter += 1
 
                     if early_stop_counter >= patience:
@@ -342,6 +362,7 @@ def fit_model(
         test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
 
     fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
+    run.finish()
     return fit_model_results
 
 
