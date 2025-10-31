@@ -3,7 +3,7 @@ from sklearn.model_selection import train_test_split, StratifiedKFold
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from src.embeddings import kmer_sampling_multiple_files, find_files_to_kmerize
+
 # Create PyTorch datasets and dataloaders
 from torch.utils.data import TensorDataset, DataLoader
 
@@ -12,8 +12,6 @@ from torch.utils.data import TensorDataset, DataLoader
 
 
 
-
-#file_names, labels = find_files_to_kmerize(directory="data", prefix = ".fna")
 #X, y = kmer_sampling_multiple_files(directory="data", file_names=file_names, labels = labels)
 
 X = np.load(file = "/home/projects2/s203555/bv-numpy-arrays/X_array.npy", allow_pickle=True, mmap_mode='r')

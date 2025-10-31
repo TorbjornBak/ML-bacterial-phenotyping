@@ -26,3 +26,5 @@
 
 ~/venvs/ml/bin/python scripts/CNN_v2.py --REEMBED=TRUE --DROPOUT=0.5 --EPOCHS=20 --LR=0.001 --BATCH_SIZE=50 --PHENOTYPE=madin_categorical_gram_stain  --EPOCHS=40 --K_SIZE=4 --KMER_PREFIX=CGTC --CORES=10 
 
+
+/home/projects2/bact_pheno/venvs/ml/bin/python src/train_models.py --phenotype madin_categorical_gram_stain --cores 10 --kmer_prefixes CGTCACA CGTCAC CGTCA --kmer_suffix_sizes 8 10 12 --compress --model_arch CNN --dropout 0.2 --input /home/projects2/bact_pheno/bacbench_data/ --output /home/projects2/bact_pheno/bacbench_data/results/CNN/compressed_full_run/ --labels_path /home/projects2/bact_pheno/bacbench_data/labels.csv --labels_id genome_name

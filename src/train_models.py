@@ -302,7 +302,9 @@ def fit_model(
                 if val_loss < best_val_loss and val_loss is not np.nan:
                     best_val_loss = val_loss
                     best_model_state = model.state_dict()
+                    early_stop_counter = 0
                 else:
+
                     early_stop_counter += 1
 
                     if early_stop_counter >= patience:

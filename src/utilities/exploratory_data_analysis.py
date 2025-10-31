@@ -37,8 +37,8 @@ output_data_directory = input_data_directory
 
 
 phenotype = "madin_categorical_gram_stain"
-label_dict_literal, label_dict, int2label = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
-
+labels = load_labels(file_path=labels_path, id = "genome_name", label = phenotype, sep = ",")
+label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"]
 
 file_suffix = ".parquet"
 dir_list = os.listdir(input_data_directory)

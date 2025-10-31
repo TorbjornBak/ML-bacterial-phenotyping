@@ -510,8 +510,8 @@ if __name__ == "__main__":
 
     id = "genome_name"
     phenotype = "madin_categorical_gram_stain"
-    label_dict_literal, label_dict = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
-
+    labels = load_labels(file_path=labels_path, id = id, label = phenotype, sep = ",")
+    label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"]
 
   
     nr_of_cores = 2
