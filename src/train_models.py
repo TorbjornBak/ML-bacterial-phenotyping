@@ -266,7 +266,8 @@ def fit_model(
     criterion = nn.CrossEntropyLoss(weight=weight)
 
     print(model)
-
+    
+    wandb.login()
     run = wandb.init(
         # Set the wandb entity where your project will be logged (generally your team name).
         entity="torbjornbak-technical-university-of-denmark",
