@@ -66,57 +66,59 @@ if __name__ == "__main__":
 	
     
 	#phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
-	phenotype = parser.phenotype
+	phenotypes = parser.phenotype # is a list 
+ 
 	labels_path = parser.labels_path
 	id_column = parser.id_column
 	input_data_directory = parser.input
 	output_data_directory = parser.output
 
+	for phenotype in phenotypes:
 
-	label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
-	label_dict_literal, label_dict = label_return["label_dict"], label_return["label_dict_int"]
+		label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
+		label_dict_literal, label_dict = label_return["label_dict"], label_return["label_dict_int"]
 
-	file_suffix = ".parquet"
-	dir_list = os.listdir(input_data_directory)
-	dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
+		file_suffix = ".parquet"
+		dir_list = os.listdir(input_data_directory)
+		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
-	print(f'{dir_list=}')
+		print(f'{dir_list=}')
 
-	#kmer_prefix = cli_arguments["--KMER"] if "--KMER" in cli_arguments else "CGTCA"
-	kmer_prefix = parser.kmer_prefix
-	#kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
-	kmer_suffix_size = parser.kmer_suffix_size
-	
-	X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = parser.cores)
+		#kmer_prefix = cli_arguments["--KMER"] if "--KMER" in cli_arguments else "CGTCA"
+		kmer_prefix = parser.kmer_prefix
+		#kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
+		kmer_suffix_size = parser.kmer_suffix_size
+		
+		X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = parser.cores)
 
 
-	pca = PCA(n_components=2, random_state=0)
-	X_pcs = pca.fit_transform(X)
+		pca = PCA(n_components=2, random_state=0)
+		X_pcs = pca.fit_transform(X)
 
-	print(pca.explained_variance_ratio_)
+		print(pca.explained_variance_ratio_)
 
-	labels = np.unique(y)
+		labels = np.unique(y)
 
-	label2id = {label: i for i, label in enumerate(labels)}
+		label2id = {label: i for i, label in enumerate(labels)}
 
-	color_list = [label2id[l] for l in y]
+		color_list = [label2id[l] for l in y]
 
-	plt.figure(figsize=(6,5))
+		plt.figure(figsize=(6,5))
 
-	plt.scatter(X_pcs[:, 0], X_pcs[:, 1], c=color_list, cmap='coolwarm', edgecolor='k')
-	plt.xlabel(f'PC1')
-	plt.ylabel(f'PC2')
-	plt.title('PCA projection')
-	plt.legend(title='Label', frameon=False)
-	plt.tight_layout()
-	pca_save_path = f'{output_data_directory}/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg'
-	plt.savefig(pca_save_path)
+		plt.scatter(X_pcs[:, 0], X_pcs[:, 1], c=color_list, cmap='coolwarm', edgecolor='k')
+		plt.xlabel(f'PC1')
+		plt.ylabel(f'PC2')
+		plt.title('PCA projection')
+		plt.legend(title='Label', frameon=False)
+		plt.tight_layout()
+		pca_save_path = f'{output_data_directory}/pca_analysis_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.jpg'
+		plt.savefig(pca_save_path)
 
-	print(f'{pca_save_path=}')
+		print(f'{pca_save_path=}')
 
-	mapper = umap.UMAP().fit(X)
+		mapper = umap.UMAP().fit(X)
 
-	ax = umap.plot.points(mapper, labels = y)
-	umap_save_path = f'{output_data_directory}/umap_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.png'
-	ax.figure.savefig(umap_save_path)
-	print(f'{umap_save_path=}')
+		ax = umap.plot.points(mapper, labels = y)
+		umap_save_path = f'{output_data_directory}/umap_{phenotype}_prefix_{kmer_prefix}_suffix_size_{kmer_suffix_size}.png'
+		ax.figure.savefig(umap_save_path)
+		print(f'{umap_save_path=}')

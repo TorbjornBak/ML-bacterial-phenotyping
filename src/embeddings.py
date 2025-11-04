@@ -373,7 +373,7 @@ def check_id_and_labels_exist(file_path, id, labels : list, sep = "\t"):
 def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", freq_others = None):
 
 	df = pd.read_csv(file_path, sep = sep)
-
+	print(f'{id=}, {label=}')
 	df = df.dropna(subset = [id, label])
 
 	label_dict = dict(zip(df[id].apply(str), df[label])) 
