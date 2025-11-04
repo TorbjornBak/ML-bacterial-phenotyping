@@ -465,7 +465,10 @@ def get_model_performance(model_type = "CNN",
                         test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
 
                         #num_workers = min(8, os.cpu_count() or 2)
-                        num_workers = 2
+                        if model_type == "TRANSFORMER":
+                            num_workers = 0
+                        else:
+                            num_workers = 2
                         
                         train_loader = DataLoader(
                             train_ds,
