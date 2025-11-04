@@ -5,6 +5,7 @@ import pandas as pd
 import random
 from joblib import Parallel, delayed
 from itertools import product
+from utilities import dna_bpe as bpe
 
 # Reads one fasta file
 
@@ -556,6 +557,10 @@ def byte_pair_encoding():
 
 	pass
 
+# def train_dna_tokenizer(corpus, ):
+# 	corpus = [sequence for sequence in read_sequence_file()]
+# 	bpe.train_tokenizer(corpus)
+
 def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = ".parquet", cpm = False):
 
 	print(f"Kmerizing {path}")
@@ -604,7 +609,8 @@ def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer
 	
 	return kmer_arrays
 
-# Deprecated function, still works, use kmerize_joblib instead
+########################################
+########### Deprecated function, still works, use kmerize_joblib instead ####
 def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers"):
 
 	if output_type == "kmers":
@@ -634,10 +640,43 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 	
 	return data_dict
 
-def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers", file_type = ".parquet"):
+def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers", file_type = ".parquet", vocab_size = 500, token_size = 4):
 	if output_type == "kmers":
 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 	
+	elif output_type == "bpe":
+		assert vocab_size is not None
+		assert token_size is not None
+		print(f'Using BPE encoding')
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+		
+		print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
+		data_dict = dict()
+		for kmer_dict in joblib_results:
+			data_dict.update(kmer_dict)
+
+		corpus = ["".join(kmers) for kmers in data_dict.values()]
+
+		print(f'Training bpe tokenizer...')
+		tokenizer, _ = bpe.train_tokenizer(corpus=corpus, vocab_size=vocab_size, k = token_size)
+		vocab_list, vocab_dict, pad_id, unk_id = bpe.build_vocab_from_merges(corpus, tokenizer, k=token_size)
+
+		print(f'{vocab_list=}')
+
+		tokenizer_results = Parallel(n_jobs = nr_of_cores)(delayed(bpe.tokenize)(id, sequence, tokenizer, vocab_dict, k = token_size) for id, sequence in data_dict.items())
+		
+		tokenized_sequence_dict = dict()
+		for result_dict in tokenizer_results:
+			tokenized_sequence_dict.update(result_dict)
+
+		print(f'Nr of sequences in dataset: {len(tokenized_sequence_dict.keys())}')
+		print(f'{len(vocab_list)=}')
+
+		return {"joblib_result": tokenized_sequence_dict, 
+		  		"vocab_size" : len(vocab_list),
+				"pad_id" : pad_id,
+				"unk_id" : unk_id}
+
 	elif output_type == "str":
 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 
@@ -660,7 +699,7 @@ def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, o
 
 	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
 	
-	return data_dict
+	return {"joblib_result" : data_dict}
 
 def compress_integer_embeddings(integer_embeddings, alphabet_size, kmer_suffix_size):
 	# Function for compressing integer embedding vocab space, 
@@ -730,20 +769,6 @@ def write_fasta(id, sequences, output_path, metadata = None):
 			fasta_file.write(sequence_formatted)
 			fasta_file.write("\n")
 
-# def kmerize_parquet_count_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4):
-
-# 	joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_parquet_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size) for path in file_paths)
-
-# 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
-
-# 	data_dict = dict()
-	
-# 	for kmer_counts in joblib_results:
-# 		data_dict.update(kmer_counts)
-
-# 	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
-	
-# 	return data_dict
 
 if __name__ == "__main__":
 

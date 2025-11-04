@@ -13,7 +13,7 @@ from sklearn.preprocessing import LabelEncoder
 
 import wandb
 
-from embeddings import load_labels, check_id_and_labels_exist, kmerize_parquet_joblib, compress_integer_embeddings
+from embeddings import load_labels, check_id_and_labels_exist, kmerize_joblib, compress_integer_embeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier, CNNKmerClassifierLarge
 from models.RNN import RNNKmerClassifier
@@ -30,61 +30,61 @@ def embed_data(kmer_prefix = None,
                no_loading = False, 
                label_dict = None, 
                compress_vocab_space = False,
+               output_type = "kmers",
                file_type = ".parquet"):
     # Should return X and y
     if output_directory is None:
         output_directory = input_data_directory
 
     
-    print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=}')
-    dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-    dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+    print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {output_type}.')
+    if output_type == "kmers":
+        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
+        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+    else: 
+        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
+        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+    
+    
 
     if reembed:
-
-        data_dict = dict()
-
-        
         dir_list = os.listdir(input_data_directory)
         dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_type in file]
 
         print(f'{dir_list=}')
 
-        data_dict = kmerize_parquet_joblib(dir_list, kmer_prefix, kmer_suffix_size, nr_of_cores = nr_of_cores)
-        
+        result = kmerize_joblib(dir_list, kmer_prefix, kmer_suffix_size, nr_of_cores = nr_of_cores, output_type=output_type)
+        data_dict = result["joblib_result"]
+        vocab_size = result["vocab_size"] if "vocab_size" in result else 4**kmer_suffix_size+1
+        pad_id = result["pad_id"] if "pad_id" in result else 0
         ids = [gid for gid in data_dict.keys()]
         X = [data_dict[gid] for gid in ids]
             
         X_obj = np.array(X, dtype=object)
-        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+       
         print(f"Saving embeddings to: {dataset_file_path=}")
-        np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object))
+
+        np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object), vocab_size = vocab_size, pad_id = pad_id)
     
     elif kmer_prefix is not None and kmer_suffix_size is not None:
-        #kmer_prefix = prefix
-        #kmer_suffix_size = suffix_size
 
-        dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-        dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-
-        
         if os.path.isfile(dataset_file_path):
             if no_loading is True:
                 return True
-            X, ids = load_stored_embeddings(dataset_file_path)
+            X, ids, vocab_size, pad_id = load_stored_embeddings(dataset_file_path)
         else: 
             return embed_data(kmer_prefix = kmer_prefix, kmer_suffix_size = kmer_suffix_size, 
                               input_data_directory=input_data_directory, output_directory=output_directory, 
                               label_dict=label_dict, reembed = True,
-                              compress_vocab_space=compress_vocab_space)
+                              compress_vocab_space=compress_vocab_space,
+                              output_type=output_type)
             
     elif os.path.isfile(dataset_file_path):
         if no_loading is True:
             return True
         # Don't reembed kmers
         # Load np array instead
-        X, ids = load_stored_embeddings(dataset_file_path)
+        X, ids, vocab_size, pad_id = load_stored_embeddings(dataset_file_path)
        
     else:
         raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
@@ -93,16 +93,19 @@ def embed_data(kmer_prefix = None,
     X = [x for gid, x in zip(ids, X) if gid in label_dict]
     
     y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
-
+    
+    
+       
     if compress_vocab_space is True:
         X, vocab_size = compress_integer_embeddings(X, alphabet_size=4, kmer_suffix_size=kmer_suffix_size)
-    else:
+    elif vocab_size is None:
         vocab_size = 4**kmer_suffix_size+1
     print(f'{np.unique(y)=}')
     print(f'{len(y)=}')
     print(f'{len(X)=}')
+    print(f'{vocab_size=}')
     
-    return X, y, vocab_size
+    return X, y, vocab_size, pad_id
 
 def load_stored_embeddings(dataset_file_path):
     print(f"Loading embeddings from: {dataset_file_path=}")
@@ -110,7 +113,10 @@ def load_stored_embeddings(dataset_file_path):
 
     X = list(z["X"])  # object array → list of arrays 
     ids = list(z["ids"])  # map labels from current dict
-    return X, ids
+    
+    vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
+    pad_id = int(z["pad_id"]) if "pad_id" in z else 0
+    return X, ids, vocab_size, pad_id
 
 class SequenceDataset(Dataset):
     """Dataset that returns variable-length token sequences and labels.
@@ -224,7 +230,7 @@ def fit_model(
     kernel_size = 7
 
     memory_usage = {"peak_allocated_gib": 0, "peak_reserved_gib" : 0}
-
+    print(f'{vocab_size=}')
     #Initialize model, optimizer, loss function
     if model_type == "CNN":
         model = CNNKmerClassifier(vocab_size=vocab_size, 
@@ -390,7 +396,10 @@ def get_model_performance(model_type = "CNN",
                           trace_memory_usage = False,
                           epochs = None,
                           dropout = 0.2,
-                          patience = 15):
+                          patience = 15,
+                          output_type = "kmers",
+                          reembed = False
+                          ):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -420,14 +429,15 @@ def get_model_performance(model_type = "CNN",
         ]
     )
     
-    pad_id = 0
     num_epochs = epochs
     for prefix in kmer_prefixes:
         for suffix_size in kmer_suffix_sizes:
             print(f'Training models with {prefix=} and {suffix_size=}')
-            X, y, vocab_size = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
+            X, y, vocab_size, pad_id = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
                                           input_data_directory=input_data_directory, 
-                                          label_dict=label_dict, compress_vocab_space=compress_vocab_space)
+                                          label_dict=label_dict, compress_vocab_space=compress_vocab_space,
+                                          output_type=output_type,
+                                          reembed=reembed)
             
             num_classes = len(np.unique(y))
             
@@ -620,6 +630,9 @@ if __name__ == "__main__":
     k_folds = parser.k_folds
     freq_others = parser.freq_others
     patience = parser.patience
+    tokenize_method = parser.tokenize_method
+    reembed = parser.reembed
+    print(f'{tokenize_method=}')
 
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
@@ -657,7 +670,9 @@ if __name__ == "__main__":
                                             trace_memory_usage=trace_memory_usage,
                                             epochs = epochs,
                                             dropout = dropout,
-                                            patience=patience)
+                                            patience=patience,
+                                            output_type=tokenize_method,
+                                            reembed=reembed)
             dataset_name = f"{model_type}_train_grid_search_results"
             path = f'{output_directory}/{dataset_name}.csv'
             results_df.to_csv(path_or_buf=path)

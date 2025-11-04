@@ -79,14 +79,14 @@ def train_tokenizer(
         vocab.append(merged_token)
         merge_pair(best_a, best_b, splits, word_freqs)
 
-    return merges  # maps (a,b) -> "ab"
+    return merges, vocab  # maps (a,b) -> "ab"
 
-def tokenize(
+def encode_tokens(
     text: str,
     merges: Dict[Tuple[str, str], str],
     k: int = 6,
 ) -> List[str]:
-    # apply merges in learned order to k-mer-char splits, then flatten
+    """Return BPE tokens (strings), no id mapping."""
     tokens = kmerize(text, k=k)
     splits = [list(w) for w in tokens]
     for (a, b), merged in merges.items():
@@ -109,3 +109,42 @@ def tokenize(
     return out_tokens
 
 
+def build_vocab_from_merges(
+    corpus: Iterable[str],
+    merges: Dict[Tuple[str, str], str],
+    k: int = 6,
+    add_specials: bool = True,
+):
+    """Create a vocab from what encode_tokens actually emits on the training corpus."""
+    seen = set()
+    for seq in corpus:
+        seen.update(encode_tokens(seq, merges, k=k))
+    vocab_list = sorted(seen)
+    if add_specials:
+        vocab_list = ["[PAD]", "[UNK]"] + vocab_list
+    vocab_dict = {tok: i for i, tok in enumerate(vocab_list)}
+    pad_id = vocab_dict.get("[PAD]", 0)
+    unk_id = vocab_dict.get("[UNK]", 0)
+    return vocab_list, vocab_dict, pad_id, unk_id
+
+def build_vocab(vocab: List[str], add_specials: bool = True):
+    """Fallback: build from training-time list; may miss inference tokens."""
+    specials = ["[PAD]", "[UNK]"] if add_specials else []
+    vocab_list = specials + list(vocab)
+    vocab_dict = {tok: i for i, tok in enumerate(vocab_list)}
+    pad_id = vocab_dict.get("[PAD]", 0)
+    unk_id = vocab_dict.get("[UNK]", 0)
+    return vocab_list, vocab_dict, pad_id, unk_id
+
+def tokenize(
+    id: str,
+    text: str,
+    merges: Dict[Tuple[str, str], str],
+    vocab_dict: dict,
+    k: int = 6,
+) -> List[str]:
+    # OOV-safe id mapping
+    toks = encode_tokens(text, merges, k=k)
+    unk_id = vocab_dict.get("[UNK]", 0)
+    ids = [vocab_dict.get(t, unk_id) for t in toks]
+    return {id: ids}

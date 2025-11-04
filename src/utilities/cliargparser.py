@@ -58,10 +58,12 @@ class ArgParser():
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
         parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
-        parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to training for, for each model")
+        parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
         parser.add_argument("--dropout", default = 0.2, type = float, help = "%% to dropout for each layer")
         parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
+        parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
+        parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
         return parser
         
     def pca_arguments(self):
