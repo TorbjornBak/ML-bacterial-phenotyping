@@ -39,7 +39,8 @@ class ArgParser():
         parser.add_argument("--labels_path", required = True, help = "Path to file containing labels for training")
         parser.add_argument("--id_column", default = "genome_name", type = str, help = "Name of column containing ids for labels")
         parser.add_argument("--output", required = True, help = "Path to output directory for training results")
-        parser.add_argument("--file_type", default = ".parquet", help = "fx .parquet / .fasta, the file ending to look for in the input folder")
+        parser.add_argument("--file_type", default = ".parquet", help = "fx .parquet / .fasta, the file ending to look for in input folder")
+        parser.add_argument("--freq_others", default = None, help = "Bottom frequency of label counts that should be discarded. Useful if some labels only occur a few times.")
         return parser
     
     def train_model_arguments(self):

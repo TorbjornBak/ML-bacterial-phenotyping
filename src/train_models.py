@@ -597,6 +597,7 @@ if __name__ == "__main__":
     epochs = parser.epochs
     dropout = parser.dropout
     k_folds = parser.k_folds
+    freq_others = parser.freq_others
 
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
@@ -609,7 +610,7 @@ if __name__ == "__main__":
   
     if embed_only is True:
         for phenotype in phenotypes:
-            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
+            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
             label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
             for prefix in kmer_prefixes:
@@ -619,7 +620,7 @@ if __name__ == "__main__":
     else:
         for phenotype in phenotypes:
             print(f'{phenotype=}')
-            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
+            labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
             label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
             results_df = get_model_performance(model_type=model_type, 

@@ -68,12 +68,12 @@ if __name__ == "__main__":
 	#phenotype = cli_arguments["--PHENOTYPE"] if "--PHENOTYPE" in cli_arguments else "madin_categorical_gram_stain"
 	phenotype = parser.phenotype
 	labels_path = parser.labels_path
-	labels_id = parser.labels_id
+	id_column = parser.id_column
 	input_data_directory = parser.input
 	output_data_directory = parser.output
 
 
-	label_return = load_labels(file_path=labels_path, id = labels_id, label = phenotype, sep = ",")
+	label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
 	label_dict_literal, label_dict = label_return["label_dict"], label_return["label_dict_int"]
 
 	file_suffix = ".parquet"

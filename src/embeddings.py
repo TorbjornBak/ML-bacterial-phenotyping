@@ -370,7 +370,7 @@ def check_id_and_labels_exist(file_path, id, labels : list, sep = "\t"):
 
 
 
-def load_labels(file_path, id = "genome_id", label = "class", sep = "\t"):
+def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", freq_others = None):
 
 	df = pd.read_csv(file_path, sep = sep)
 
@@ -379,6 +379,14 @@ def load_labels(file_path, id = "genome_id", label = "class", sep = "\t"):
 	label_dict = dict(zip(df[id].apply(str), df[label])) 
 
 	unique_labels = np.unique(df[label])
+
+	
+	if freq_others is not None:
+		freq = df[label].value_count(normalize = True)
+		bottom_quantile = freq.quantile(q = freq_others)
+		least_occuring_labels = freq[freq<=bottom_quantile]
+		df.loc[df[label].isin(least_occuring_labels.index.tolist()), label] = "other" 
+	
 	
 	label2int = {label: i for i, label in enumerate(unique_labels)}
 
