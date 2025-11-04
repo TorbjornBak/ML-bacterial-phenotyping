@@ -130,10 +130,10 @@ def kmerize_sequences_prefix_filtering_str(sequences, kmer_prefix, kmer_suffix_s
 	return array
 
 
-def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix_size, array_size):
+def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix_size, array_size, normalize = True):
 	# np array with counts of each kmer
 
-	array = np.zeros(array_size, dtype = np.uint16)
+	counts = np.zeros(array_size, dtype = np.float32)
 	
 	kmer_prefix_size = len(kmer_prefix)
 	kmer_count = 0
@@ -157,11 +157,15 @@ def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix
 				# Converts dna to binary to use for indexing np.array
 				kmer_suffix_binary = dna_to_binary_str(kmer_suffix,	kmer_suffix_size)
 				
-				array[kmer_suffix_binary] += 1
+				counts[kmer_suffix_binary] += 1
 
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
-	#print(f'Total kmers: {kmer_count}')
-	return array
+	
+	if normalize:
+		counts /= kmer_count
+		
+			
+	return counts
 
 	
 def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_suffix_size):
@@ -552,7 +556,7 @@ def byte_pair_encoding():
 
 	pass
 
-def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = ".parquet"):
+def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = ".parquet", cpm = False):
 
 	print(f"Kmerizing {path}")
 	
@@ -567,10 +571,12 @@ def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_pre
 		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size))
 
 		kmer_counts[genome_id] = array
+
 		
 
 		#print(f'{genome_id} : {len(kmers)}')
 
+	
 	
 	return kmer_counts
 

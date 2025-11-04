@@ -216,7 +216,11 @@ def fit_model(
 
     
     #hidden_dim = 128
-    emb_dim = vocab_size if vocab_size < 16 else 16
+    if model_type == "TRANSFORMER":
+        emb_dim = 8
+    else:
+        emb_dim = vocab_size if vocab_size < 16 else 16
+    
     kernel_size = 7
 
     memory_usage = {"peak_allocated_gib": 0, "peak_reserved_gib" : 0}
