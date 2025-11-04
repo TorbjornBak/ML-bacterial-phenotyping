@@ -61,6 +61,7 @@ class ArgParser():
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to training for, for each model")
         parser.add_argument("--dropout", default = 0.2, type = float, help = "%% to dropout for each layer")
         parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
+        parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         return parser
         
     def pca_arguments(self):

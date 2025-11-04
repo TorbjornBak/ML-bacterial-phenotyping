@@ -20,6 +20,7 @@ from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
 
+from dataclasses import dataclass
 
 def embed_data(kmer_prefix = None, 
                kmer_suffix_size = None, 
@@ -174,6 +175,25 @@ class PadCollate:
         return pad_collate(batch, pad_id=self.pad_id)
 
 
+# @dataclass
+# class model_parameters:
+#     train_loader: DataLoader
+#     val_loader: DataLoader
+#     test_loader: DataLoader
+#     device: torch.device
+#     num_epochs: int
+#     learning_rate: float
+#     class_weight: int | None
+#     num_classes: int
+#     model_type: str
+#     vocab_size: int | None
+#     pad_id: int 
+#     trace_memory_usage: bool
+#     dropout: float
+#     wandb_run: wandb.init
+
+
+
 
 def fit_model(
     train_loader: DataLoader,
@@ -189,7 +209,8 @@ def fit_model(
     pad_id=0, 
     trace_memory_usage = False,
     dropout = 0.2,
-    wandb_run = None):
+    wandb_run = None,
+    patience = 15):
     
 
 
@@ -197,9 +218,6 @@ def fit_model(
     #hidden_dim = 128
     emb_dim = vocab_size if vocab_size < 16 else 16
     kernel_size = 7
-
-    
-    patience = 30
 
     memory_usage = {"peak_allocated_gib": 0, "peak_reserved_gib" : 0}
 
@@ -367,7 +385,8 @@ def get_model_performance(model_type = "CNN",
                           compress_vocab_space = False,
                           trace_memory_usage = False,
                           epochs = None,
-                          dropout = 0.2):
+                          dropout = 0.2,
+                          patience = 15):
     results_df = pd.DataFrame(
         columns=[
             "phenotype",
@@ -396,12 +415,6 @@ def get_model_performance(model_type = "CNN",
             "peak_reserved_gib",
         ]
     )
-    
-    #learning_rates = learning_rates
-    # elif model_type == "CNN":
-    #     learning_rates = [1e-2, 1e-3, 1e-4]
-    # else:
-    #     learning_rates = [1e-3, 1e-4]
     
     pad_id = 0
     num_epochs = epochs
@@ -489,7 +502,8 @@ def get_model_performance(model_type = "CNN",
                                                 pad_id=pad_id, 
                                                 trace_memory_usage=trace_memory_usage,
                                                 dropout = dropout,
-                                                wandb_run = run)
+                                                wandb_run = run,
+                                                patience = patience)
                         
                         y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
                         
@@ -598,6 +612,7 @@ if __name__ == "__main__":
     dropout = parser.dropout
     k_folds = parser.k_folds
     freq_others = parser.freq_others
+    patience = parser.patience
 
     print(f'{trace_memory_usage=}')
     print(f"{learning_rates=}")
@@ -634,7 +649,8 @@ if __name__ == "__main__":
                                             compress_vocab_space=compress_vocab_space,
                                             trace_memory_usage=trace_memory_usage,
                                             epochs = epochs,
-                                            dropout = dropout)
+                                            dropout = dropout,
+                                            patience=patience)
             dataset_name = f"{model_type}_train_grid_search_results"
             path = f'{output_directory}/{dataset_name}.csv'
             results_df.to_csv(path_or_buf=path)
