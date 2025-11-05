@@ -41,6 +41,7 @@ class ArgParser():
         parser.add_argument("--output", required = True, help = "Path to output directory for training results")
         parser.add_argument("--file_type", default = ".parquet", help = "fx .parquet / .fasta, the file ending to look for in input folder")
         parser.add_argument("--freq_others", default = None, help = "Bottom frequency of label counts that should be discarded. Useful if some labels only occur a few times.")
+        parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
         return parser
     
     def train_model_arguments(self):
@@ -63,7 +64,6 @@ class ArgParser():
         parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
-        parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
         return parser
         
     def pca_arguments(self):
