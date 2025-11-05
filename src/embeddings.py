@@ -627,7 +627,7 @@ def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_core
 
 	elif output_type == "counts":
 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
-
+	
 	
 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
 
