@@ -10,12 +10,12 @@ import os
 import numpy as np
 import pandas as pd
 
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 
-from embeddings import kmerize_parquet_joblib, load_labels
+from embeddings import kmerize_joblib, load_labels
 from dataclasses import dataclass
 
 def load_stored_embeddings(dataset_file_path):
@@ -29,7 +29,7 @@ def load_stored_embeddings(dataset_file_path):
 
 def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4):
 	if path is None:
-		data_dict = kmerize_parquet_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type="counts")
+		data_dict = kmerize_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type="counts")
 		ids = [gid for gid in data_dict.keys()]
 		X = [data_dict[gid] for gid in ids]
 	else:
@@ -78,15 +78,37 @@ def random_forest_classification(context):
 	clf = RandomForestClassifier(max_depth=10, random_state=0)
 	clf.fit(X_train, y_train)
 	y_pred = clf.predict(X_test)
-	y_pred_probabilities = clf.predict_proba(X_test)
+	#y_pred_probabilities = clf.predict_proba(X_test)
 	print(f'{y_test[:100]=}')
 	print(f'{y_pred[:100]=}')
 	print(f'accuracy of random forest = {clf.score(X_test, y_test)}')
 	
-	create_classification_report(y_train, y_test, y_pred, y_pred_probabilities, context)
+	create_classification_report(y_train, y_test, y_pred, context)
 
 	return y_pred
 	
+def hist_gradient_boosting_classifier(context):
+	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
+	X, y = context.X, context.y
+	X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 42, test_size= 0.2)
+	X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) 
+						
+
+	clf = HistGradientBoostingClassifier(loss = 'log_loss', 
+									  learning_rate=0.01, 
+									  l2_regularization = 1e-5,
+									  max_features=0.9,
+									  class_weight="balanced")
+	clf.fit(X_train, y_train, X_val = X_val, y_val = y_val)
+	y_pred = clf.predict(X_test)
+
+	print(f'{y_test[:100]=}')
+	print(f'{y_pred[:100]=}')
+	print(f'accuracy of random forest = {clf.score(X_test, y_test)}')
+	
+	create_classification_report(y_train, y_test, y_pred, context)
+
+	return y_pred
 
 
 def umap_plot(context):
@@ -111,15 +133,14 @@ class model_context:
 def create_classification_report(y_train, 
 								 y_test, 
 								 y_pred, 
-								 y_pred_probabilities,
 								 ctx):
 
 	report = classification_report(y_test, y_pred, output_dict=True, zero_division="warn")
 	conf_matrix = confusion_matrix(y_test, y_pred, labels = list(ctx.int2label))
 
-	y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-	auc_weighted = roc_auc_score(y_test_oh, y_pred_probabilities, average="weighted", multi_class="ovr")
-	auc_macro = roc_auc_score(y_test_oh, y_pred_probabilities, average="macro", multi_class="ovr")
+	#y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+	#auc_weighted = roc_auc_score(y_test_oh, y_pred_probabilities, average="weighted", multi_class="ovr")
+	#auc_macro = roc_auc_score(y_test_oh, y_pred_probabilities, average="macro", multi_class="ovr")
 
 	# Calculate balanced accuracy
 	balanced_accuracy = balanced_accuracy_score(y_test, y_pred)
@@ -139,8 +160,8 @@ def create_classification_report(y_train,
 			"recall_macro": report["macro avg"]["recall"],
 			"accuracy": report["accuracy"],
 			"balanced_accuracy": balanced_accuracy,
-			"auc_weighted": auc_weighted,
-			"auc_macro": auc_macro,
+			#"auc_weighted": auc_weighted,
+			#"auc_macro": auc_macro,
 			"n_classes": len(np.unique(y_train)),
 			"confusion_matrix" : conf_matrix,
 			"intx2label" : ctx.int2label,
@@ -188,7 +209,7 @@ if __name__ == "__main__":
 		X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = parser.cores)
 
 
-		context = model_context(
+		ctx = model_context(
 							X,
 							y, 
 							output_data_directory, 
@@ -198,12 +219,17 @@ if __name__ == "__main__":
 							model_type="RandomForest",
 							int2label=int2label)
 		
-		pca_plot(context)
-
-		y_pred = random_forest_classification(context)
-
 		
 
-		umap_plot(context)
+		y_pred = random_forest_classification(ctx)
+
+		ctx.model_type = "HistGradientBoosting" 
+
+		y_pred = hist_gradient_boosting_classifier(ctx)
+
+
+		# Plotting pca and umap
+		pca_plot(ctx)
+		umap_plot(ctx)
 
 		
