@@ -24,17 +24,27 @@ def load_stored_embeddings(dataset_file_path):
 
 	X = list(z["X"])  # object array → list of arrays 
 	ids = list(z["ids"])  # map labels from current dict
+	print(f'{len(X)=}')
+	print(f'{len(ids)=}')
 	return X, ids
 
 
-def embed_data(label_dict, dir_list, path = None, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4):
-	if path is None:
-		data_dict = kmerize_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type="counts")
+def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4, output_directory = None, output_type = "counts", reembed = False):
+
+	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
+	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+	
+	if not os.path.isfile(dataset_file_path) or reembed:
+		result_dict = kmerize_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type=output_type)
+		data_dict = result_dict["joblib_result"]
 		ids = [gid for gid in data_dict.keys()]
 		X = [data_dict[gid] for gid in ids]
-	else:
-		X, ids = load_stored_embeddings(path)
 
+		np.savez_compressed(dataset_file_path, X=X, ids=np.array(ids, dtype=object))	
+		print(f"{dataset_file_path=}")
+	else:
+		X, ids = load_stored_embeddings(dataset_file_path)
+		
 
 	X = [x for gid, x in zip(ids, X) if gid in label_dict]
 	y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
@@ -189,12 +199,13 @@ if __name__ == "__main__":
 	id_column = parser.id_column
 	input_data_directory = parser.input
 	output_data_directory = parser.output
+	reembed = parser.reembed
 
 	for phenotype in phenotypes:
 
 		label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-		
+
 		file_suffix = ".parquet"
 		dir_list = os.listdir(input_data_directory)
 		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
@@ -206,7 +217,15 @@ if __name__ == "__main__":
 		#kmer_suffix_size = int(cli_arguments["--SUFFIX_SIZE"]) if "--SUFFIX_SIZE" in cli_arguments else 4
 		kmer_suffix_size = parser.kmer_suffix_size
 		
-		X, y = embed_data(label_dict=label_dict, dir_list=dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size = kmer_suffix_size, cores = parser.cores)
+		X, y = embed_data(label_dict=label_dict, 
+					dir_list=dir_list, 
+					kmer_prefix=kmer_prefix, 
+					kmer_suffix_size = kmer_suffix_size, 
+					cores = parser.cores, 
+					output_directory = output_data_directory, 
+					output_type = "counts",
+					reembed=reembed
+					)
 
 
 		ctx = model_context(
