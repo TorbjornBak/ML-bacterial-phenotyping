@@ -101,7 +101,7 @@ def hist_gradient_boosting_classifier(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
 	X, y = context.X, context.y
 	X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = 42, test_size= 0.2)
-	X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) 
+	#X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) 
 						
 
 	clf = HistGradientBoostingClassifier(loss = 'log_loss', 
@@ -109,7 +109,7 @@ def hist_gradient_boosting_classifier(context):
 									  l2_regularization = 1e-5,
 									  max_features=0.9,
 									  class_weight="balanced")
-	clf.fit(X_train, y_train, X_val = X_val, y_val = y_val)
+	clf.fit(X_train, y_train)
 	y_pred = clf.predict(X_test)
 
 	print(f'{y_test[:100]=}')
