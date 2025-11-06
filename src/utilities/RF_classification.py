@@ -95,7 +95,11 @@ def random_forest_classification(context):
 		print(f'{y_pred[:100]=}')
 		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
 		
-		create_classification_report(y_train, y_test, y_pred, context)
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=seed, 
+							   ctx=context)
 
 
 	
@@ -118,8 +122,11 @@ def hist_gradient_boosting_classifier(context):
 		print(f'{y_pred[:100]=}')
 		print(f'Accuracy of HistGradientBoost: {clf.score(X_test, y_test)}')
 		
-		create_classification_report(y_train, y_test, y_pred, seed, context)
-
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=seed, 
+							   ctx=context)
 
 
 
