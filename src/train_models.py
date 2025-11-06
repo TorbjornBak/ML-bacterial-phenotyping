@@ -460,7 +460,11 @@ def get_model_performance(model_type = "CNN",
 						
 						label_encoder = LabelEncoder()
 
-						y_train = label_encoder.fit_transform(y_train)
+						# Fit on all labels, prevents the problem that sometimes occur with small datasets, 
+						# where y contains a previously unseen label
+						label_encoder.fit(y)
+
+						y_train = label_encoder.transform(y_train)
 						y_test = label_encoder.transform(y_test)
 						y_val = label_encoder.transform(y_val)
 
