@@ -6,6 +6,8 @@ import random
 from joblib import Parallel, delayed
 from itertools import product
 from utilities import dna_bpe as bpe
+from Bio.Seq import Seq
+
 
 # Reads one fasta file
 
@@ -91,7 +93,7 @@ def kmerize_sequences_prefix_filtering_binary(sequences, kmer_prefix, kmer_suffi
 	#print(f'Total kmers: {kmer_count}')
 	return array
 
-def kmerize_sequences_prefix_filtering_str(sequences, kmer_prefix, kmer_suffix_size, array_size, array_type = "np.zeros"):
+def kmerize_sequences_prefix_filtering_binary_str(sequences, kmer_prefix, kmer_suffix_size, array_size, array_type = "np.zeros"):
 	# Binary array (0 or 1)
 
 	if array_type == "np.zeros":
@@ -170,7 +172,7 @@ def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix
 
 	
 def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_suffix_size):
-	# The same as above, but should return a sequence by finding and concatenating all the kmers instead of using one-hot-encoded array. 
+	# The same as above, but returns a sequence by finding and creating a list of all the kmers instead of using one-hot-encoded array. 
 	kmers = list()
 	
 	kmer_prefix_size = len(kmer_prefix)
@@ -201,6 +203,102 @@ def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_s
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
 	#print(f'Total kmers: {kmer_count}')
 	return kmers
+
+class kmer_tokenizer():
+
+	def __init__(self, 
+			  file_path, 
+			  genome_col, 
+			  dna_sequence_col, 
+			  kmer_prefix,
+			  kmer_suffix_size,
+			  file_type,
+			  token_type):
+		self.file_path = file_path
+		self.genome_col = genome_col
+		self.dna_sequence_col = dna_sequence_col
+		self.kmer_prefix = kmer_prefix
+		self.kmer_suffix_size = kmer_suffix_size
+		self.file_type = file_type
+		self.token_type = token_type
+
+	def fetch_sequence(self):
+		df = read_sequence_file(file_path=self.file_path, file_type = self.file_type)
+		return df
+	
+	def tokenize(self):
+		df = self.fetch_sequence()
+		
+
+
+
+	
+	def embed_kmers_as_integers(self, forward_kmers, reverse_kmers = None):
+		forward_kmers_int_embeddings = [kmer_to_integer(kmer) for kmer in forward_kmers]
+		if reverse_kmers is not None:
+			reverse_kmers_int_embeddings = [kmer_to_integer(kmer) for kmer in reverse_kmers]
+		
+			return {"forward_kmers_int_embeddings" : forward_kmers_int_embeddings, 
+					"reverse_kmers_int_embeddings" : reverse_kmers_int_embeddings}
+		else:
+			return {"forward_kmers_int_embeddings" : forward_kmers_int_embeddings}
+		
+
+	def kmerize_sequence_and_rev_complement(self, sequences, reverse_complement = False):
+		# The same as above, but returns a sequence by finding and creating a list of all the kmers instead of using one-hot-encoded array. 
+		
+		kmer_prefix_size = len(self.kmer_prefix)
+
+		assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by codon length of 3"
+		
+		kmer_offset = 0 # Change this to change the offset 
+						# TODO: Change the offset, might give better results
+		
+		forward_kmers = list()
+		if reverse_complement:
+			reverse_kmers = list()
+		
+		for sequence in sequences:
+			sequence = sequence.replace("\n", "")
+			table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSW","ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
+			sequence = sequence.translate(table)		
+			sequence = Seq(sequence)
+				
+			
+			# Finds tokens and store them in list
+			forward_kmers.extend(self.tokenize_sequence(sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
+
+			if reverse_complement:
+				reverse_sequence = sequence.reverse_complement()
+				reverse_sequence = reverse_sequence
+				reverse_kmers.extend(self.tokenize_sequence(reverse_sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
+		
+		if reverse_complement:
+			return {"forward_kmers" : forward_kmers, "reverse_kmers" : reverse_kmers}
+		else:
+			return {"forward_kmers" : forward_kmers}
+
+
+	def tokenize_sequence(self, sequence, kmer_prefix, kmer_suffix_size, kmer_prefix_size, kmer_offset):
+		kmers = list()
+		current_kmer_prefix_location = sequence.find(kmer_prefix)
+
+		while current_kmer_prefix_location != -1:
+
+			kmer_suffix_start_location = current_kmer_prefix_location + kmer_prefix_size + kmer_offset
+			
+			kmer_suffix = sequence[kmer_suffix_start_location : kmer_suffix_start_location + kmer_suffix_size]
+			
+			if 'n' not in kmer_suffix and len(kmer_suffix) == kmer_suffix_size:
+				# Converts dna to binary to use for indexing np.array
+				
+				kmers.append(kmer_suffix)
+
+			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
+		
+		return kmers
+
+	def 
 
 
 
@@ -316,19 +414,6 @@ def int_to_kmer(x: int, k: int) -> str:
 		out.append(inv[x & 3])  # x % 4
 		x >>= 2                 # x //= 4
 	return ''.join(reversed(out))
-
-# def test_kmer_sampler(iterations = 1000, file_path = "data/test/511145.fna"):
-# 	kmer_prefix = b"CGTGATGT"
-# 	kmer_suffix_size = 8
-# 	vector = list()
-# 	for iteration in range(iterations):
-# 		print(f'Iteration nr: {iteration}')
-# 		sequences = read_fasta_binary(file_path=file_path)
-# 		array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
-# 		array = kmerize_sequences_prefix_filtering(sequences, kmer_prefix, kmer_suffix_size, array_size)
-
-# 		#print(f'Unique kmers: {array.sum()}')
-# 		vector.append(array)
 
 
 def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8, labels = None, file_suffix = ".fna", sample_nr = None):
@@ -483,6 +568,8 @@ def kmerize_and_embed_dataset_return_kmer_str(path, genome_col, dna_sequence_col
 	
 	return kmer_embeddings
 
+
+
 def kmerize_and_embed_dataset_return_tokens(path, 
 													genome_col, 
 													dna_sequence_col, 
@@ -577,11 +664,6 @@ def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_pre
 
 		kmer_counts[genome_id] = array
 
-		
-
-		#print(f'{genome_id} : {len(kmers)}')
-
-	
 	
 	return kmer_counts
 
@@ -599,7 +681,7 @@ def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer
 	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
 		
 		dna_sequences = dna_sequences.split(" ")
-		array = kmerize_sequences_prefix_filtering_str(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size), array_type="np.zeros")
+		array = kmerize_sequences_prefix_filtering_binary_str(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size), array_type="np.zeros")
 
 		kmer_arrays[genome_id] = array
 		

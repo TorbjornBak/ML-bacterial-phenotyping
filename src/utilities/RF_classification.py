@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 
-from embeddings import kmerize_joblib, load_labels
+from embeddings.tokenization import kmerize_joblib, load_labels
 from dataclasses import dataclass
 
 def load_stored_embeddings(dataset_file_path):
