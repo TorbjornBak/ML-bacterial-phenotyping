@@ -204,82 +204,97 @@ def kmerize_sequences_prefix_filtering_return_all(sequences, kmer_prefix, kmer_s
 	#print(f'Total kmers: {kmer_count}')
 	return kmers
 
-class kmer_tokenizer():
+class KmerTokenizer():
 
 	def __init__(self, 
-			  file_path, 
+			  input_path, 
 			  genome_col, 
 			  dna_sequence_col, 
 			  kmer_prefix,
 			  kmer_suffix_size,
 			  file_type,
-			  token_type):
-		self.file_path = file_path
+			  reverse_complement):
+		
+		self.input_path = input_path.rstrip("/")
 		self.genome_col = genome_col
 		self.dna_sequence_col = dna_sequence_col
 		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
 		self.file_type = file_type
-		self.token_type = token_type
+		self.reverse_complement = reverse_complement
 
-	def fetch_sequence(self):
-		df = read_sequence_file(file_path=self.file_path, file_type = self.file_type)
-		return df
+	def run_tokenizer(self, nr_of_cores = 2):
+		file_paths = self.list_files()
+		tokenizer_results = Parallel(n_jobs = nr_of_cores)(delayed(self.tokenize)(file_path) for file_path in file_paths)
+
+		token_collection = dict()
 	
-	def tokenize(self):
-		df = self.fetch_sequence()
+		for token_dict in tokenizer_results:
+			token_collection.update(token_dict)
+
+		return token_collection
+
+	def tokenize(self, file_path):
+		# load df, loop over sequences
+		sequence_dict = self.fetch_sequences_from_parquet(file_path)
+
+		tokens = dict()
+
+		for genome_id, sequences in sequence_dict.items():
+			tokens.update(self.tokenize_genome(genome_id, sequences))
+		
+		return tokens
+
+	def list_files(self):
+		dir_list = os.listdir(self.input_path)
+		dir_list = [f'{self.input_path}/{file}' for file in dir_list if self.file_type == file.split(".")[-1]]
+		print(f'{dir_list=}')
+		return dir_list
+
+	def fetch_sequences_from_parquet(self, file_path):
+		df = read_sequence_file(file_path=file_path, file_type = self.file_type)
+		sequence_dict = {genome_id : dna_sequences.split(" ") for genome_id, dna_sequences in zip(df[self.genome_col], df[self.dna_sequence_col])}
+
+		return sequence_dict
 		
 
-
-
+	def tokenize_genome(self, genome_id, sequences):
+		# Tokenizes one genome
 	
-	def embed_kmers_as_integers(self, forward_kmers, reverse_kmers = None):
-		forward_kmers_int_embeddings = [kmer_to_integer(kmer) for kmer in forward_kmers]
-		if reverse_kmers is not None:
-			reverse_kmers_int_embeddings = [kmer_to_integer(kmer) for kmer in reverse_kmers]
-		
-			return {"forward_kmers_int_embeddings" : forward_kmers_int_embeddings, 
-					"reverse_kmers_int_embeddings" : reverse_kmers_int_embeddings}
-		else:
-			return {"forward_kmers_int_embeddings" : forward_kmers_int_embeddings}
-		
-
-	def kmerize_sequence_and_rev_complement(self, sequences, reverse_complement = False):
-		# The same as above, but returns a sequence by finding and creating a list of all the kmers instead of using one-hot-encoded array. 
-		
 		kmer_prefix_size = len(self.kmer_prefix)
 
-		assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by codon length of 3"
+		assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by the codon size (of 3)"
 		
 		kmer_offset = 0 # Change this to change the offset 
 						# TODO: Change the offset, might give better results
 		
 		forward_kmers = list()
-		if reverse_complement:
+		if self.reverse_complement:
 			reverse_kmers = list()
 		
 		for sequence in sequences:
 			sequence = sequence.replace("\n", "")
-			table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSW","ATCGnnnnnnnnnnnnnnnnnnnnnnnn")
+			table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSWF","ATCGnnnnnnnnnnnnnnnnnnnnnnnnn")
 			sequence = sequence.translate(table)		
 			sequence = Seq(sequence)
-				
 			
 			# Finds tokens and store them in list
-			forward_kmers.extend(self.tokenize_sequence(sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
+			forward_kmers.extend(self.tokenize_single_sequence(sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
 
-			if reverse_complement:
+			if self.reverse_complement:
 				reverse_sequence = sequence.reverse_complement()
 				reverse_sequence = reverse_sequence
-				reverse_kmers.extend(self.tokenize_sequence(reverse_sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
+				reverse_kmers.extend(self.tokenize_single_sequence(reverse_sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
 		
-		if reverse_complement:
-			return {"forward_kmers" : forward_kmers, "reverse_kmers" : reverse_kmers}
+		if self.reverse_complement:
+			return {genome_id : {f"forward" : forward_kmers, f"reverse" : reverse_kmers}}
+			
 		else:
-			return {"forward_kmers" : forward_kmers}
+			return {genome_id: {f"forward" : forward_kmers}}
+			
 
 
-	def tokenize_sequence(self, sequence, kmer_prefix, kmer_suffix_size, kmer_prefix_size, kmer_offset):
+	def tokenize_single_sequence(self, sequence, kmer_prefix, kmer_suffix_size, kmer_prefix_size, kmer_offset):
 		kmers = list()
 		current_kmer_prefix_location = sequence.find(kmer_prefix)
 
@@ -298,7 +313,7 @@ class kmer_tokenizer():
 		
 		return kmers
 
-	def 
+	
 
 
 
@@ -513,11 +528,10 @@ def read_fasta(fasta_path):
 			print(line)
 
 def read_sequence_file(file_path, file_type):
-
-	if file_type == ".parquet":
+	if file_type == "parquet":
 		df = read_parquet(file_path)
 		return df
-	elif file_type == ".fasta":
+	elif file_type == "fasta":
 		return NotImplementedError # Not implemented yet (see read_fasta above)
 
 	
@@ -544,8 +558,6 @@ def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col
 		embeddings_np = np.array(embeddings, dtype = data_type)
 
 		integer_embeddings[genome_id] = embeddings_np
-
-		#print(f'{genome_id} : {len(kmers)}')
 
 	
 	return integer_embeddings

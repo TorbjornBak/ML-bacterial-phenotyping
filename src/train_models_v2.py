@@ -6,19 +6,23 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupKFold, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
 import wandb
 
-from embeddings.tokenization import load_labels, check_id_and_labels_exist, kmerize_joblib, compress_integer_embeddings
+from embeddings.tokenization import load_labels, check_id_and_labels_exist
+from embeddings.tokenization import KmerTokenizer
+from embeddings.integer_embeddings import IntegerEmbeddings
+
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier, CNNKmerClassifierLarge
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
+
 
 
 def embed_data(kmer_prefix = None, 
@@ -28,83 +32,99 @@ def embed_data(kmer_prefix = None,
 			   reembed = False, 
 			   no_loading = False, 
 			   label_dict = None, 
-			   compress_vocab_space = False,
-			   output_type = "kmers",
-			   file_type = ".parquet"):
+			   compress_embeddings = True,
+			   embedding_class = IntegerEmbeddings,
+			   file_type = "parquet",
+			   genome_col = "genome_id",
+			   dna_sequence_col = "dna_sequence_col",
+			   reverse_complement = True,
+			   nr_of_cores = 2):
 	# Should return X and y
 	if output_directory is None:
 		output_directory = input_data_directory
 
 	
-	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {output_type}.')
-	if output_type == "kmers":
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}' 
-		dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-	else: 
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
-		dataset_file_path = f'{output_directory}/{dataset_name}.npz'
+	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedding_class=}.')
 	
+	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
+	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
 
 	if reembed:
-		dir_list = os.listdir(input_data_directory)
-		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_type in file]
+		
+		tokenizer = KmerTokenizer(
+							input_data_directory,
+							genome_col=genome_col,
+							dna_sequence_col=dna_sequence_col,
+							kmer_prefix=kmer_prefix,
+							kmer_suffix_size=kmer_suffix_size,
+							file_type=file_type,
+							reverse_complement=reverse_complement
+							)
+		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
-		print(f'{dir_list=}')
+		
+		embedder = embedding_class(token_collection=token_collection, 
+					kmer_suffix_size=kmer_suffix_size,
+					compress_embeddings=compress_embeddings)
+		
+		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=nr_of_cores)
 
-		result = kmerize_joblib(dir_list, kmer_prefix, kmer_suffix_size, nr_of_cores = nr_of_cores, output_type=output_type)
-		data_dict = result["joblib_result"]
-		vocab_size = result["vocab_size"] if "vocab_size" in result else 4**kmer_suffix_size+1
-		pad_id = result["pad_id"] if "pad_id" in result else 0
-		ids = [gid for gid in data_dict.keys()]
-		X = [data_dict[gid] for gid in ids]
-			
-		X_obj = np.array(X, dtype=object)
-	   
+		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings for strand_id in strands]
+
+		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
+		groups = [gid for gid, _ in gid_and_strand_id]
+		ids = [strand_id for _, strand_id in gid_and_strand_id]
+
 		print(f"Saving embeddings to: {dataset_file_path=}")
 
-		np.savez_compressed(dataset_file_path, X=X_obj, ids=np.array(ids, dtype=object), vocab_size = vocab_size, pad_id = pad_id)
+		np.savez_compressed(dataset_file_path, 
+					  		X=np.array(X, dtype=object), 
+					  		ids=np.array(ids, dtype=object), 
+							groups=np.array(groups, dtype=object),
+							vocab_size = vocab_size)
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:
 
 		if os.path.isfile(dataset_file_path):
 			if no_loading is True:
 				return True
-			X, ids, vocab_size, pad_id = load_stored_embeddings(dataset_file_path)
+			X, ids, groups, vocab_size = load_stored_embeddings(dataset_file_path)
 		else: 
-			return embed_data(kmer_prefix = kmer_prefix, kmer_suffix_size = kmer_suffix_size, 
-							  input_data_directory=input_data_directory, output_directory=output_directory, 
-							  label_dict=label_dict, reembed = True,
-							  compress_vocab_space=compress_vocab_space,
-							  output_type=output_type)
+			return embed_data(kmer_prefix = kmer_prefix, 
+					 		kmer_suffix_size = kmer_suffix_size, 
+							input_data_directory=input_data_directory, 
+							output_directory=output_directory, 
+							reembed = True,
+							label_dict=label_dict, 
+							compress_embeddings=compress_embeddings,
+							embedding_class=embedding_class,
+							file_type = file_type,
+							genome_col=genome_col,
+							dna_sequence_col=dna_sequence_col,
+							nr_of_cores = nr_of_cores)
 			
 	elif os.path.isfile(dataset_file_path):
 		if no_loading is True:
 			return True
 		# Don't reembed kmers
 		# Load np array instead
-		X, ids, vocab_size, pad_id = load_stored_embeddings(dataset_file_path)
+		X, ids, groups, vocab_size = load_stored_embeddings(dataset_file_path)
 	   
 	else:
 		raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
 
 	# Select only the rows where y is not None
-	X = [x for gid, x in zip(ids, X) if gid in label_dict]
+	X = [x for gid, x in zip(groups, X) if gid in label_dict]
 	
-	y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+	y = np.array([label_dict[gid] for gid in groups if gid in label_dict])
 	
-	
-	   
-	if compress_vocab_space is True:
-		X, vocab_size = compress_integer_embeddings(X, alphabet_size=4, kmer_suffix_size=kmer_suffix_size)
-	elif vocab_size is None:
-		vocab_size = 4**kmer_suffix_size+1
 	print(f'{np.unique(y)=}')
 	print(f'{len(y)=}')
 	print(f'{len(X)=}')
 	print(f'{vocab_size=}')
 	
-	return X, y, vocab_size, pad_id
+	return X, y, groups, vocab_size
 
 def load_stored_embeddings(dataset_file_path):
 	print(f"Loading embeddings from: {dataset_file_path=}")
@@ -112,10 +132,13 @@ def load_stored_embeddings(dataset_file_path):
 
 	X = list(z["X"])  # object array → list of arrays 
 	ids = list(z["ids"])  # map labels from current dict
-	
+	groups = list(z["groups"])
+
 	vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
-	pad_id = int(z["pad_id"]) if "pad_id" in z else 0
-	return X, ids, vocab_size, pad_id
+	
+	return X, ids, groups, vocab_size
+
+
 
 class SequenceDataset(Dataset):
 	"""Dataset that returns variable-length token sequences and labels.
@@ -180,24 +203,6 @@ class PadCollate:
 		return pad_collate(batch, pad_id=self.pad_id)
 
 
-# @dataclass
-# class model_parameters:
-#     train_loader: DataLoader
-#     val_loader: DataLoader
-#     test_loader: DataLoader
-#     device: torch.device
-#     num_epochs: int
-#     learning_rate: float
-#     class_weight: int | None
-#     num_classes: int
-#     model_type: str
-#     vocab_size: int | None
-#     pad_id: int 
-#     trace_memory_usage: bool
-#     dropout: float
-#     wandb_run: wandb.init
-
-
 
 
 def fit_model(
@@ -218,8 +223,6 @@ def fit_model(
 	patience = 15):
 	
 
-
-	
 	#hidden_dim = 128
 	if model_type == "TRANSFORMER":
 		emb_dim = 8
@@ -240,7 +243,7 @@ def fit_model(
 							pad_id=pad_id,
 							dropout=dropout,
 							).to(device)
-		weight_decay = 1e-4
+		weight_decay = 1e-2
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNN_LARGE":
@@ -296,8 +299,6 @@ def fit_model(
 
 	print(model)
 	
-   
-
 	
 
 	# ----- Training loop -----
@@ -383,7 +384,8 @@ def fit_model(
 	return fit_model_results
 
 
-def get_model_performance(model_type = "CNN", 
+def get_model_performance(phenotype = None,
+						  model_type = "CNN", 
 						  kmer_prefixes = None, 
 						  kmer_suffix_sizes = None, 
 						  n_seeds = 3, 
@@ -391,59 +393,42 @@ def get_model_performance(model_type = "CNN",
 						  learning_rates = None, 
 						  input_data_directory=None, 
 						  output_directory = None, 
-						  compress_vocab_space = False,
+						  compress_embeddings = False,
 						  trace_memory_usage = False,
 						  epochs = None,
 						  dropout = 0.2,
 						  patience = 15,
-						  output_type = "kmers",
-						  reembed = False
+						  embedding_class = None,
+						  reembed = False,
+						  device = None,
+						  file_type = "parquet",
+						  genome_col = None,
+						  dna_sequence_col = None,
 						  ):
-	results_df = pd.DataFrame(
-		columns=[
-			"phenotype",
-			"model_name",
-			"kmer_prefix",
-			"kmer_suffix_size",
-			"learning_rate",
-			"seed",
-			"f1_score_weighted",
-			"f1_score_macro",
-			"precision_weighted",
-			"precision_macro",
-			"precision_weighted",
-			"precision_macro",
-			"recall_weighted",
-			"recall_macro",
-			"accuracy",
-			"balanced_accuracy",
-			"auc_weighted",
-			"auc_macro",
-			"n_classes",
-			"vocab_compression",
-			"confusion_matrix",
-			"int2label",
-			"peak_allocated_gib",
-			"peak_reserved_gib",
-		]
-	)
 	
 	num_epochs = epochs
 	for prefix in kmer_prefixes:
 		for suffix_size in kmer_suffix_sizes:
 			print(f'Training models with {prefix=} and {suffix_size=}')
-			X, y, vocab_size, pad_id = embed_data(kmer_prefix=prefix, kmer_suffix_size=suffix_size, 
-										  input_data_directory=input_data_directory, 
-										  label_dict=label_dict, compress_vocab_space=compress_vocab_space,
-										  output_type=output_type,
-										  reembed=reembed)
+			X, y, groups, vocab_size = embed_data(
+											kmer_prefix = prefix, 
+											kmer_suffix_size=suffix_size, 
+											input_data_directory=input_data_directory, 
+											output_directory=output_directory,
+											reembed=reembed,
+											label_dict=label_dict, 
+											compress_embeddings=compress_embeddings,
+											embedding_class=embedding_class,
+											file_type=file_type,
+											genome_col=genome_col,
+											dna_sequence_col=dna_sequence_col,
+											nr_of_cores = nr_of_cores
+											)
 			
 			num_classes = len(np.unique(y))
 			
 			for lr in learning_rates:
-				for seed in tqdm(range(n_seeds)):
-					
-					with wandb.init(project="Phenotyping bacteria",
+				with wandb.init(project="Phenotyping bacteria",
 					entity="torbjornbak-technical-university-of-denmark",
 					config={
 					"learning_rate": lr,
@@ -452,11 +437,25 @@ def get_model_performance(model_type = "CNN",
 					"epochs": epochs,
 					},
 					) as run:
+
+					for seed in tqdm(range(n_seeds)):
+						# Split in train and test
+						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = 0.2, random_state = seed)
+						train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+						X_trainval, y_trainval = X[train_val_idx], np.array(y)[train_val_idx]
+						groups_trainval = groups[train_val_idx]
+						
+						# Split train into train and val
+						gss_val = GroupShuffleSplit(n_splits=1, test_size=1/8, random_state=42)
+						train_idx, val_idx = next(gss_val.split(X_trainval, y_trainval, groups=groups_trainval))
+
+					
 						print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
 					
-						X_train, X_test, y_train, y_test = train_test_split(X, y, random_state = seed, test_size= 0.2)
-						X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, random_state = 42, test_size=1/8) # Weird with the 1/8th if it should 60, 20, 20, change to 2/8
-						
+						X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
+						X_val,   y_val   = X_trainval[val_idx],   y_trainval[val_idx]
+						X_test,  y_test  = X[test_idx],           np.array(y)[test_idx]
+
 						label_encoder = LabelEncoder()
 
 						# Fit on all labels, prevents the problem that sometimes occur with small datasets, 
@@ -562,7 +561,6 @@ def get_model_performance(model_type = "CNN",
 								"n_classes": len(np.unique(y_train)),
 								"vocab_compression": compress_vocab_space,
 								"confusion_matrix" : conf_matrix,
-								"int2label" : int2label,
 								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
 							}
@@ -575,11 +573,8 @@ def get_model_performance(model_type = "CNN",
 						results.to_csv(path)
 						print(f'Saved tmp result to {path=}')
 						print(f'{results=}')
-						results_df.loc[len(results_df)] = results
-						
-						
-			
-	return results_df
+
+	return
 
 
 if __name__ == "__main__":
@@ -605,6 +600,7 @@ if __name__ == "__main__":
 	
 
 	id_column = parser.id_column
+	dna_sequence_col = parser.dna_sequence_column
 	labels_path = parser.labels_path
 	input_directory = parser.input
 	phenotypes = parser.phenotype
@@ -633,17 +629,23 @@ if __name__ == "__main__":
 	k_folds = parser.k_folds
 	freq_others = parser.freq_others
 	patience = parser.patience
-	tokenize_method = parser.tokenize_method
 	reembed = parser.reembed
-	print(f'{tokenize_method=}')
+	embedding_class = parser.embedding
+	file_type = parser.file_type
 
 	print(f'{trace_memory_usage=}')
 	print(f"{learning_rates=}")
 	print(f'{compress_vocab_space=}')
    
    # base_kmer = "CGTCACA"
-	
+	if embedding_class == "integer":
+		embedding_class = IntegerEmbeddings 
+	elif embedding_class == "esmc":
+		raise NotImplementedError
+		embedding_class = ESMcEmbeddings
+
 	check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")
+
 
   
 	if embed_only is True:
@@ -655,28 +657,44 @@ if __name__ == "__main__":
 				for suffix_size in kmer_suffix_sizes:
 					pad_id = 0 # reserve 0 for padding in tokenizer
 					result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
+					embed_data(
+											kmer_prefix = prefix, 
+											kmer_suffix_size=suffix_size, 
+											input_data_directory=input_directory, 
+											output_directory=output_directory,
+											reembed=reembed,
+											label_dict=label_dict, 
+											compress_embeddings=compress_vocab_space,
+											embedding_class=embedding_class,
+											file_type=file_type,
+											genome_col=id_column,
+											dna_sequence_col=dna_sequence_col,
+											nr_of_cores = nr_of_cores
+											)
 	else:
 		for phenotype in phenotypes:
 			print(f'{phenotype=}')
 			labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
 			label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
-			results_df = get_model_performance(model_type=model_type, 
-											kmer_prefixes=kmer_prefixes, 
-											kmer_suffix_sizes=kmer_suffix_sizes, 
-											n_seeds = k_folds,
-											label_dict=label_dict,
-											learning_rates=learning_rates, 
-											input_data_directory=input_directory, 
-											output_directory=output_directory, 
-											compress_vocab_space=compress_vocab_space,
-											trace_memory_usage=trace_memory_usage,
-											epochs = epochs,
-											dropout = dropout,
-											patience=patience,
-											output_type=tokenize_method,
-											reembed=reembed)
-			dataset_name = f"{model_type}_train_grid_search_results"
-			path = f'{output_directory}/{dataset_name}.csv'
-			results_df.to_csv(path_or_buf=path)
-			print(results_df)
+			get_model_performance(phenotype=phenotype,
+									model_type=model_type, 
+									kmer_prefixes=kmer_prefixes, 
+									kmer_suffix_sizes=kmer_suffix_sizes, 
+									n_seeds = k_folds,
+									label_dict=label_dict_literal,
+									learning_rates=learning_rates, 
+									input_data_directory=input_directory, 
+									output_directory=output_directory, 
+									compress_embeddings=compress_vocab_space,
+									trace_memory_usage=trace_memory_usage,
+									epochs = epochs,
+									dropout = dropout,
+									patience=patience,
+									embedding_class=embedding_class,
+									reembed=reembed,
+									device=device,
+									file_type=file_type,
+									genome_col=id_column,
+									dna_sequence_col=dna_sequence_col)
+			
