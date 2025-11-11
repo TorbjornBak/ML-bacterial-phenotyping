@@ -70,12 +70,12 @@ def embed_data(kmer_prefix = None,
 							)
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
-		if embedding_class == "IntegerEmbeddings":
+		if embedding_class == "integer":
 			embedder = IntegerEmbeddings(token_collection=token_collection, 
 						kmer_suffix_size=kmer_suffix_size,
 						compress_embeddings=compress_embeddings
 						)
-		elif embedding_class == "ESMcEmbeddings":
+		elif embedding_class == "esmc":
 			embedder = ESMcEmbeddings(token_collection=token_collection, 
 						kmer_suffix_size=kmer_suffix_size,
 						compress_embeddings=compress_embeddings,
@@ -83,6 +83,8 @@ def embed_data(kmer_prefix = None,
 						device = device,
 						pooling = pooling
 						)
+		else:
+			raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 		
 		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=1)
 
@@ -723,11 +725,10 @@ if __name__ == "__main__":
 	print(f'{compress_vocab_space=}')
    
    # base_kmer = "CGTCACA"
-	if embedding_class == "integer":
-		embedding_class = IntegerEmbeddings 
-	elif embedding_class == "esmc":
-		embedding_class = ESMcEmbeddings
+		
+	if embedding_class == "esmc":
 		assert "CNNKmerClassifier_w_embeddings" == model_type, "Currently, ESMc embeddings can only be used with CNNKmerClassifier_w_embeddings model type"
+
 
 
 	check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")

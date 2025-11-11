@@ -16,7 +16,7 @@ class IntegerEmbeddings():
 
 	def run_embedder(self, nr_of_cores = 2):
 		
-		
+		print(f'Running integer embedder with {nr_of_cores} cores')
 		if nr_of_cores == 1:
 			embedding_results = [self.embed_tokens(id, tokens) for id, tokens in self.token_collection.items()]
 		else:
@@ -36,6 +36,7 @@ class IntegerEmbeddings():
 		
 		self.embeddings = embeddings
 		self.vocab_size = vocab_size 
+		print(f'Integer embedder done, vocab size: {vocab_size}')
 		return embeddings, vocab_size
 		
 
