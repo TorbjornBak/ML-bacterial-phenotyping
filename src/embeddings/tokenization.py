@@ -8,6 +8,7 @@ from itertools import product
 from utilities import dna_bpe as bpe
 from Bio.Seq import Seq
 
+os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
 
 # Reads one fasta file
 
@@ -224,6 +225,7 @@ class KmerTokenizer():
 		self.reverse_complement = reverse_complement
 
 	def run_tokenizer(self, nr_of_cores = 2):
+		print(f'Starting tokenization with {nr_of_cores} cores...')
 		file_paths = self.list_files()
 		tokenizer_results = Parallel(n_jobs = nr_of_cores)(delayed(self.tokenize)(file_path) for file_path in file_paths)
 
@@ -231,6 +233,8 @@ class KmerTokenizer():
 	
 		for token_dict in tokenizer_results:
 			token_collection.update(token_dict)
+
+		print(f'Finished tokenization. Total genomes tokenized: {len(token_collection)}')
 
 		return token_collection
 
@@ -285,7 +289,7 @@ class KmerTokenizer():
 				reverse_sequence = str(sequence.reverse_complement())
 
 				reverse_kmers.extend(self.tokenize_single_sequence(reverse_sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
-			
+
 		if self.reverse_complement:
 			return {genome_id : {f"forward" : forward_kmers, f"reverse" : reverse_kmers}}
 			

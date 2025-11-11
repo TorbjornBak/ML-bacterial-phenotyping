@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import numpy as np
 import torch
 import os, sys
@@ -16,9 +17,10 @@ import wandb
 from embeddings.tokenization import load_labels, check_id_and_labels_exist
 from embeddings.tokenization import KmerTokenizer
 from embeddings.integer_embeddings import IntegerEmbeddings
+from embeddings.esmc_embeddings import ESMcEmbeddings
 
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
-from models.CNN import CNNKmerClassifier, CNNKmerClassifierLarge
+from models.CNN import CNNKmerClassifier, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
@@ -33,27 +35,25 @@ def embed_data(kmer_prefix = None,
 			   no_loading = False, 
 			   label_dict = None, 
 			   compress_embeddings = True,
-			   embedding_class = IntegerEmbeddings,
+			   embedding_class = "IntegerEmbeddings",
 			   file_type = "parquet",
 			   genome_col = "genome_id",
 			   dna_sequence_col = "dna_sequence_col",
 			   reverse_complement = True,
-			   nr_of_cores = 2):
+			   nr_of_cores = 2,
+			   pooling = None,
+			   esmc_model = None,
+			   device = "cpu"):
 	# Should return X and y
 	if output_directory is None:
 		output_directory = input_data_directory
 
-	print(embedding_class)
-	if embedding_class == IntegerEmbeddings:
-		emb_str = "IntegerEmbeddings"
-	elif embedding_class == ESMcEmbeddings:
-		emb_str = "ESMcEmbeddings"
-	else:
-		raise ValueError(f"Embedding class {embedding_class} does not exist")
+	print(f'{embedding_class=}')
 	
-	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {emb_str=}.')
 	
-	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{emb_str}' 
+	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedding_class=}.')
+	
+	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
 	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
 
@@ -70,10 +70,19 @@ def embed_data(kmer_prefix = None,
 							)
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
-		
-		embedder = embedding_class(token_collection=token_collection, 
-					kmer_suffix_size=kmer_suffix_size,
-					compress_embeddings=compress_embeddings)
+		if embedding_class == "IntegerEmbeddings":
+			embedder = IntegerEmbeddings(token_collection=token_collection, 
+						kmer_suffix_size=kmer_suffix_size,
+						compress_embeddings=compress_embeddings
+						)
+		elif embedding_class == "ESMcEmbeddings":
+			embedder = ESMcEmbeddings(token_collection=token_collection, 
+						kmer_suffix_size=kmer_suffix_size,
+						compress_embeddings=compress_embeddings,
+						esmc_model = esmc_model,
+						device = device,
+						pooling = pooling
+						)
 		
 		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=nr_of_cores)
 
@@ -112,8 +121,10 @@ def embed_data(kmer_prefix = None,
 							file_type = file_type,
 							genome_col=genome_col,
 							dna_sequence_col=dna_sequence_col,
-							nr_of_cores = nr_of_cores)
-			
+							nr_of_cores = nr_of_cores,
+							pooling = pooling,
+							esmc_model = esmc_model
+						)
 	elif os.path.isfile(dataset_file_path):
 		if no_loading is True:
 			return True
@@ -150,8 +161,6 @@ def load_stored_embeddings(dataset_file_path):
 	vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
 	
 	return X, ids, groups, vocab_size
-
-
 
 class SequenceDataset(Dataset):
 	"""Dataset that returns variable-length token sequences and labels.
@@ -191,6 +200,20 @@ class SequenceDataset(Dataset):
 			xi = torch.as_tensor(row, dtype=torch.long)
 		yi = torch.as_tensor(self.y[idx], dtype=torch.long)
 		return xi, yi
+	
+
+class EmbeddingSequenceDataset(Dataset):
+    def __init__(self, X, y):
+        assert len(X) == len(y)
+        self.X = X
+        self.y = y
+    def __getitem__(self, idx):
+        x = self.X[idx]
+        x = torch.as_tensor(x, dtype=torch.float32)
+        y = torch.as_tensor(self.y[idx], dtype=torch.long)
+        return x, y
+    def __len__(self): 
+        return len(self.X)
 
 
 def pad_collate(batch, pad_id: int = 0):
@@ -207,16 +230,36 @@ def pad_collate(batch, pad_id: int = 0):
 	return seqs_padded, lengths, mask, labels
 
 
+
 class PadCollate:
 	"""Top-level callable wrapper to make collate_fn picklable for multiprocessing workers."""
-	def __init__(self, pad_id: int = 0):
+	def __init__(self, collate_fn, pad_id: int = 0):
 		self.pad_id = pad_id
+		self.collate_fn = collate_fn
 
 	def __call__(self, batch):
-		return pad_collate(batch, pad_id=self.pad_id)
+		if self.collate_fn == "pad_collate":
+			return pad_collate(batch, pad_id=self.pad_id)
+		elif self.collate_fn == "pad_embed_collate":
+			return pad_embed_collate(batch)
+		else:
+			raise ValueError(f"Collate fn {self.collate_fn} not recognized")
 
 
+def pad_embed_collate(batch):
+    seqs, labels = zip(*batch)
+    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
+    padded = pad_sequence(seqs, batch_first=True)
+    mask = torch.arange(padded.size(1)).unsqueeze(0) < lengths.unsqueeze(1)
+    labels = torch.stack(labels)
+    return padded, lengths, mask, labels
 
+
+class PadEmbedCollate:
+	"""Top-level callable wrapper to make pad_embed_collate_fn picklable for multiprocessing workers."""
+	def __call__(self, batch):
+		return pad_embed_collate(batch)
+	
 
 def fit_model(
 	train_loader: DataLoader,
@@ -235,12 +278,6 @@ def fit_model(
 	wandb_run = None,
 	patience = 15):
 	
-
-	#hidden_dim = 128
-	if model_type == "TRANSFORMER":
-		emb_dim = 8
-	else:
-		emb_dim = vocab_size if vocab_size < 16 else 16
 	
 	kernel_size = 7
 
@@ -248,6 +285,7 @@ def fit_model(
 	print(f'{vocab_size=}')
 	#Initialize model, optimizer, loss function
 	if model_type == "CNN":
+		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = CNNKmerClassifier(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
 							#conv_dim=hidden_dim, 
@@ -260,6 +298,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNN_LARGE":
+		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = CNNKmerClassifierLarge(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
 							#conv_dim=hidden_dim, 
@@ -271,7 +310,20 @@ def fit_model(
 		weight_decay = 1e-2
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
+	elif model_type == "CNNKmerClassifier_w_embeddings":
+		sample_batch = next(iter(train_loader))[0]  # [B,T,D]
+		emb_dim = sample_batch.size(-1)
+		model = CNNKmerClassifier_w_embeddings(
+			emb_dim=emb_dim,
+			kernel_size=kernel_size,
+			num_classes=num_classes,
+			dropout=dropout,
+			).to(device)
+		weight_decay = 1e-2
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
 	elif model_type == "RNN":
+		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = RNNKmerClassifier(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
 							#rnn_hidden=hidden_dim, 
@@ -285,6 +337,7 @@ def fit_model(
 
 	
 	elif model_type == "TRANSFORMER":
+		emb_dim = 8
 		model = TransformerKmerClassifier(
 			vocab_size=vocab_size,
 			emb_dim=emb_dim,
@@ -413,10 +466,13 @@ def get_model_performance(phenotype = None,
 						  patience = 15,
 						  embedding_class = None,
 						  reembed = False,
-						  device = None,
+						  device = "cpu",
 						  file_type = "parquet",
 						  genome_col = None,
 						  dna_sequence_col = None,
+						  nr_of_cores = 2,
+						  pooling = "mean_per_token",
+						  esmc_model = "esmc_300m",
 						  ):
 	
 	num_epochs = epochs
@@ -435,7 +491,10 @@ def get_model_performance(phenotype = None,
 											file_type=file_type,
 											genome_col=genome_col,
 											dna_sequence_col=dna_sequence_col,
-											nr_of_cores = nr_of_cores
+											nr_of_cores = nr_of_cores,
+											pooling = pooling,
+											esmc_model = esmc_model,
+											device=device
 											)
 			pad_id = 0
 			num_classes = len(np.unique(y))
@@ -490,9 +549,17 @@ def get_model_performance(phenotype = None,
 						learning_rate = lr
 						# Build DataLoaders
 						bs = 50 if model_type == "CNN" else 25
-						train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-						val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-						test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+
+						if model_type == "CNNKmerClassifier_w_embeddings":
+							train_ds = EmbeddingSequenceDataset(X_train, y_train)
+							val_ds = EmbeddingSequenceDataset(X_val, y_val)
+							test_ds = EmbeddingSequenceDataset(X_test, y_test)
+							pad_collate_fn = "pad_embed_collate"
+						else:
+							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+							val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+							test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+							pad_collate_fn = "pad_collate"
 
 						#num_workers = min(8, os.cpu_count() or 2)
 						if model_type == "TRANSFORMER":
@@ -504,7 +571,7 @@ def get_model_performance(phenotype = None,
 							train_ds,
 							batch_size=bs,
 							shuffle=True,
-							collate_fn=PadCollate(pad_id=pad_id),
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
 							num_workers=num_workers,
 							pin_memory=False,
 							persistent_workers=(num_workers > 0),
@@ -513,14 +580,14 @@ def get_model_performance(phenotype = None,
 							val_ds,
 							batch_size=bs,
 							shuffle=False,
-							collate_fn=PadCollate(pad_id=pad_id),
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
 							num_workers=0,
 						)
 						test_loader = DataLoader(
 							test_ds,
 							batch_size=bs,
 							shuffle=False,
-							collate_fn=PadCollate(pad_id=pad_id),
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
 							num_workers=0,
 						)
 						
@@ -591,6 +658,9 @@ def get_model_performance(phenotype = None,
 	return
 
 
+
+
+
 if __name__ == "__main__":
 
 	parser = ArgParser(module = "train_models")
@@ -611,7 +681,6 @@ if __name__ == "__main__":
 	print(f"Using {device=}")
 
 
-	
 
 	id_column = parser.id_column
 	dna_sequence_col = parser.dna_sequence_column
@@ -646,6 +715,8 @@ if __name__ == "__main__":
 	reembed = parser.reembed
 	embedding_class = parser.embedding
 	file_type = parser.file_type
+	esmc_model = parser.esmc_model
+	pooling = parser.pooling
 
 	print(f'{trace_memory_usage=}')
 	print(f"{learning_rates=}")
@@ -655,13 +726,13 @@ if __name__ == "__main__":
 	if embedding_class == "integer":
 		embedding_class = IntegerEmbeddings 
 	elif embedding_class == "esmc":
-		raise NotImplementedError
 		embedding_class = ESMcEmbeddings
+		assert "CNNKmerClassifier_w_embeddings" == model_type, "Currently, ESMc embeddings can only be used with CNNKmerClassifier_w_embeddings model type"
+
 
 	check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")
 
-
-  
+	
 	if embed_only is True:
 		for phenotype in phenotypes:
 			labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
@@ -670,26 +741,26 @@ if __name__ == "__main__":
 			for prefix in kmer_prefixes:
 				for suffix_size in kmer_suffix_sizes:
 					pad_id = 0 # reserve 0 for padding in tokenizer
-					result = embed_data(prefix=prefix, suffix_size=suffix_size, input_data_directory=input_directory, label_dict=label_dict, no_loading=True)
-					embed_data(
-											kmer_prefix = prefix, 
-											kmer_suffix_size=suffix_size, 
-											input_data_directory=input_directory, 
-											output_directory=output_directory,
-											reembed=reembed,
-											label_dict=label_dict, 
-											compress_embeddings=compress_vocab_space,
-											embedding_class=embedding_class,
-											file_type=file_type,
-											genome_col=id_column,
-											dna_sequence_col=dna_sequence_col,
-											nr_of_cores = nr_of_cores
-											)
+					result = embed_data(
+										kmer_prefix = prefix, 
+										kmer_suffix_size=suffix_size, 
+										input_data_directory=input_directory, 
+										output_directory=output_directory,
+										reembed=reembed,
+										label_dict=label_dict, 
+										compress_embeddings=compress_vocab_space,
+										embedding_class=embedding_class,
+										file_type=file_type,
+										genome_col=id_column,
+										dna_sequence_col=dna_sequence_col,
+										nr_of_cores = nr_of_cores
+										)
 	else:
 		for phenotype in phenotypes:
 			print(f'{phenotype=}')
 			labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
 			label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
+
 
 			get_model_performance(phenotype=phenotype,
 									model_type=model_type, 
@@ -710,5 +781,7 @@ if __name__ == "__main__":
 									device=device,
 									file_type=file_type,
 									genome_col=id_column,
-									dna_sequence_col=dna_sequence_col)
+									dna_sequence_col=dna_sequence_col,
+
+									)
 			

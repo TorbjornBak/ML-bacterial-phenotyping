@@ -128,3 +128,84 @@ class CNNKmerClassifierLarge(nn.Module):
         return logits
 
 
+
+class CNNKmerClassifier_w_embeddings(nn.Module):
+    def __init__(self, 
+                 emb_dim=128, 
+                 conv_dim=128, 
+                 kernel_size=7, 
+                 num_classes=2, 
+                 dropout=0.2):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.pad = kernel_size // 2
+        
+        self.head_dropout = nn.Dropout(dropout)
+        # Reduce downsampling to avoid zero-length tensors. Use only two stride-2 stages and no max-pooling.
+        self.conv = nn.Sequential(
+            nn.Conv1d(emb_dim, conv_dim, kernel_size=kernel_size, padding=self.pad, stride=1),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, padding=self.pad, stride=2),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+
+        )
+        self.pool = nn.AdaptiveMaxPool1d(1)  # → [B, C, 1] (Maxpool?)
+        self.fc = nn.Linear(conv_dim, num_classes)
+
+    def forward(self, embeddings):
+        # token_ids: [B, T] Long
+        x = embeddings.transpose(1, 2)   # [B, D, T]
+        z = self.conv(x)                 # [B, C, T']
+        feat = self.pool(z).squeeze(-1)     # [B, C]
+        logits = self.fc(self.head_dropout(feat))            # [B, num_classes]
+        return logits
+
+
+class CNNKmerClassifierLarge_w_embeddings(nn.Module):
+    def __init__(self, 
+                 emb_dim=128, 
+                 conv_dim=128, 
+                 kernel_size=7, 
+                 num_classes=2, 
+                 dropout=0.2):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.pad = kernel_size // 2
+        
+        self.head_dropout = nn.Dropout(dropout)
+        # Reduce downsampling to avoid zero-length tensors. Use only two stride-2 stages and no max-pooling.
+        g = min(32, conv_dim)
+        while g > 1 and (conv_dim % g) != 0:
+            g //= 2 
+        self.conv = nn.Sequential(
+            nn.Conv1d(emb_dim, conv_dim, kernel_size=kernel_size + (kernel_size // 2), padding=self.pad, stride=2),
+            #nn.BatchNorm1d(conv_dim),
+            nn.GroupNorm(g, conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, padding=self.pad, stride=2),
+            nn.GroupNorm(g, conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+
+            
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size * 2, padding=self.pad, stride=2),
+            nn.GroupNorm(g, conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+            )
+
+        self.pool = nn.AdaptiveMaxPool1d(1)  # → [B, C, 1] (Maxpool?)
+        self.fc = nn.Linear(conv_dim, num_classes)
+
+    def forward(self, embeddings):
+        # token_ids: [B, T] Long
+        x = embeddings.transpose(1, 2)   # [B, D, T]
+        z = self.conv(x)                 # [B, C, T']
+        feat = self.pool(z).squeeze(-1)     # [B, C]
+        logits = self.fc(self.head_dropout(feat))            # [B, num_classes]
+        return logits

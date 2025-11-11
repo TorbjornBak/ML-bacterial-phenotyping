@@ -66,6 +66,8 @@ class ArgParser():
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "integer", help = "Type of embedding, choose between integer and esmc")
+        parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
+        parser.add_argument("--pooling", default = "mean_per_token", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         return parser
         
     def pca_arguments(self):
