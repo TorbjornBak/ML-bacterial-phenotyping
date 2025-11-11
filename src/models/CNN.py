@@ -45,6 +45,36 @@ class CNNKmerClassifier(nn.Module):
         
         logits = self.fc(self.head_dropout(feat))              # [B, num_classes]
         return logits
+    
+class CNNKmerClassifier_v2(nn.Module):
+    def __init__(self, vocab_size, emb_dim=96, conv_dim=96, kernel_size=7, num_classes=2, pad_id=0, dropout=0.2):
+        super().__init__()
+        pad = kernel_size // 2
+        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
+        self.conv = nn.Sequential(
+            nn.Conv1d(emb_dim, conv_dim, kernel_size=kernel_size, padding=pad, stride=1, bias=False),
+            nn.BatchNorm1d(conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+            nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, padding=pad, stride=2, bias=False),
+            nn.BatchNorm1d(conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout1d(dropout),
+        )
+        self.pool_max = nn.AdaptiveMaxPool1d(1)
+        self.pool_avg = nn.AdaptiveAvgPool1d(1)
+        self.head = nn.Sequential(
+            nn.Linear(2*conv_dim, conv_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(conv_dim, num_classes),
+        )
+
+    def forward(self, token_ids):
+        x = self.emb(token_ids).transpose(1, 2)
+        z = self.conv(x)
+        feat = torch.cat([self.pool_max(z), self.pool_avg(z)], dim=1).squeeze(-1)
+        return self.head(feat)
 
 
 # ----- CNN model: embedding -> Conv1d blocks -> global pool -> classifier -----

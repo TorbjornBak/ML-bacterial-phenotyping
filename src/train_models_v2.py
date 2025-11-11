@@ -20,7 +20,7 @@ from embeddings.integer_embeddings import IntegerEmbeddings
 from embeddings.esmc_embeddings import ESMcEmbeddings
 
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
-from models.CNN import CNNKmerClassifier, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
+from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
 from models.RNN import RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
@@ -297,6 +297,19 @@ def fit_model(
 							dropout=dropout,
 							).to(device)
 		weight_decay = 1e-2
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
+	elif model_type == "CNN_v2":
+		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
+		model = CNNKmerClassifier_v2(vocab_size=vocab_size, 
+							emb_dim=emb_dim, 
+							#conv_dim=hidden_dim, 
+							kernel_size=kernel_size, 
+							num_classes=num_classes, 
+							pad_id=pad_id,
+							dropout=dropout,
+							).to(device)
+		weight_decay = 1e-4
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNN_LARGE":
