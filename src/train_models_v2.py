@@ -84,7 +84,7 @@ def embed_data(kmer_prefix = None,
 						pooling = pooling
 						)
 		
-		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=nr_of_cores)
+		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=1)
 
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 

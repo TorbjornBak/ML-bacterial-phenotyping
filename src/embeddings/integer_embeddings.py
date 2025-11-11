@@ -15,8 +15,13 @@ class IntegerEmbeddings():
 
 
 	def run_embedder(self, nr_of_cores = 2):
-		embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in self.token_collection.items())
 		
+		
+		if nr_of_cores == 1:
+			embedding_results = [self.embed_tokens(id, tokens) for id, tokens in self.token_collection.items()]
+		else:
+			embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in self.token_collection.items())
+
 		embeddings = dict()
 
 		for embedding in embedding_results:
