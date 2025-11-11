@@ -782,6 +782,8 @@ if __name__ == "__main__":
 									file_type=file_type,
 									genome_col=id_column,
 									dna_sequence_col=dna_sequence_col,
-
+									nr_of_cores = 2,
+									pooling = pooling,
+									esmc_model = esmc_model,
 									)
 			
