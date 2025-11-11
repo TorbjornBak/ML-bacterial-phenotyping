@@ -276,16 +276,16 @@ class KmerTokenizer():
 			sequence = sequence.replace("\n", "")
 			table = str.maketrans("atcgmrykvhdbxnswMRYKVHDBXNSWF","ATCGnnnnnnnnnnnnnnnnnnnnnnnnn")
 			sequence = sequence.translate(table)		
-			sequence = Seq(sequence)
 			
 			# Finds tokens and store them in list
 			forward_kmers.extend(self.tokenize_single_sequence(sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
 
 			if self.reverse_complement:
-				reverse_sequence = sequence.reverse_complement()
-				reverse_sequence = reverse_sequence
+				sequence = Seq(sequence)
+				reverse_sequence = str(sequence.reverse_complement())
+
 				reverse_kmers.extend(self.tokenize_single_sequence(reverse_sequence, self.kmer_prefix, self.kmer_suffix_size, kmer_prefix_size, kmer_offset))
-		
+			
 		if self.reverse_complement:
 			return {genome_id : {f"forward" : forward_kmers, f"reverse" : reverse_kmers}}
 			

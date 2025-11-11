@@ -11,6 +11,9 @@ class IntegerEmbeddings():
 		self.kmer_suffix_size = kmer_suffix_size
 		self.compress_embeddings = compress_embeddings
 
+	def __str__(self):
+		return "IntegerEmbeddings"
+
 	def run_embedder(self, nr_of_cores = 2):
 		embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in self.token_collection.items())
 		

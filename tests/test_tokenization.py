@@ -29,7 +29,7 @@ from Bio.Seq import Seq
 
 def test_kmer_tokenizer():
 	kmer_prefix="ACTCGCA"
-	kmer_suffix_size=3
+	kmer_suffix_size=6
 	
 	tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
 								genome_col="genome_name",
@@ -48,4 +48,4 @@ def test_kmer_tokenizer():
 		
 	embeddings, vocab_size = embedder.run_embedder(nr_of_cores=2)
 	
-	print(embeddings)
+	gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]

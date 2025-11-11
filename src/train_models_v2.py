@@ -43,10 +43,17 @@ def embed_data(kmer_prefix = None,
 	if output_directory is None:
 		output_directory = input_data_directory
 
+	print(embedding_class)
+	if embedding_class == IntegerEmbeddings:
+		emb_str = "IntegerEmbeddings"
+	elif embedding_class == ESMcEmbeddings:
+		emb_str = "ESMcEmbeddings"
+	else:
+		raise ValueError(f"Embedding class {embedding_class} does not exist")
 	
-	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedding_class=}.')
+	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {emb_str=}.')
 	
-	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
+	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{emb_str}' 
 	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
 
@@ -70,11 +77,14 @@ def embed_data(kmer_prefix = None,
 		
 		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=nr_of_cores)
 
-		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings for strand_id in strands]
+		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
-		groups = [gid for gid, _ in gid_and_strand_id]
 		ids = [strand_id for _, strand_id in gid_and_strand_id]
+		groups = [gid for gid, _ in gid_and_strand_id]
+		print(f'{len(X)=}')
+		print(f'{len(ids)=}')
+		print(f'{len(groups)=}')
 
 		print(f"Saving embeddings to: {dataset_file_path=}")
 
@@ -115,14 +125,17 @@ def embed_data(kmer_prefix = None,
 		raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
 
 	# Select only the rows where y is not None
-	X = [x for gid, x in zip(groups, X) if gid in label_dict]
-	
+
+	X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
 	y = np.array([label_dict[gid] for gid in groups if gid in label_dict])
+	groups = np.array([gid for gid in groups if gid in label_dict])
 	
 	print(f'{np.unique(y)=}')
 	print(f'{len(y)=}')
 	print(f'{len(X)=}')
+	print(f'{len(groups)=}')
 	print(f'{vocab_size=}')
+	
 	
 	return X, y, groups, vocab_size
 
@@ -424,7 +437,7 @@ def get_model_performance(phenotype = None,
 											dna_sequence_col=dna_sequence_col,
 											nr_of_cores = nr_of_cores
 											)
-			
+			pad_id = 0
 			num_classes = len(np.unique(y))
 			
 			for lr in learning_rates:
@@ -442,6 +455,7 @@ def get_model_performance(phenotype = None,
 						# Split in train and test
 						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = 0.2, random_state = seed)
 						train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+						print(f'{train_val_idx=}, {test_idx=}')
 						X_trainval, y_trainval = X[train_val_idx], np.array(y)[train_val_idx]
 						groups_trainval = groups[train_val_idx]
 						
@@ -458,7 +472,7 @@ def get_model_performance(phenotype = None,
 
 						label_encoder = LabelEncoder()
 
-						# Fit on all labels, prevents the problem that sometimes occur with small datasets, 
+						# Fit on all labels, prevents the problem that occasionally occur with small datasets, 
 						# where y contains a previously unseen label
 						label_encoder.fit(y)
 
