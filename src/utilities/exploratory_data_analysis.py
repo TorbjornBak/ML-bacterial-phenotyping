@@ -4,7 +4,7 @@ from sklearn.decomposition import PCA
 import umap
 import os
 
-from embeddings import kmerize_parquet_joblib, load_labels
+from embeddings.tokenization import kmerize_parquet_joblib, load_labels
 
 
 def load_stored_embeddings(dataset_file_path):
