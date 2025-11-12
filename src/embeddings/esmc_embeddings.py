@@ -41,6 +41,9 @@ class ESMcEmbeddings():
 		return embeddings, None
 	
 	def embed_tokens(self, id, token_dict, pooling = "mean_per_token"):
+
+		# See https://github.com/facebookresearch/esm/blob/main/esm/tokenization.py#L22
+		# or bacformer repo for embedding  details
 		
 		if pooling == "mean":
 			embeddings = {id : 
@@ -52,7 +55,7 @@ class ESMcEmbeddings():
 		elif pooling == "mean_per_token":
 			embeddings = {id : 
 						{
-						strand:[self.embed_kmer(kmer) for kmer in kmers]  # Mean across embeddings
+						strand:[self.embed_kmer(kmer).mean(axis = 1) for kmer in kmers]  # Mean across embeddings
 					  	for strand, kmers in token_dict.items()
 						}
 					}

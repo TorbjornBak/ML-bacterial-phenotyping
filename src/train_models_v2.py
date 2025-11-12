@@ -21,7 +21,7 @@ from embeddings.esmc_embeddings import ESMcEmbeddings
 
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
-from models.RNN import RNNKmerClassifier
+from models.RNN import RNN_MLP_KmerClassifier, RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
 
@@ -350,7 +350,24 @@ def fit_model(
 		weight_decay = 1e-2
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
-	
+	elif model_type == "RNN_MLP":
+		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
+		model = RNN_MLP_KmerClassifier(vocab_size=vocab_size, 
+							emb_dim=emb_dim, 
+							rnn_hidden=128, 
+							num_layers=1,
+							bidirectional=True,
+							num_classes=num_classes, 
+							pad_id=pad_id,
+							dropout=dropout,
+							emb_dropout=0.1,
+							pooling="attn",
+							norm="layer",
+							).to(device)
+		weight_decay = 1e-4
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
+
 	elif model_type == "TRANSFORMER":
 		emb_dim = 8
 		model = TransformerKmerClassifier(
@@ -488,6 +505,7 @@ def get_model_performance(phenotype = None,
 						  nr_of_cores = 2,
 						  pooling = "mean_per_token",
 						  esmc_model = "esmc_300m",
+						  test_val_split = [0.2, 1/8]
 						  ):
 	
 	num_epochs = epochs
@@ -513,6 +531,7 @@ def get_model_performance(phenotype = None,
 											)
 			pad_id = 0
 			num_classes = len(np.unique(y))
+
 			
 			for lr in learning_rates:
 				with wandb.init(project="Phenotyping bacteria",
@@ -522,19 +541,26 @@ def get_model_performance(phenotype = None,
 					"architecture": model_type,
 					"dataset": phenotype,
 					"epochs": epochs,
+					"kmer_prefix": prefix,
+					"kmer_suffix_size": suffix_size,
+					"dropout": dropout,
+					"embedding_class": embedding_class,
+					"compress_embeddings": compress_embeddings,
+					"patience": patience,
+					"test_val_split": test_val_split,
 					},
 					) as run:
 
 					for seed in tqdm(range(n_seeds)):
 						# Split in train and test
-						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = 0.2, random_state = seed)
+						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = test_val_split[0], random_state = seed)
 						train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
 						print(f'{train_val_idx=}, {test_idx=}')
 						X_trainval, y_trainval = X[train_val_idx], np.array(y)[train_val_idx]
 						groups_trainval = groups[train_val_idx]
 						
 						# Split train into train and val
-						gss_val = GroupShuffleSplit(n_splits=1, test_size=1/8, random_state=42)
+						gss_val = GroupShuffleSplit(n_splits=1, test_size=test_val_split[1], random_state=42)
 						train_idx, val_idx = next(gss_val.split(X_trainval, y_trainval, groups=groups_trainval))
 
 					
@@ -732,11 +758,12 @@ if __name__ == "__main__":
 	file_type = parser.file_type
 	esmc_model = parser.esmc_model
 	pooling = parser.pooling
+	test_val_split = parser.test_val_split
 
 	print(f'{trace_memory_usage=}')
 	print(f"{learning_rates=}")
 	print(f'{compress_vocab_space=}')
-   
+	print(f'{test_val_split=}')
    # base_kmer = "CGTCACA"
 		
 	if embedding_class == "esmc":
@@ -799,5 +826,6 @@ if __name__ == "__main__":
 									nr_of_cores = nr_of_cores,
 									pooling = pooling,
 									esmc_model = esmc_model,
+									test_val_split=test_val_split
 									)
 			
