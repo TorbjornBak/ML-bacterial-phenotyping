@@ -214,7 +214,8 @@ class KmerTokenizer():
 			  kmer_prefix,
 			  kmer_suffix_size,
 			  file_type,
-			  reverse_complement):
+			  reverse_complement,
+			  kmer_offset = 0):
 		
 		self.input_path = input_path.rstrip("/")
 		self.genome_col = genome_col
@@ -223,6 +224,7 @@ class KmerTokenizer():
 		self.kmer_suffix_size = kmer_suffix_size
 		self.file_type = file_type
 		self.reverse_complement = reverse_complement
+		self.kmer_offset = kmer_offset
 
 	def run_tokenizer(self, nr_of_cores = 2):
 		print(f'Starting tokenization with {nr_of_cores} cores...')
@@ -262,14 +264,14 @@ class KmerTokenizer():
 		return sequence_dict
 		
 
-	def tokenize_genome(self, genome_id, sequences):
+	def tokenize_genome(self, genome_id, sequences,):
 		# Tokenizes one genome
 	
 		kmer_prefix_size = len(self.kmer_prefix)
 
 		assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by the codon size (of 3)"
 		
-		kmer_offset = 0 # Change this to change the offset 
+		kmer_offset = self.kmer_offset # Change this to change the offset 
 						# TODO: Change the offset, might give better results
 		
 		forward_kmers = list()

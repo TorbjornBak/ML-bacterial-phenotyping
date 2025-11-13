@@ -245,7 +245,7 @@ if __name__ == "__main__":
 							kmer_suffix_size,
 							model_type="RandomForest",
 							int2label=int2label,
-							k_folds=3)
+							k_folds=5)
 		
 		
 

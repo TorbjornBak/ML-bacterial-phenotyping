@@ -43,7 +43,8 @@ def embed_data(kmer_prefix = None,
 			   nr_of_cores = 2,
 			   pooling = None,
 			   esmc_model = None,
-			   device = "cpu"):
+			   device = "cpu",
+			   kmer_offset = 0):
 	# Should return X and y
 	if output_directory is None:
 		output_directory = input_data_directory
@@ -53,7 +54,10 @@ def embed_data(kmer_prefix = None,
 	
 	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedding_class=}.')
 	
-	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
+	if kmer_offset == 0:
+		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
+	else:
+		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedding_class}'
 	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
 
@@ -66,7 +70,8 @@ def embed_data(kmer_prefix = None,
 							kmer_prefix=kmer_prefix,
 							kmer_suffix_size=kmer_suffix_size,
 							file_type=file_type,
-							reverse_complement=reverse_complement
+							reverse_complement=reverse_complement,
+							kmer_offset = kmer_offset,
 							)
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
@@ -125,7 +130,9 @@ def embed_data(kmer_prefix = None,
 							dna_sequence_col=dna_sequence_col,
 							nr_of_cores = nr_of_cores,
 							pooling = pooling,
-							esmc_model = esmc_model
+							esmc_model = esmc_model,
+							device = "cpu",
+			   				kmer_offset = kmer_offset
 						)
 	elif os.path.isfile(dataset_file_path):
 		if no_loading is True:
@@ -355,7 +362,7 @@ def fit_model(
 		model = RNN_MLP_KmerClassifier(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
 							rnn_hidden=128, 
-							num_layers=1,
+							num_layers=2,
 							bidirectional=True,
 							num_classes=num_classes, 
 							pad_id=pad_id,
@@ -505,7 +512,8 @@ def get_model_performance(phenotype = None,
 						  nr_of_cores = 2,
 						  pooling = "mean_per_token",
 						  esmc_model = "esmc_300m",
-						  test_val_split = [0.2, 1/8]
+						  test_val_split = [0.2, 1/8],
+						  kmer_offset = 0
 						  ):
 	
 	num_epochs = epochs
@@ -527,7 +535,8 @@ def get_model_performance(phenotype = None,
 											nr_of_cores = nr_of_cores,
 											pooling = pooling,
 											esmc_model = esmc_model,
-											device=device
+											device=device,
+											kmer_offset=kmer_offset,
 											)
 			pad_id = 0
 			num_classes = len(np.unique(y))
@@ -759,6 +768,7 @@ if __name__ == "__main__":
 	esmc_model = parser.esmc_model
 	pooling = parser.pooling
 	test_val_split = parser.test_val_split
+	kmer_offset = parser.kmer_offset
 
 	print(f'{trace_memory_usage=}')
 	print(f"{learning_rates=}")
@@ -826,6 +836,7 @@ if __name__ == "__main__":
 									nr_of_cores = nr_of_cores,
 									pooling = pooling,
 									esmc_model = esmc_model,
-									test_val_split=test_val_split
+									test_val_split=test_val_split,
+									kmer_offset = kmer_offset
 									)
 			
