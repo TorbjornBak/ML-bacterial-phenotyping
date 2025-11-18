@@ -58,6 +58,8 @@ class ArgParser():
         parser.add_argument("--kmer_prefixes", required = True, type = str, nargs = '+', help = "Comma separated list of kmer prefixes")
         parser.add_argument("--kmer_suffix_sizes", required = True, type = int, nargs = '+', help = "Comma seaparated list of kmer suffix sizes")
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
+        parser.add_argument("--model_pooling", default = "mean", help = "Pooling method for model, choose between mean, last and attn")
+        parser.add_argument("--model_norm", default = "layer", help = "Normalization method for model, choose between layer and batch")
         parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
@@ -67,9 +69,10 @@ class ArgParser():
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "integer", help = "Type of embedding, choose between integer and esmc")
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
-        parser.add_argument("--pooling", default = "mean_per_token", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
+        parser.add_argument("--esmc_pooling", default = "mean_per_token", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
         parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
+        parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
         
         return parser
         

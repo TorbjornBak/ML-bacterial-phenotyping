@@ -137,7 +137,7 @@ def kmerize_sequences_prefix_filtering_binary_str(sequences, kmer_prefix, kmer_s
 def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix_size, array_size, normalize = True):
 	# np array with counts of each kmer
 
-	counts = np.zeros(array_size, dtype = np.float32)
+	counts = np.zeros(array_size)
 	
 	kmer_prefix_size = len(kmer_prefix)
 	kmer_count = 0
@@ -541,7 +541,7 @@ def read_sequence_file(file_path, file_type):
 		return NotImplementedError # Not implemented yet (see read_fasta above)
 
 	
-def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
+def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type="parquet"):
 	# Returns a dict with lists of kmers represented as integers.
 	print(f"Kmerizing {path}")
 	
@@ -569,7 +569,7 @@ def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col
 	return integer_embeddings
 
 
-def kmerize_and_embed_dataset_return_kmer_str(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
+def kmerize_and_embed_dataset_return_kmer_str(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type="parquet"):
 
 	print(f"Kmerizing {path}")
 	
@@ -595,8 +595,8 @@ def kmerize_and_embed_dataset_return_tokens(path,
 													kmer_suffix_size = 8, 
 													alphabet = "ACTG", 
 													token_size = 2,
-													file_type = ".parquet",
-													results_path = None):
+													file_type = "parquet",
+													):
 
 	print(f"Kmerizing {path}")
 
@@ -666,28 +666,25 @@ def byte_pair_encoding():
 # 	corpus = [sequence for sequence in read_sequence_file()]
 # 	bpe.train_tokenizer(corpus)
 
-def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = ".parquet", cpm = False):
+def kmerize_and_embed_dataset_count(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type = "parquet", normalize = True):
 
 	print(f"Kmerizing {path}")
 	
 
 	df = read_sequence_file(file_path=path, file_type=file_type)
-	
 	kmer_counts = dict()
 
 	for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
-		
 		dna_sequences = dna_sequences.split(" ")
-		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size))
+		array = kmerize_sequences_prefix_filtering_count(dna_sequences, kmer_prefix, kmer_suffix_size, array_size=get_array_size(4, kmer_suffix_size), normalize=normalize)
 
 		kmer_counts[genome_id] = array
 
-	
 	return kmer_counts
 
 
 
-def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type=".parquet"):
+def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type="parquet"):
 
 	print(f"Kmerizing {path}")
 	
@@ -711,44 +708,44 @@ def kmerize_and_embed_dataset_bytearray(path, genome_col, dna_sequence_col, kmer
 
 ########################################
 ########### Deprecated function, still works, use kmerize_joblib instead ####
-def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers"):
+# def kmerize_parquet_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers"):
 
+# 	if output_type == "kmers":
+# 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = "parquet") for path in file_paths)
+	
+# 	elif output_type == "str":
+# 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = "parquet") for path in file_paths)
+
+# 	elif output_type == "one-hot":
+# 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = "parquet") for path in file_paths)
+
+# 	elif output_type == "bytearray":
+# 			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = "parquet") for path in file_paths)
+
+# 	elif output_type == "counts":
+# 		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = "parquet") for path in file_paths)
+	
+	
+# 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
+
+# 	data_dict = dict()
+	
+# 	for kmer_dict in joblib_results:
+# 		data_dict.update(kmer_dict)
+
+# 	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
+	
+# 	return data_dict
+
+def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, id_column = "genome_name", sequence_column = "dna_sequence", nr_of_cores = 4, output_type = "kmers", file_type = "parquet", normalize = True, vocab_size = 500, token_size = 4):
 	if output_type == "kmers":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
-	
-	elif output_type == "str":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
-
-	elif output_type == "one-hot":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, results_path = "./results", file_type = ".parquet") for path in file_paths)
-
-	elif output_type == "bytearray":
-			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
-
-	elif output_type == "counts":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = ".parquet") for path in file_paths)
-	
-	
-	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
-
-	data_dict = dict()
-	
-	for kmer_dict in joblib_results:
-		data_dict.update(kmer_dict)
-
-	print(f'Nr of sequences in dataset: {len(data_dict.keys())}')
-	
-	return data_dict
-
-def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, output_type = "kmers", file_type = ".parquet", vocab_size = 500, token_size = 4):
-	if output_type == "kmers":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_integers)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 	
 	elif output_type == "bpe":
 		assert vocab_size is not None
 		assert token_size is not None
 		print(f'Using BPE encoding')
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 		
 		print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
 		data_dict = dict()
@@ -778,16 +775,16 @@ def kmerize_joblib(file_paths, kmer_prefix, kmer_suffix_size, nr_of_cores = 4, o
 				"unk_id" : unk_id}
 
 	elif output_type == "str":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_kmer_str)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 
 	elif output_type == "one-hot":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, results_path = "./results", file_type = file_type) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_return_tokens)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 
 	elif output_type == "bytearray":
-			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+			joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_bytearray)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
 
 	elif output_type == "counts":
-		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, "genome_name", "dna_sequence", kmer_prefix, kmer_suffix_size, file_type = file_type) for path in file_paths)
+		joblib_results = Parallel(n_jobs = nr_of_cores)(delayed(kmerize_and_embed_dataset_count)(path, id_column, sequence_column, kmer_prefix, kmer_suffix_size, file_type = file_type, normalize=normalize) for path in file_paths)
 
 	
 	print(f'Processed {len(joblib_results)}/{len(file_paths)} files.')
@@ -837,12 +834,12 @@ def compress_integer_embeddings(integer_embeddings, alphabet_size, kmer_suffix_s
 def parquet_to_fasta(parquet_file_paths, genome_col, dna_sequence_col, kmer_prefix = None, kmer_suffix_size = None, output_path = None, nr_of_cores = 2):
 	for file in parquet_file_paths:
 		if kmer_prefix is None and kmer_suffix_size is None:
-			df = read_sequence_file(file_path=file, file_type=".parquet")
+			df = read_sequence_file(file_path=file, file_type="parquet")
 			for genome_id, dna_sequences in zip(df[genome_col], df[dna_sequence_col]):
 				dna_sequences = dna_sequences.split(" ")
 				write_fasta(genome_id, dna_sequences, output_path=output_path)
 	else:
-		kmerized_seqs_dict = kmerize_parquet_joblib(
+		kmerized_seqs_dict = kmerize_joblib(
 						file_paths=parquet_file_paths, 
 						kmer_prefix=kmer_prefix, 
 						kmer_suffix_size=kmer_suffix_size, 

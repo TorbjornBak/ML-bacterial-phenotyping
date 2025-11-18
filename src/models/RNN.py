@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 # ----- RNN model: embedding -> BiGRU -> temporal BatchNorm -> global pool -> classifier -----
 class RNNKmerClassifier(nn.Module):
@@ -124,101 +125,73 @@ class RNN_MLP_KmerClassifier(nn.Module):
         return (x * weights).sum(dim=1)  # [B, C]
 
     def forward(self, token_ids: torch.Tensor):
-        # token_ids: [B, T] Long
-        mask = (token_ids != self.pad_id)  # [B, T] for padded batches
+        # Accept: 
+        # - List[LongTensor[T_i]]
+        # - Tensor[B, T]
+        # - Tensor[T] (single sequence)
+        if isinstance(token_ids, (list, tuple)):
+            device = self.emb.weight.device
+            lengths = torch.as_tensor([t.size(0) for t in token_ids], device=device)
+            token_ids = pad_sequence(token_ids, batch_first=True, padding_value=self.pad_id)  # [B, T_max]
+        else:
+            if token_ids.dim() == 1:
+                token_ids = token_ids.unsqueeze(0)  # [1, T]
+            lengths = (token_ids != self.pad_id).sum(dim=1)
 
+        mask = (token_ids != self.pad_id)  # [B, T_max]
 
-        x = self.emb(token_ids)  # [B, T, D]
+        x = self.emb(token_ids)  # [B, T_max, D]
         x = self.emb_dropout(x)
-        out, hn = self.gru(x)      
-        #out, _ = self.gru(x.contiguous())  # [B, T, H*dir]
-        
+
+        packed = pack_padded_sequence(x, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        packed_out, hn = self.gru(packed)
+        out, _ = pad_packed_sequence(packed_out, batch_first=True)  # [B, T_max, H*dir]
+
         # Pooling
         if self.pooling == "mean":
             feat = self._masked_mean(out, mask)
         elif self.pooling == "last":
             if self.bidirectional:
-                # last layer forward/backward states
-                h_last = hn[-2:]             # [2, B, H]
+                h_last = hn[-2:]  # [2, B, H]
                 feat = torch.cat([h_last[0], h_last[1]], dim=-1)  # [B, 2H]
             else:
-                feat = hn[-1]                # [B, H]
+                feat = hn[-1]  # [B, H]
         else:  # "attn"
             feat = self._attn_pool(out, mask)
 
         # Normalization
         if self.norm is not None:
-            if isinstance(self.norm, nn.BatchNorm1d):
-                feat = self.norm(feat)       # [B, C]
-            else:
-                feat = self.norm(feat)       # [B, C]
+            feat = self.norm(feat)
 
         logits = self.head(self.head_dropout(feat))  # [B, num_classes]
         return logits
 
-# ----- Perceiver-style latent cross-attention resampler -----
-class PerceiverResampler(nn.Module):
-    def __init__(self, model_dim: int, num_latents: int = 16, num_heads: int = 4, dropout: float = 0.1, num_layers: int = 2):
-        super().__init__()
-        self.latents = nn.Parameter(torch.randn(num_latents, model_dim))
-        self.blocks = nn.ModuleList([
-            nn.ModuleDict({
-                "ln_q": nn.LayerNorm(model_dim),
-                "ln_kv": nn.LayerNorm(model_dim),
-                "attn": nn.MultiheadAttention(
-                    embed_dim=model_dim, num_heads=num_heads, dropout=dropout, batch_first=True
-                ),
-                "drop": nn.Dropout(dropout),
-                "ffn": nn.Sequential(
-                    nn.LayerNorm(model_dim),
-                    nn.Linear(model_dim, model_dim * 4),
-                    nn.GELU(),
-                    nn.Dropout(dropout),
-                    nn.Linear(model_dim * 4, model_dim),
-                    nn.Dropout(dropout),
-                )
-            }) for _ in range(num_layers)
-        ])
 
-    def forward(self, x: torch.Tensor, key_padding_mask: torch.Tensor | None = None):
-        # x: [B, T, C], key_padding_mask: [B, T] with True where pads should be ignored
-        B, _, C = x.shape
-        latents = self.latents.unsqueeze(0).expand(B, -1, -1)  # [B, L, C]
-        for blk in self.blocks:
-            q = blk["ln_q"](latents)
-            kv = blk["ln_kv"](x)
-            attn_out, _ = blk["attn"](q, kv, kv, key_padding_mask=key_padding_mask)  # [B, L, C]
-            latents = latents + blk["drop"](attn_out)
-            latents = latents + blk["ffn"](latents)
-        return latents  # [B, L, C]
 
-# ----- Griffin-like classifier: BiGRU encoder + latent resampler + MLP head -----
-class GriffinLikeClassifier(nn.Module):
+
+
+# One-hot GRU that consumes per-token flattened vectors; no packing (faster).
+
+class OneHot_RNN_MLP_KmerClassifier(nn.Module):
     def __init__(
         self,
-        vocab_size: int,
-        emb_dim: int = 32,
+        vocab_size: int,          # V_flat = K*A
         rnn_hidden: int = 128,
         num_layers: int = 1,
         bidirectional: bool = True,
-        num_latents: int = 16,
-        num_heads: int = 4,
-        resampler_layers: int = 2,
         num_classes: int = 2,
-        pad_id: int = 0,
         dropout: float = 0.1,
-        emb_dropout: float = 0.1,
-        proj_dim: int = 128,
+        input_dropout: float = 0.1,
+        pooling: str = "mean",    # mean/attn recommended without packing
+        norm: str = "layer",
     ):
         super().__init__()
-        self.pad_id = pad_id
         self.bidirectional = bidirectional
+        self.pooling = pooling
 
-        self.emb = nn.Embedding(vocab_size, emb_dim, padding_idx=pad_id)
-        self.emb_drop = nn.Dropout(emb_dropout)
-
+        self.input_dropout = nn.Dropout(input_dropout)
         self.gru = nn.GRU(
-            input_size=emb_dim,
+            input_size=vocab_size,   # flattened one-hot per token
             hidden_size=rnn_hidden,
             num_layers=num_layers,
             batch_first=True,
@@ -227,38 +200,56 @@ class GriffinLikeClassifier(nn.Module):
         )
 
         feat_dim = rnn_hidden * (2 if bidirectional else 1)
-        self.proj = nn.Identity()
-        model_dim = feat_dim  # keep equal; change proj if you want a different model_dim
+        self.attn = nn.Linear(feat_dim, 1) if pooling == "attn" else None
 
-        self.resampler = PerceiverResampler(
-            model_dim=model_dim,
-            num_latents=num_latents,
-            num_heads=num_heads,
-            dropout=dropout,
-            num_layers=resampler_layers,
-        )
+        if norm == "layer":
+            self.norm = nn.LayerNorm(feat_dim)
+        elif norm == "batch":
+            self.norm = nn.BatchNorm1d(feat_dim)
+        else:
+            self.norm = None
 
-        self.norm = nn.LayerNorm(model_dim)
+        self.head_dropout = nn.Dropout(dropout)
         self.head = nn.Sequential(
             nn.Dropout(dropout),
-            nn.Linear(model_dim, proj_dim),
+            nn.Linear(feat_dim, rnn_hidden),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(proj_dim, num_classes),
+            nn.Linear(rnn_hidden, num_classes),
         )
 
-    def forward(self, token_ids: torch.Tensor):
-        # token_ids: [B, T] Long
-        mask = (token_ids != self.pad_id)                # [B, T] True for real tokens
-        key_padding_mask = ~mask                         # MultiheadAttention ignores True positions
+    def _masked_mean(self, x, mask):
+        mask = mask.unsqueeze(-1)
+        x = x * mask
+        denom = mask.sum(dim=1).clamp_min(1)
+        return x.sum(dim=1) / denom
 
-        x = self.emb(token_ids)                          # [B, T, D]
-        x = self.emb_drop(x)
-        seq, _ = self.gru(x)                             # [B, T, H*dir]
-        seq = self.proj(seq)                             # [B, T, C]
+    def _attn_pool(self, x, mask):
+        scores = self.attn(x).squeeze(-1)
+        scores = scores.masked_fill(~mask, float("-inf"))
+        weights = F.softmax(scores, dim=1).unsqueeze(-1)
+        return (x * weights).sum(dim=1)
 
-        latents = self.resampler(seq, key_padding_mask=key_padding_mask)  # [B, L, C]
-        feat = self.norm(latents.mean(dim=1))            # [B, C] (mean over latents)
+    def forward(self, x_padded: torch.Tensor, lengths: torch.Tensor, mask: torch.Tensor = None):
+        # x_padded: [B, T_tokens_max, V_flat], lengths: [B]
+        B, T_max, V = x_padded.shape
+        assert V == self.gru.input_size, f"V={V} must equal vocab_size={self.gru.input_size}"
 
-        logits = self.head(feat)                         # [B, num_classes]
+        if mask is None:
+            mask = torch.arange(T_max, device=x_padded.device).unsqueeze(0) < lengths.unsqueeze(1)
+
+        x = self.input_dropout(x_padded.float()).contiguous()
+        out, _ = self.gru(x)  # [B, T, H*dir]
+
+        if self.pooling == "mean":
+            feat = self._masked_mean(out, mask)
+        elif self.pooling == "attn":
+            feat = self._attn_pool(out, mask)
+        else:  # "last" without packing is ill-defined for bidirectional; prefer mean/attn
+            last_idx = (lengths - 1).clamp_min(0)
+            feat = out[torch.arange(B, device=out.device), last_idx]
+
+        if self.norm is not None:
+            feat = self.norm(feat)
+        logits = self.head(self.head_dropout(feat))
         return logits

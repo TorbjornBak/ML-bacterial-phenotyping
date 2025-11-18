@@ -1,6 +1,7 @@
 from joblib import Parallel, delayed
 import numpy as np
 import os
+
 os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
 
 class IntegerEmbeddings():
@@ -37,7 +38,7 @@ class IntegerEmbeddings():
 		self.embeddings = embeddings
 		self.vocab_size = vocab_size 
 		print(f'Integer embedder done, vocab size: {vocab_size}')
-		return embeddings, vocab_size
+		return embeddings
 		
 
 	def embed_tokens(self, id, token_dict):
@@ -73,4 +74,45 @@ class IntegerEmbeddings():
 			out.append(inv[x & 3])  # x % 4
 			x >>= 2                 # x //= 4
 		return ''.join(reversed(out))
+	
+
+
+class OneHotEmbeddings():
+	
+	def __init__(self, 
+			  token_collection):
+		self.token_collection = token_collection # Dict with key being an id, value being a list of seq tokens
+
+
+	def run_embedder(self):
+		print(f'Running one-hot embedder')
+		embedding_results = [self.one_hot_embedding(id, tokens) for id, tokens in self.token_collection.items()]
+		
+		embeddings = dict()
+
+		for embedding in embedding_results:
+			embeddings.update(embedding)
+
+		self.embeddings = embeddings
+
+		self.vocab_size = 4  # A, C, G, T
+		
+		return embeddings
+	
+	
+	def one_hot_embedding(self, id, token_dict):
+		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
+		
+		integer_embeddings = {id : {strand:
+							[self.kmer_to_one_hot(kmer) for kmer in kmers] 
+							for strand, kmers in token_dict.items()}}
+
+		return integer_embeddings
+	
+	def kmer_to_one_hot(self, kmer):
+		m = {'A':0, 'C':1, 'G':2, 'T':3}
+		one_hot = np.zeros((len(kmer), 4), dtype=np.float32)
+		for i, ch in enumerate(kmer):
+			one_hot[i, m[ch]] = 1.0
+		return one_hot
 	

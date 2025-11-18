@@ -3,6 +3,7 @@ from utilities.cliargparser import ArgParser
 
 
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.decomposition import PCA
 import umap
 import umap.plot
@@ -29,17 +30,23 @@ def load_stored_embeddings(dataset_file_path):
 	return X, ids
 
 
-def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4, cores = 4, output_directory = None, output_type = "counts", reembed = False):
+def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4, 
+			   id_column = "genome_name", sequence_column = "dna_sequence", 
+			   cores = 4, output_directory = None, output_type = "counts", 
+			   file_type = "parquet", reembed = False, normalize = True):
 
 	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
 	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
 	if not os.path.isfile(dataset_file_path) or reembed:
-		result_dict = kmerize_joblib(dir_list, kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, nr_of_cores=cores, output_type=output_type)
+		result_dict = kmerize_joblib(dir_list, 
+							   kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, 
+							   id_column=id_column, sequence_column=sequence_column, 
+							   nr_of_cores=cores, output_type=output_type, 
+							   file_type=file_type, normalize=normalize)
 		data_dict = result_dict["joblib_result"]
 		ids = [gid for gid in data_dict.keys()]
 		X = [data_dict[gid] for gid in ids]
-
 		np.savez_compressed(dataset_file_path, X=X, ids=np.array(ids, dtype=object))	
 		print(f"{dataset_file_path=}")
 	else:
@@ -50,33 +57,6 @@ def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4, 
 	y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
 
 	return X, y
-
-def pca_plot(context):
-	pca = PCA(n_components=2, random_state=0)
-	X_pcs = pca.fit_transform(context.X)
-
-	print(pca.explained_variance_ratio_)
-
-	labels = np.unique(context.y)
-
-	label2id = {label: i for i, label in enumerate(labels)}
-
-	color_list = [label2id[l] for l in y]
-
-	plt.figure(figsize=(6,5))
-
-	plt.scatter(X_pcs[:, 0], X_pcs[:, 1], c=color_list, cmap='coolwarm', edgecolor='k')
-	plt.xlabel(f'PC1')
-	plt.ylabel(f'PC2')
-	plt.title('PCA projection')
-	plt.legend(title='Label', frameon=False)
-	plt.tight_layout()
-	pca_save_path = f'{context.output_directory}/pca_analysis_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.jpg'
-	plt.savefig(pca_save_path)
-
-	print(f'{pca_save_path=}')
-
-
 
 
 
@@ -100,7 +80,6 @@ def random_forest_classification(context):
 							   y_pred=y_pred, 
 							   seed=seed, 
 							   ctx=context)
-
 
 	
 def hist_gradient_boosting_classifier(context):
@@ -129,6 +108,31 @@ def hist_gradient_boosting_classifier(context):
 							   ctx=context)
 
 
+def pca_plot(context):
+	pca = PCA(n_components=2, random_state=0)
+	X_pcs = pca.fit_transform(context.X)
+
+	print(pca.explained_variance_ratio_)
+
+	labels = np.unique(context.y)
+
+	label2id = {label: i for i, label in enumerate(labels)}
+
+	color_list = [label2id[l] for l in y]
+
+	plt.figure(figsize=(6,5))
+
+	plt.scatter(X_pcs[:, 0], X_pcs[:, 1], c=color_list, cmap='coolwarm', edgecolor='k')
+	plt.xlabel(f'PC1')
+	plt.ylabel(f'PC2')
+	plt.title('PCA projection')
+	plt.legend(title='Label', frameon=False)
+	plt.tight_layout()
+	pca_save_path = f'{context.output_directory}/pca_analysis_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.jpg'
+	plt.savefig(pca_save_path)
+
+	print(f'{pca_save_path=}')
+
 
 def umap_plot(context):
 	mapper = umap.UMAP().fit(context.X)
@@ -136,6 +140,15 @@ def umap_plot(context):
 	umap_save_path = f'{context.output_directory}/umap_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
 	ax.figure.savefig(umap_save_path)
 	print(f'{umap_save_path=}')
+
+
+def kmer_frequency_plot(context):
+	plt.hist(context.X, bins = 50)
+	plt.xlabel('K-mer Frequency')
+	plt.ylabel('Normalized counts')
+	frequency_plot_path = f'{context.output_directory}/kmer_frequency_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
+	print(f'{frequency_plot_path=}')
+	plt.savefig(frequency_plot_path)
 
 
 @dataclass
@@ -216,7 +229,7 @@ if __name__ == "__main__":
 		label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 
-		file_suffix = ".parquet"
+		file_suffix = "parquet"
 		dir_list = os.listdir(input_data_directory)
 		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
@@ -224,15 +237,22 @@ if __name__ == "__main__":
 
 		kmer_prefix = parser.kmer_prefix
 		kmer_suffix_size = parser.kmer_suffix_size
+
+
+
 		
 		X, y = embed_data(label_dict=label_dict, 
 					dir_list=dir_list, 
 					kmer_prefix=kmer_prefix, 
 					kmer_suffix_size = kmer_suffix_size, 
+					id_column = parser.id_column,
+					sequence_column = parser.dna_sequence_column,
 					cores = parser.cores, 
 					output_directory = output_data_directory, 
 					output_type = "counts",
-					reembed=reembed
+					reembed=reembed,
+					file_type=parser.file_type,
+					normalize=False,
 					)
 
 
@@ -248,6 +268,10 @@ if __name__ == "__main__":
 							k_folds=5)
 		
 		
+		kmer_frequency_plot(ctx)
+		# Plotting pca and umap
+		pca_plot(ctx)
+		umap_plot(ctx)
 
 		y_pred = random_forest_classification(ctx)
 
@@ -256,8 +280,9 @@ if __name__ == "__main__":
 		y_pred = hist_gradient_boosting_classifier(ctx)
 
 
-		# Plotting pca and umap
-		pca_plot(ctx)
-		umap_plot(ctx)
+		
+		
+
+		
 
 		

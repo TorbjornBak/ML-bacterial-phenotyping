@@ -18,8 +18,8 @@ class ESMcEmbeddings():
 			  kmer_suffix_size,
 			  compress_embeddings,
 			  esmc_model = "esmc_300m",
-			  device = "cpu",
-			  pooling = "mean_per_token"):
+			  device = "mps",
+			  pooling = "mean"):
 		self.token_collection = token_collection # Dict with key being an id, value being a list of seq tokens
 		self.kmer_suffix_size = kmer_suffix_size
 		self.compress_embeddings = compress_embeddings
@@ -28,34 +28,50 @@ class ESMcEmbeddings():
 		
 		self.client = ESMC.from_pretrained(self.esmc_model).to(device)
 
-	def run_embedder(self, nr_of_cores = 2):
-		embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens, self.pooling) for id, tokens in tqdm(self.token_collection.items()))
-		
+	def run_embedder(self, nr_of_cores = 1):
+		print(f'Embedding with ESM-c model: {self.esmc_model} using pooling: {self.pooling}')
+		if nr_of_cores > 1:
+			embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens, self.pooling) for id, tokens in tqdm(self.token_collection.items()))
+		else:
+			embedding_results = [self.embed_tokens(id, tokens, self.pooling) for id, tokens in tqdm(self.token_collection.items())]
+
 		embeddings = dict()
 
 		for embedding in embedding_results:
 			embeddings.update(embedding)
 		
 		self.embeddings = embeddings
+		print(f'Completed embedding of {len(embeddings)} sequences using ESM-c model: {self.esmc_model}')
 		
-		return embeddings, None
+		return embeddings
 	
-	def embed_tokens(self, id, token_dict, pooling = "mean_per_token"):
+	def embed_tokens(self, id, token_dict, pooling = "mean", join_kmers = True):
 
 		# See https://github.com/facebookresearch/esm/blob/main/esm/tokenization.py#L22
 		# or bacformer repo for embedding  details
 		
 		if pooling == "mean":
-			embeddings = {id : 
-						{
-						strand:torch.hstack([self.embed_kmer(kmer) for kmer in kmers]).mean(axis=1)  # Mean across embeddings
-					  	for strand, kmers in token_dict.items()
+			if join_kmers:
+			# Join kmers to sequence first, then embed and mean pool
+				embeddings = {id : 
+							{
+							strand:self.embed_kmer("".join(kmers)).mean(axis=1)  # Mean pooling across sequence
+							for strand, kmers in token_dict.items()
+							}
 						}
-					}
+			else:
+				# Embed each kmer individually, then stack and mean pool (slower and would give different result)
+				embeddings = {id : 
+							{
+							strand:torch.hstack([self.embed_kmer(kmer) for kmer in kmers]).mean(axis=1)  # Mean pooling across sequence
+							for strand, kmers in token_dict.items()
+							}
+						}
+
 		elif pooling == "mean_per_token":
 			embeddings = {id : 
 						{
-						strand:[self.embed_kmer(kmer).mean(axis = 1) for kmer in kmers]  # Mean across embeddings
+						strand:[self.embed_kmer(kmer).mean(axis = 1) for kmer in kmers]  # Mean pooling for each token 
 					  	for strand, kmers in token_dict.items()
 						}
 					}
