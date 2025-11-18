@@ -318,7 +318,7 @@ class OneHotSequenceDataset(Dataset):
 	"""Dataset for one-hot encoded sequences where each sample X[i] is:
 	   - either a single 2D array [T, V]
 	   - or a list/tuple of 2D arrays [T_j, V] to be concatenated along T.
-	   V is vocab (e.g. 4 for A,C,T,G).
+	   Ensures C-contiguous float32 output.
 	"""
 	def __init__(self, X, y):
 		assert len(X) == len(y), "X and y length mismatch"
@@ -330,43 +330,16 @@ class OneHotSequenceDataset(Dataset):
 
 	def __getitem__(self, idx: int):
 		item = self.X[idx]
-		# Concatenate list of segments if needed
 		if isinstance(item, (list, tuple)):
-			segs = [np.asarray(seg, dtype=np.float32) for seg in item]
+			segs = [np.asarray(seg, dtype=np.float32, order="C") for seg in item]
 			seq = np.concatenate(segs, axis=0)  # [T, V]
 		else:
-			seq = np.asarray(item, dtype=np.float32)  # [T, V]
-		x = torch.as_tensor(seq, dtype=torch.float32)
+			seq = np.asarray(item, dtype=np.float32, order="C")  # [T, V]
+		# Ensure contiguous memory before torch.from_numpy
+		seq = np.ascontiguousarray(seq, dtype=np.float32)
+		x = torch.from_numpy(seq)  # contiguous float32
 		y = torch.as_tensor(self.y[idx], dtype=torch.long)
 		return x, y
-
-
-class OneHotTokenSequenceDataset(Dataset):
-    """
-    X[i] is a list of tokens, each token is a 2D array [K, A] (e.g., [6, 4]).
-    We flatten each token to a vector [K*A] and stack over tokens:
-      result shape per sample: [T_tokens, V_flat], V_flat = K*A.
-    """
-    def __init__(self, X, y):
-        assert len(X) == len(y), "X and y length mismatch"
-        self.X = X
-        self.y = y
-
-        # Infer flattened feature size once (K*A)
-        first_tokens = X[0]
-        assert isinstance(first_tokens, (list, tuple)) and len(first_tokens) > 0
-        k, a = np.asarray(first_tokens[0], dtype=np.float32).shape
-        self.v_flat = int(k * a)
-
-    def __len__(self):
-        return len(self.X)
-
-    def __getitem__(self, idx: int):
-        tokens = self.X[idx]  # list of [K,A]
-        vecs = [np.asarray(tok, dtype=np.float32).reshape(-1) for tok in tokens]  # [V_flat]
-        x = torch.from_numpy(np.stack(vecs, axis=0))  # [T_tokens, V_flat]
-        y = torch.as_tensor(self.y[idx], dtype=torch.long)
-        return x, y
 
 
 def pad_collate(batch, pad_id: int = 0):
@@ -395,29 +368,13 @@ def pad_onehot_collate(batch):
 	"""
 	seqs, labels = zip(*batch)
 	lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
-	padded = pad_sequence(seqs, batch_first=True, padding_value=0.0)  # [B,T_max,V]
+	padded = pad_sequence(seqs, batch_first=True, padding_value=0.0)
+	padded = padded.contiguous()  # make sure it's contiguous
 	T_max = padded.size(1)
 	mask = torch.arange(T_max).unsqueeze(0) < lengths.unsqueeze(1)
 	labels = torch.stack(labels)
-	return padded.contiguous(), lengths, mask, labels
+	return padded, lengths, mask, labels
 
-
-def pad_onehot_token_collate(batch):
-    """
-    batch: list of (x:[T_i,V_flat], y)
-    Returns:
-      x_padded: [B, T_max, V_flat]
-      lengths : [B]
-      mask    : [B, T_max] bool
-      labels  : [B]
-    """
-    seqs, labels = zip(*batch)
-    lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
-    padded = pad_sequence(seqs, batch_first=True, padding_value=0.0)  # [B,T_max,V_flat]
-    T_max = padded.size(1)
-    mask = torch.arange(T_max).unsqueeze(0) < lengths.unsqueeze(1)
-    labels = torch.stack(labels)
-    return padded.contiguous(), lengths, mask, labels
 
 
 class PadCollate:
@@ -560,8 +517,8 @@ def fit_model(
 		
 		model = OneHot_RNN_MLP_KmerClassifier(
 							vocab_size=vocab_size,
-							rnn_hidden=128, 
-							num_layers=1,
+							rnn_hidden=64, 
+							num_layers=2,
 							bidirectional=True,
 							num_classes=num_classes,
 							dropout=dropout,
@@ -617,9 +574,11 @@ def fit_model(
 			for xb, yb in train_loader:
 				xb = xb.to(device)
 				yb = yb.to(device)
+
 				optimizer.zero_grad()
 				output = model(xb)
 				loss = criterion(output, yb)
+				
 				loss.backward()
 				optimizer.step()
 				running_loss += loss.item()
@@ -628,12 +587,13 @@ def fit_model(
 				total += yb.size(0)
 		elif embedding_class == "integer":
 			for xb, lengths, mask, yb in train_loader:
-				
 				xb = xb.to(device)
 				yb = yb.to(device)
+
 				optimizer.zero_grad()
 				output = model(xb)
 				loss = criterion(output, yb)
+
 				loss.backward()
 				optimizer.step()
 				running_loss += loss.item()
@@ -642,14 +602,15 @@ def fit_model(
 				total += yb.size(0)
 		elif embedding_class == "onehot":
 			for xb, lengths, mask, yb in train_loader:
-				
-				xb = xb.to(device)
-				yb = yb.to(device)
-				lengths = lengths.to(device)
-				mask = mask.to(device)
+				xb = xb.to(device, non_blocking=True)
+				yb = yb.to(device, non_blocking=True)
+				lengths = lengths.to(device, non_blocking=True)
+				mask = mask.to(device, non_blocking=True)
+
 				optimizer.zero_grad()
 				output = model(xb, lengths=lengths, mask=mask)
 				loss = criterion(output, yb)
+
 				loss.backward()
 				optimizer.step()
 				running_loss += loss.item()
@@ -926,13 +887,13 @@ def get_model_performance(phenotype = None,
 							train_ds = OneHotSequenceDataset(X_train, y_train)
 							val_ds   = OneHotSequenceDataset(X_val, y_val)
 							test_ds  = OneHotSequenceDataset(X_test, y_test)
-
+							pin = (device.type == "cuda")
 							train_loader = DataLoader(
 								train_ds,
 								batch_size=bs,
 								shuffle=True,
 								num_workers=num_workers,
-								pin_memory=False,
+								pin_memory=pin,
 								collate_fn=pad_onehot_collate,
 								persistent_workers=(num_workers > 0),
 							)
@@ -941,6 +902,7 @@ def get_model_performance(phenotype = None,
 								batch_size=bs,
 								shuffle=False,
 								num_workers=0,
+								pin_memory=pin,
 								collate_fn=pad_onehot_collate,
 							)
 							test_loader = DataLoader(
@@ -948,6 +910,7 @@ def get_model_performance(phenotype = None,
 								batch_size=bs,
 								shuffle=False,
 								num_workers=0,
+								pin_memory=pin,
 								collate_fn=pad_onehot_collate,
 							)
 						else:

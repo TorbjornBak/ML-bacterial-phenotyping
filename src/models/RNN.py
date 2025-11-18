@@ -170,19 +170,18 @@ class RNN_MLP_KmerClassifier(nn.Module):
 
 
 
-# One-hot GRU that consumes per-token flattened vectors; no packing (faster).
-
+# One-hot GRU that consumes per-token vectors directly (no embedding/projection).
 class OneHot_RNN_MLP_KmerClassifier(nn.Module):
     def __init__(
         self,
-        vocab_size: int,          # V_flat = K*A
+        vocab_size: int,        # V (e.g., 4 for A,C,T,G, or K*A if flattened tokens)
         rnn_hidden: int = 128,
         num_layers: int = 1,
         bidirectional: bool = True,
         num_classes: int = 2,
         dropout: float = 0.1,
         input_dropout: float = 0.1,
-        pooling: str = "mean",    # mean/attn recommended without packing
+        pooling: str = "mean",  # "mean" | "attn" | "last"
         norm: str = "layer",
     ):
         super().__init__()
@@ -191,7 +190,7 @@ class OneHot_RNN_MLP_KmerClassifier(nn.Module):
 
         self.input_dropout = nn.Dropout(input_dropout)
         self.gru = nn.GRU(
-            input_size=vocab_size,   # flattened one-hot per token
+            input_size=vocab_size,
             hidden_size=rnn_hidden,
             num_layers=num_layers,
             batch_first=True,
@@ -219,37 +218,54 @@ class OneHot_RNN_MLP_KmerClassifier(nn.Module):
         )
 
     def _masked_mean(self, x, mask):
+        # x: [B,T,C], mask: [B,T]
         mask = mask.unsqueeze(-1)
         x = x * mask
         denom = mask.sum(dim=1).clamp_min(1)
         return x.sum(dim=1) / denom
 
     def _attn_pool(self, x, mask):
+        # x: [B,T,C], mask: [B,T]
         scores = self.attn(x).squeeze(-1)
         scores = scores.masked_fill(~mask, float("-inf"))
         weights = F.softmax(scores, dim=1).unsqueeze(-1)
         return (x * weights).sum(dim=1)
 
     def forward(self, x_padded: torch.Tensor, lengths: torch.Tensor, mask: torch.Tensor = None):
-        # x_padded: [B, T_tokens_max, V_flat], lengths: [B]
-        B, T_max, V = x_padded.shape
+        """
+        x_padded: [B, T, V] float (already padded with zeros)
+        lengths : [B] long
+        mask    : optional [B, T] bool; if None, built from lengths
+        """
+        assert x_padded.dim() == 3, f"Expected [B,T,V], got {x_padded.shape}"
+        # Make sure dtype/contiguity are cuDNN-friendly
+        x = x_padded.to(dtype=torch.float32)
+        if not x.is_contiguous():
+            x = x.contiguous()
+
+        B, T, V = x.shape
         assert V == self.gru.input_size, f"V={V} must equal vocab_size={self.gru.input_size}"
 
         if mask is None:
-            mask = torch.arange(T_max, device=x_padded.device).unsqueeze(0) < lengths.unsqueeze(1)
+            mask = torch.arange(T, device=x.device).unsqueeze(0) < lengths.unsqueeze(1)  # [B,T]
 
-        x = self.input_dropout(x_padded.float()).contiguous()
+        x = self.input_dropout(x)
+        # Also guard contiguity after dropout
+        if not x.is_contiguous():
+            x = x.contiguous()
+
         out, _ = self.gru(x)  # [B, T, H*dir]
 
         if self.pooling == "mean":
             feat = self._masked_mean(out, mask)
         elif self.pooling == "attn":
             feat = self._attn_pool(out, mask)
-        else:  # "last" without packing is ill-defined for bidirectional; prefer mean/attn
+        else:  # "last" (use lengths indexing)
             last_idx = (lengths - 1).clamp_min(0)
             feat = out[torch.arange(B, device=out.device), last_idx]
 
         if self.norm is not None:
             feat = self.norm(feat)
+
         logits = self.head(self.head_dropout(feat))
         return logits
