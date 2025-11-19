@@ -69,7 +69,7 @@ class ArgParser():
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "integer", help = "Type of embedding, choose between integer and esmc")
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
-        parser.add_argument("--esmc_pooling", default = "mean_per_token", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
+        parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
         parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
         parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")

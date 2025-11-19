@@ -92,6 +92,7 @@ def embed_data(kmer_prefix = None,
 						pooling = pooling
 						)
 			embeddings = embedder.run_embedder(nr_of_cores=1)
+			vocab_size = None
 		elif embedding_class == "onehot":
 			embedder = OneHotEmbeddings(token_collection=token_collection)
 			embeddings = embedder.run_embedder()
@@ -133,7 +134,7 @@ def embed_data(kmer_prefix = None,
 		elif embedding_class == "esmc":
 			# Convert tensors to numpy before saving
 			#X = [x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else x for x in X]
-			print(f'{X[0]=}')
+			#print(f'{X[0]=}')
 			# X is a torch tensor list
 			print(f"Saving embeddings (X) to: {dataset_file_path}.pt \nand metadata (ids and groups) to: {dataset_file_path}.npz")
 			torch.save(X, f"{dataset_file_path}.pt")
@@ -199,6 +200,8 @@ def embed_data(kmer_prefix = None,
 			],
 			dtype=np.float32
 		)	
+		vocab_size = 960
+
 	elif embedding_class == "onehot":
 		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
 	
@@ -206,8 +209,7 @@ def embed_data(kmer_prefix = None,
 	y = np.array([label_dict[gid] for gid in groups if gid in label_dict])
 	groups = np.array([gid for gid in groups if gid in label_dict])
 	
-	if vocab_size is None:
-		vocab_size = None
+	
 	print(f'{np.unique(y)=}')
 	print(f'{len(y)=}')
 	print(f'{len(X)=}')
@@ -304,10 +306,9 @@ class EmbeddingSequenceDataset(Dataset):
 		assert len(X) == len(y)
 		self.X = X
 		self.y = y
-		print(f'{X[0]=}')
+		#print(f'{X[0]=}')
 	def __getitem__(self, idx):
-		x = self.X[idx][0]
-		print(f'{x=}')
+		x = self.X[idx]
 		x = x if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32)
 		y = torch.as_tensor(self.y[idx], dtype=torch.long)
 		return x, y
@@ -593,12 +594,13 @@ def fit_model(
 		correct = 0
 
 		if embedding_class == "esmc":
-			for xb, yb in train_loader:
+			for xb, lengths, mask, yb in train_loader:
 				xb = xb.to(device)
 				yb = yb.to(device)
+				
 
 				optimizer.zero_grad()
-				output = model(xb)
+				output = model(xb,lengths=lengths.to(device), mask=mask.to(device))
 				loss = criterion(output, yb)
 
 				loss.backward()
@@ -646,10 +648,10 @@ def fit_model(
 		with torch.no_grad():
 			val_running = 0.0
 			if embedding_class == "esmc":
-				for xb, yb in val_loader:
+				for xb, lengths, mask, yb in val_loader:
 					xb = xb.to(device)
 					yb = yb.to(device)
-					out = model(xb)
+					out = model(xb,lengths=lengths.to(device), mask=mask.to(device))
 					val_running += criterion(out, yb).item()
 			elif embedding_class == "integer":
 				for xb, lengths, mask, yb in val_loader:
@@ -705,9 +707,9 @@ def fit_model(
 	with torch.no_grad():
 		outs = []
 		if embedding_class == "esmc":
-			for xb, yb in test_loader:
+			for xb, lengths, mask, yb in test_loader:
 				xb = xb.to(device)
-				out = model(xb)
+				out = model(xb,lengths=lengths.to(device), mask=mask.to(device))
 				outs.append(out.cpu().numpy())
 		elif embedding_class == "integer":
 			for xb, lengths, mask, yb in test_loader:
@@ -750,7 +752,7 @@ def get_model_performance(phenotype = None,
 						  genome_col = None,
 						  dna_sequence_col = None,
 						  nr_of_cores = 2,
-						  pooling = "mean_per_token",
+						  pooling = "mean",
 						  esmc_model = "esmc_300m",
 						  test_val_split = [0.2, 1/8],
 						  kmer_offset = 0,
@@ -844,7 +846,7 @@ def get_model_performance(phenotype = None,
 						bs = 50 if model_type == "CNN" else 25
 						num_workers = nr_of_cores
 
-						if model_type == "CNNKmerClassifier_w_embeddings":
+						if embedding_class == "esmc":
 							print(f'Using EmbeddingSequenceDataset for {model_type=}')
 							train_ds = EmbeddingSequenceDataset(X_train, y_train)
 							val_ds = EmbeddingSequenceDataset(X_val, y_val)
@@ -855,7 +857,7 @@ def get_model_performance(phenotype = None,
 							shuffle=True,
 							num_workers=num_workers,
 							pin_memory=False,
-							collate_fn=None,
+							collate_fn=pad_onehot_collate,
 							persistent_workers=(num_workers > 0),
 							)
 							val_loader = DataLoader(
@@ -863,46 +865,46 @@ def get_model_performance(phenotype = None,
 								batch_size=bs,
 								shuffle=False,
 								num_workers=0,
-								collate_fn=None,
+								collate_fn=pad_onehot_collate,
 							)
 							test_loader = DataLoader(
 								test_ds,
 								batch_size=bs,
 								shuffle=False,
 								num_workers=0,
-								collate_fn=None,
+								collate_fn=pad_onehot_collate,
 							)
 
-						elif embedding_class == "esmc":
-							print(f'Using SequenceDataset for {model_type=}')
-							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-							val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-							test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-							pad_collate_fn = "pad_collate"
+						# elif embedding_class == "esmc":
+						# 	print(f'Using SequenceDataset for {model_type=}')
+						# 	train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+						# 	val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+						# 	test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+						# 	pad_collate_fn = "pad_collate"
 
-							train_loader = DataLoader(
-							train_ds,
-							batch_size=bs,
-							shuffle=True,
-							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-							num_workers=num_workers,
-							pin_memory=False,
-							persistent_workers=(num_workers > 0),
-							)
-							val_loader = DataLoader(
-								val_ds,
-								batch_size=bs,
-								shuffle=False,
-								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-								num_workers=0,
-							)
-							test_loader = DataLoader(
-								test_ds,
-								batch_size=bs,
-								shuffle=False,
-								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-								num_workers=0,
-							)
+						# 	train_loader = DataLoader(
+						# 	train_ds,
+						# 	batch_size=bs,
+						# 	shuffle=True,
+						# 	collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+						# 	num_workers=num_workers,
+						# 	pin_memory=False,
+						# 	persistent_workers=(num_workers > 0),
+						# 	)
+						# 	val_loader = DataLoader(
+						# 		val_ds,
+						# 		batch_size=bs,
+						# 		shuffle=False,
+						# 		collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+						# 		num_workers=0,
+						# 	)
+						# 	test_loader = DataLoader(
+						# 		test_ds,
+						# 		batch_size=bs,
+						# 		shuffle=False,
+						# 		collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+						# 		num_workers=0,
+						# 	)
 						elif embedding_class == "onehot":
 							print(f'Using OneHotSequenceDataset for {model_type=}')
 							train_ds = OneHotSequenceDataset(X_train, y_train)
@@ -1108,8 +1110,8 @@ if __name__ == "__main__":
 	print(f'{test_val_split=}')
    # base_kmer = "CGTCACA"
 		
-	if embedding_class == "esmc":
-		assert "CNNKmerClassifier_w_embeddings" == model_type, "Currently, ESMc embeddings can only be used with CNNKmerClassifier_w_embeddings model type"
+	# if embedding_class == "esmc":
+	# 	assert "CNNKmerClassifier_w_embeddings" == model_type, "Currently, ESMc embeddings can only be used with CNNKmerClassifier_w_embeddings model type"
 
 
 

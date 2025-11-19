@@ -16,13 +16,11 @@ class ESMcEmbeddings():
 	def __init__(self, 
 			  token_collection,
 			  kmer_suffix_size,
-			  compress_embeddings,
 			  esmc_model = "esmc_300m",
 			  device = "mps",
 			  pooling = "mean"):
 		self.token_collection = token_collection # Dict with key being an id, value being a list of seq tokens
 		self.kmer_suffix_size = kmer_suffix_size
-		self.compress_embeddings = compress_embeddings
 		self.esmc_model = esmc_model
 		self.pooling = pooling
 		
@@ -63,10 +61,11 @@ class ESMcEmbeddings():
 				# Embed each kmer individually, then stack and mean pool (slower and would give different result)
 				embeddings = {id : 
 							{
-							strand:torch.hstack([self.embed_kmer(kmer) for kmer in kmers]).mean(axis=1)  # Mean pooling across sequence
+							strand:torch.hstack(self.embed_kmer(kmer) for kmer in kmers).mean(axis=1)  # Mean pooling across sequence
 							for strand, kmers in token_dict.items()
 							}
 						}
+				
 
 		elif pooling == "mean_per_token":
 			embeddings = {id : 
