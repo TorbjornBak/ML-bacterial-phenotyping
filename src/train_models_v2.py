@@ -101,7 +101,6 @@ def embed_data(kmer_prefix = None,
 		else:
 			raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 		
-		
 
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
@@ -200,7 +199,7 @@ def embed_data(kmer_prefix = None,
 			],
 			dtype=np.float32
 		)	
-		vocab_size = 960
+		vocab_size = X[0].shape[-1]
 
 	elif embedding_class == "onehot":
 		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
