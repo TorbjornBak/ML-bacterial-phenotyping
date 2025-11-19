@@ -569,7 +569,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	else:
-		raise ValueError("No model type was specified. Aborting...")
+		raise ValueError(f"No valid model type was specified. Model_type was {model_type}. Aborting...")
 
 
 	weight = None
