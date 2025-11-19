@@ -95,7 +95,7 @@ class OneHotEmbeddings():
 
 		self.embeddings = embeddings
 
-		self.vocab_size = 4  # A, C, G, T
+		print(f'One-hot embedder done, vocab size: {self.vocab_size}')
 		
 		return embeddings
 	
@@ -104,15 +104,19 @@ class OneHotEmbeddings():
 		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
 		
 		integer_embeddings = {id : {strand:
-							[self.kmer_to_one_hot(kmer) for kmer in kmers] 
+							np.stack([self.kmer_to_one_hot(kmer) for kmer in kmers], axis=0) 
 							for strand, kmers in token_dict.items()}}
 
 		return integer_embeddings
+
 	
 	def kmer_to_one_hot(self, kmer):
-		m = {'A':0, 'C':1, 'G':2, 'T':3}
-		one_hot = np.zeros((len(kmer), 4), dtype=np.float32)
+		m = {'A':0, 'C':1, 'G':2, 'T':3, 'n':4}
+		  # A, C, G, T, N
+		one_hot = np.zeros((len(kmer) * len(m)), dtype=np.float32)
 		for i, ch in enumerate(kmer):
-			one_hot[i, m[ch]] = 1.0
+			one_hot[i*len(m)+m[ch]] = 1.0
+
+		self.vocab_size = len(m) * len(kmer)
 		return one_hot
 	

@@ -22,7 +22,7 @@ from embeddings.esmc_embeddings import ESMcEmbeddings
 
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
-from models.RNN import OneHot_RNN_MLP_KmerClassifier, RNN_MLP_KmerClassifier, RNNKmerClassifier
+from models.RNN import OneHot_RNN_MLP_KmerClassifier, OneHot_RNN_small, RNN_MLP_KmerClassifier, RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
 
@@ -211,10 +211,11 @@ def embed_data(kmer_prefix = None,
 	print(f'{np.unique(y)=}')
 	print(f'{len(y)=}')
 	print(f'{len(X)=}')
+	print(f'{X.shape=}')
 	print(f'{len(groups)=}')
 	print(f'{vocab_size=}')
 	
-	print(f'{X[0]=}')
+	print(f'{np.array(X[0]).shape=}')
 	return X, y, groups, vocab_size
 
 def is_embedding_file(dataset_file_path, embedding_class = "integer"):
@@ -322,6 +323,8 @@ class OneHotSequenceDataset(Dataset):
 	"""
 	def __init__(self, X, y):
 		assert len(X) == len(y), "X and y length mismatch"
+		print(f'{X.shape=}')
+		print(f'{y.shape=}')
 		self.X = X
 		self.y = y
 
@@ -329,15 +332,17 @@ class OneHotSequenceDataset(Dataset):
 		return len(self.X)
 
 	def __getitem__(self, idx: int):
-		item = self.X[idx]
-		if isinstance(item, (list, tuple)):
-			segs = [np.asarray(seg, dtype=np.float32, order="C") for seg in item]
-			seq = np.concatenate(segs, axis=0)  # [T, V]
-		else:
-			seq = np.asarray(item, dtype=np.float32, order="C")  # [T, V]
-		# Ensure contiguous memory before torch.from_numpy
-		seq = np.ascontiguousarray(seq, dtype=np.float32)
-		x = torch.from_numpy(seq)  # contiguous float32
+		x = self.X[idx]
+		# if isinstance(item, (list, tuple)):
+		# 	segs = [np.asarray(seg, dtype=np.float32, order="C") for seg in item]
+		# 	seq = np.concatenate(segs, axis=0)  # [T, V]
+		# else:
+		# 	seq = np.asarray(item, dtype=np.float32, order="C")  # [T, V]
+		# # Ensure contiguous memory before torch.from_numpy
+		# seq = np.ascontiguousarray(seq, dtype=np.float32)
+		# print(f'{seq.shape=}')
+		
+		x = torch.as_tensor(x, dtype=torch.float32)
 		y = torch.as_tensor(self.y[idx], dtype=torch.long)
 		return x, y
 
@@ -418,6 +423,7 @@ def fit_model(
 	num_classes = 2, 
 	model_type = "CNN",
 	vocab_size = None,
+	kmer_suffix_size = None,
 	pad_id=0, 
 	trace_memory_usage = False,
 	dropout = 0.2,
@@ -529,6 +535,22 @@ def fit_model(
 		weight_decay = 1e-4
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
+	elif model_type == "RNN_MLP_ONEHOT_SMALL":
+		
+		model = OneHot_RNN_small(
+							vocab_size = vocab_size,
+							rnn_hidden=64, 
+							head_dim=32,
+							num_layers=1,
+							bidirectional=False,
+							num_classes=num_classes,
+							dropout=dropout,
+							input_dropout=0.1,
+							
+							).to(device)
+		weight_decay = 1e-4
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
 
 	elif model_type == "TRANSFORMER":
 		emb_dim = 8
@@ -578,7 +600,7 @@ def fit_model(
 				optimizer.zero_grad()
 				output = model(xb)
 				loss = criterion(output, yb)
-				
+
 				loss.backward()
 				optimizer.step()
 				running_loss += loss.item()
@@ -602,10 +624,10 @@ def fit_model(
 				total += yb.size(0)
 		elif embedding_class == "onehot":
 			for xb, lengths, mask, yb in train_loader:
-				xb = xb.to(device, non_blocking=True)
-				yb = yb.to(device, non_blocking=True)
-				lengths = lengths.to(device, non_blocking=True)
-				mask = mask.to(device, non_blocking=True)
+				xb = xb.to(device)
+				yb = yb.to(device)
+				lengths = lengths.to(device)
+				mask = mask.to(device)
 
 				optimizer.zero_grad()
 				output = model(xb, lengths=lengths, mask=mask)
@@ -700,9 +722,8 @@ def fit_model(
 				out = model(xb, lengths=lengths, mask=mask)
 				outs.append(out.cpu().numpy())
 			
-			
-		test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
-		
+	test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
+
 	fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
 		
 	return fit_model_results
@@ -803,7 +824,7 @@ def get_model_performance(phenotype = None,
 
 						label_encoder = LabelEncoder()
 
-						# Fit on all labels, prevents the problem that occasionally occur with small datasets, 
+						# Fit on all labels (instead of only on y_train labels), prevents the problem that occasionally occur with small datasets, 
 						# where y contains a previously unseen label
 						label_encoder.fit(y)
 
@@ -946,8 +967,7 @@ def get_model_performance(phenotype = None,
 							num_workers = 0
 						else:
 							num_workers = 2
-						
-						
+
 						
 						training_result = fit_model(train_loader, val_loader, test_loader,
 												device=device,
@@ -1007,7 +1027,7 @@ def get_model_performance(phenotype = None,
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
 							}
 						)
-						
+						run.log(results.to_dict())
 
 						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}"
 						path = f'{output_directory}/{dataset_name}.csv'

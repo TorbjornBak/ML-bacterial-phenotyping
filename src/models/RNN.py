@@ -167,8 +167,90 @@ class RNN_MLP_KmerClassifier(nn.Module):
         return logits
 
 
+## One hot RNN models
 
 
+
+# One-hot GRU that consumes per-token vectors directly (no embedding/projection).
+class OneHot_RNN_small(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,        # V (e.g., 4 for A,C,T,G, or K*A if flattened tokens)
+        rnn_hidden: int = 128,
+        num_layers: int = 1,
+        head_dim: int = 64,
+        bidirectional: bool = True,
+        num_classes: int = 2,
+        dropout: float = 0.1,
+        input_dropout: float = 0.1,
+    ):
+        super().__init__()
+        self.bidirectional = bidirectional
+        self.pooling = "mean"
+
+        self.input_dropout = nn.Dropout(input_dropout)
+        self.gru = nn.GRU(
+            input_size=vocab_size,
+            hidden_size=rnn_hidden,
+            num_layers=num_layers,
+            batch_first=True,
+            bidirectional=bidirectional,
+            dropout=dropout if num_layers > 1 else 0.0,
+        )
+
+        feat_dim = rnn_hidden * (2 if bidirectional else 1)
+        
+
+
+        self.norm = nn.LayerNorm(feat_dim)
+        
+
+        self.head_dropout = nn.Dropout(dropout)
+        self.head = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(feat_dim, head_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(head_dim, num_classes),
+        )
+
+    def _masked_mean(self, x, mask):
+        # x: [B,T,C], mask: [B,T]
+        mask = mask.unsqueeze(-1)
+        x = x * mask
+        denom = mask.sum(dim=1).clamp_min(1)
+        return x.sum(dim=1) / denom
+
+
+    def forward(self, x_padded: torch.Tensor, lengths: torch.Tensor, mask: torch.Tensor = None):
+        """
+        x_padded: [B, T, V] float (already padded with zeros)
+        lengths : [B] long
+        mask    : optional [B, T] bool; if None, built from lengths
+        """
+        assert x_padded.dim() == 3, f"Expected [B,T,V], got {x_padded.shape}"
+
+        x = x_padded
+        if not x.is_contiguous():
+            x = x.contiguous()
+
+        B, T, V = x.shape
+        assert V == self.gru.input_size, f"V={V} must equal vocab_size={self.gru.input_size}"
+
+        if mask is None:
+            mask = torch.arange(T, device=x.device).unsqueeze(0) < lengths.unsqueeze(1)  # [B,T]
+
+        x = self.input_dropout(x)
+        # Also guard contiguity after dropout
+      
+        out, _ = self.gru(x)  # [B, T, H*dir]
+
+        feat = self._masked_mean(out, mask)
+ 
+        feat = self.norm(feat)
+
+        logits = self.head(self.head_dropout(feat))
+        return logits
 
 # One-hot GRU that consumes per-token vectors directly (no embedding/projection).
 class OneHot_RNN_MLP_KmerClassifier(nn.Module):

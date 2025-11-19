@@ -300,7 +300,7 @@ class KmerTokenizer():
 			
 
 
-	def tokenize_single_sequence(self, sequence, kmer_prefix, kmer_suffix_size, kmer_prefix_size, kmer_offset):
+	def tokenize_single_sequence(self, sequence, kmer_prefix, kmer_suffix_size, kmer_prefix_size, kmer_offset, with_unknown_bases = False):
 		kmers = list()
 		current_kmer_prefix_location = sequence.find(kmer_prefix)
 
@@ -310,10 +310,12 @@ class KmerTokenizer():
 			
 			kmer_suffix = sequence[kmer_suffix_start_location : kmer_suffix_start_location + kmer_suffix_size]
 			
-			if 'n' not in kmer_suffix and len(kmer_suffix) == kmer_suffix_size:
+			
+			if len(kmer_suffix) == kmer_suffix_size:
+				if 'n' not in kmer_suffix or with_unknown_bases:
 				# Converts dna to binary to use for indexing np.array
 				
-				kmers.append(kmer_suffix)
+					kmers.append(kmer_suffix)
 
 			current_kmer_prefix_location = sequence.find(kmer_prefix, current_kmer_prefix_location + kmer_prefix_size)
 		
@@ -879,7 +881,7 @@ if __name__ == "__main__":
 	# kmerize_parquet_joblib(file_paths=["downloads/train_01.parquet","downloads/train_02.parquet", "downloads/train_03.parquet"],
 	# 					kmer_prefix="CGTGA",
 	# 					kmer_suffix_size = 8,
-	# 					nr_of_cores = 1,
+	# 					nr_of_cores = 1,fclass
 	# 					output_type = "one-hot"
 	# 					)
 
