@@ -86,7 +86,6 @@ def embed_data(kmer_prefix = None,
 		elif embedding_class == "esmc":
 			embedder = ESMcEmbeddings(token_collection=token_collection, 
 						kmer_suffix_size=kmer_suffix_size,
-						compress_embeddings=compress_embeddings,
 						esmc_model = esmc_model,
 						device = device,
 						pooling = pooling
