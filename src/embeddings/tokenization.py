@@ -269,10 +269,10 @@ class KmerTokenizer():
 	
 		kmer_prefix_size = len(self.kmer_prefix)
 
-		assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by the codon size (of 3)"
+		#assert self.kmer_suffix_size % 3 == 0, "For this mode, kmer_suffix_size needs to be divisble by the codon size (of 3)"
 		
 		kmer_offset = self.kmer_offset # Change this to change the offset 
-						# TODO: Change the offset, might give better results
+						
 		
 		forward_kmers = list()
 		if self.reverse_complement:

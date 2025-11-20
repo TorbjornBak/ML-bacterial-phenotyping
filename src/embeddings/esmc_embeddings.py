@@ -94,7 +94,8 @@ class ESMcEmbeddings():
 		
 		protein_tensor = self.client.encode(protein_str)
 		logits_output = self.client.logits(
-   		protein_tensor, LogitsConfig(sequence=True, return_embeddings=True)
+   		protein_tensor, LogitsConfig(sequence=True, return_embeddings=True, return_hidden_states=True)
 		)
+		
 		return logits_output.embeddings
 

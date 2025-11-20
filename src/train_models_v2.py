@@ -21,7 +21,7 @@ from embeddings.integer_embeddings import IntegerEmbeddings, OneHotEmbeddings
 from embeddings.esmc_embeddings import ESMcEmbeddings
 
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
-from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
+from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNN_ONEHOT_SMALL, CNN_ONEHOT_MEDIUM, CNN_ONEHOT_LARGE, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
 from models.RNN import OneHot_RNN_MLP_KmerClassifier, OneHot_RNN_small, RNN_MLP_KmerClassifier, RNNKmerClassifier
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
@@ -488,6 +488,33 @@ def fit_model(
 		weight_decay = 1e-2
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
+	elif model_type == "CNN_ONEHOT_SMALL":
+		model = CNN_ONEHOT_SMALL(
+			input_size=vocab_size,
+			num_classes=num_classes,
+			dropout=dropout,
+			).to(device)
+		weight_decay = 1e-4
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
+	elif model_type == "CNN_ONEHOT_MEDIUM":
+		model = CNN_ONEHOT_MEDIUM(
+			input_size=vocab_size,
+			num_classes=num_classes,
+			dropout=dropout,
+			).to(device)
+		weight_decay = 1e-4
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
+	elif model_type == "CNN_ONEHOT_LARGE":
+		model = CNN_ONEHOT_LARGE(
+			input_size=vocab_size,
+			num_classes=num_classes,
+			dropout=dropout,
+			).to(device)
+		weight_decay = 1e-4
+		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
+
 	elif model_type == "RNN":
 		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = RNNKmerClassifier(vocab_size=vocab_size, 
@@ -595,7 +622,6 @@ def fit_model(
 			for xb, lengths, mask, yb in train_loader:
 				xb = xb.to(device)
 				yb = yb.to(device)
-				
 
 				optimizer.zero_grad()
 				output = model(xb,lengths=lengths.to(device), mask=mask.to(device))
@@ -625,12 +651,10 @@ def fit_model(
 		elif embedding_class == "onehot":
 			for xb, lengths, mask, yb in train_loader:
 				xb = xb.to(device)
-				yb = yb.to(device)
-				lengths = lengths.to(device)
-				mask = mask.to(device)
+				yb = yb.to(device)    
 
 				optimizer.zero_grad()
-				output = model(xb, lengths=lengths, mask=mask)
+				output = model(xb, lengths = lengths.to(device), mask=mask.to(device))
 				loss = criterion(output, yb)
 
 				loss.backward()
@@ -661,10 +685,9 @@ def fit_model(
 				for xb, lengths, mask, yb in val_loader:
 					xb = xb.to(device)
 					yb = yb.to(device)
-					lengths = lengths.to(device)
-					mask = mask.to(device)
-					out = model(xb, lengths=lengths, mask=mask)
+					out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
 					val_running += criterion(out, yb).item()
+					
 			val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 			train_acc = correct / total if total > 0 else 0.0
 			wandb_run.log({"train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
@@ -716,10 +739,8 @@ def fit_model(
 				outs.append(out.cpu().numpy())
 		elif embedding_class == "onehot":
 			for xb, lengths, mask, yb in test_loader:
-				lengths = lengths.to(device)
-				mask = mask.to(device)
 				xb = xb.to(device)
-				out = model(xb, lengths=lengths, mask=mask)
+				out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
 				outs.append(out.cpu().numpy())
 			
 	test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)

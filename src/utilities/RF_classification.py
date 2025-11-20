@@ -5,8 +5,7 @@ from utilities.cliargparser import ArgParser
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.decomposition import PCA
-import umap
-import umap.plot
+
 import os
 import numpy as np
 import pandas as pd
@@ -60,6 +59,7 @@ def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4,
 
 
 
+
 def random_forest_classification(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
 
@@ -97,8 +97,8 @@ def hist_gradient_boosting_classifier(context):
 		clf.fit(X_train, y_train)
 		y_pred = clf.predict(X_test)
 
-		print(f'{y_test[:100]=}')
-		print(f'{y_pred[:100]=}')
+		# print(f'{y_test[:100]=}')
+		# print(f'{y_pred[:100]=}')
 		print(f'Accuracy of HistGradientBoost: {clf.score(X_test, y_test)}')
 		
 		create_classification_report(y_train=y_train, 
@@ -108,7 +108,7 @@ def hist_gradient_boosting_classifier(context):
 							   ctx=context)
 
 
-def pca_plot(context):
+def pca_plot(context, save = True):
 	pca = PCA(n_components=2, random_state=0)
 	X_pcs = pca.fit_transform(context.X)
 
@@ -118,28 +118,34 @@ def pca_plot(context):
 
 	label2id = {label: i for i, label in enumerate(labels)}
 
-	color_list = [label2id[l] for l in y]
+	color_list = [label2id[l] for l in context.y]
 
 	plt.figure(figsize=(6,5))
 
-	plt.scatter(X_pcs[:, 0], X_pcs[:, 1], c=color_list, cmap='coolwarm', edgecolor='k')
+	sns.scatterplot(x=X_pcs[:, 0], y=X_pcs[:, 1], hue=color_list,)
 	plt.xlabel(f'PC1')
 	plt.ylabel(f'PC2')
 	plt.title('PCA projection')
 	plt.legend(title='Label', frameon=False)
 	plt.tight_layout()
-	pca_save_path = f'{context.output_directory}/pca_analysis_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.jpg'
-	plt.savefig(pca_save_path)
 
-	print(f'{pca_save_path=}')
+	if save:
+
+		
+		pca_save_path = f'{context.output_directory}/pca_analysis_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.jpg'
+		plt.savefig(pca_save_path)
+
+		print(f'{pca_save_path=}')
+	plt.show()
 
 
-def umap_plot(context):
-	mapper = umap.UMAP().fit(context.X)
-	ax = umap.plot.points(mapper, labels = context.y)
-	umap_save_path = f'{context.output_directory}/umap_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
-	ax.figure.savefig(umap_save_path)
-	print(f'{umap_save_path=}')
+
+# def umap_plot(context):
+# 	mapper = umap.UMAP().fit(context.X)
+# 	ax = umap.plot.points(mapper, labels = context.y)
+# 	umap_save_path = f'{context.output_directory}/umap_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
+# 	ax.figure.savefig(umap_save_path)
+# 	print(f'{umap_save_path=}')
 
 
 def kmer_frequency_plot(context):
@@ -197,7 +203,7 @@ def create_classification_report(y_train,
 			"balanced_accuracy": balanced_accuracy,
 			"n_classes": len(np.unique(y_train)),
 			"confusion_matrix" : conf_matrix,
-			"intx2label" : ctx.int2label,
+			"int2label" : ctx.int2label,
 		}
 		)
 	dataset_name = f"tmp_result_{ctx.model_type}_{ctx.phenotype}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
@@ -271,7 +277,7 @@ if __name__ == "__main__":
 		kmer_frequency_plot(ctx)
 		# Plotting pca and umap
 		pca_plot(ctx)
-		umap_plot(ctx)
+		# umap_plot(ctx)
 
 		y_pred = random_forest_classification(ctx)
 
