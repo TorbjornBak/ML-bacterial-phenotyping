@@ -6,40 +6,81 @@ os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
 
 class IntegerEmbeddings():
 	
-	def __init__(self, 
-			  token_collection,
+	def __init__(self,
+			  kmer_prefix,
 			  kmer_suffix_size,
-			  compress_embeddings):
-		self.token_collection = token_collection # Dict with key being an id, value being a list of seq tokens
+			  kmer_offset = 0,
+			  data_directory = ".",
+			  ):
+		
+		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
-		self.compress_embeddings = compress_embeddings
+		self.kmer_offset = kmer_offset
+		self.data_directory = data_directory
+		self.embedding_class = "integer"
+
+		self.channel_size = 4**self.kmer_suffix_size + 1
 
 
-	def run_embedder(self, nr_of_cores = 2):
+	def run_embedder(self, token_collection, nr_of_cores = 1):
 		
 		print(f'Running integer embedder with {nr_of_cores} cores')
 		if nr_of_cores == 1:
-			embedding_results = [self.embed_tokens(id, tokens) for id, tokens in self.token_collection.items()]
+			embedding_results = [self.embed_tokens(id, tokens) for id, tokens in token_collection.items()]
 		else:
-			embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in self.token_collection.items())
+			embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in token_collection.items())
 
 		embeddings = dict()
 
 		for embedding in embedding_results:
 			embeddings.update(embedding)
-
-		if self.compress_embeddings:
-			embeddings, vocab_size = self.compress_integer_embeddings(embeddings, alphabet_size=4)
-			
-		else:
-			vocab_size = 4**self.kmer_suffix_size + 1
-		
 		
 		self.embeddings = embeddings
-		self.vocab_size = vocab_size 
-		print(f'Integer embedder done, vocab size: {vocab_size}')
-		return embeddings
 		
+		print(f'Integer embedder finished, channel size: {self.channel_size}')
+		return embeddings
+	
+	def save_embeddings(self, X, ids, groups):
+		print(f"Saving embeddings to: {self.file_path()}.npz")
+		np.savez_compressed(f'{self.file_path()}.npz', 
+					  		X=np.array(X, dtype=object), 
+					  		ids=np.array(ids, dtype=object), 
+							groups=np.array(groups, dtype=object),
+							channel_size = self.channel_size)
+		
+		return True
+
+	def load_stored_embeddings(self):
+		file_path = self.file_path()
+		print(f"Loading embeddings from: {file_path=}")
+		z = np.load(f'{file_path}.npz', allow_pickle=True)
+
+		X = list(z["X"])  # object array → list of arrays 
+		ids = list(z["ids"])  # map labels from current dict
+		groups = list(z["groups"])
+
+		channel_size = int(z["channel_size"]) if "channel_size" in z else None
+		
+		return X, ids, groups, channel_size
+		
+
+	def is_embedding_file(self):
+		file_types = [".npz"]
+		for type in file_types:
+			if not os.path.isfile(f'{self.file_path()}{type}'):
+				return False
+		return True
+
+	def file_path(self):
+
+		if self.kmer_offset == 0:
+			dataset_name = f'integer_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
+		else:
+			dataset_name = f'integer_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
+
+		return file_path
+	
 
 	def embed_tokens(self, id, token_dict):
 		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
@@ -80,13 +121,25 @@ class IntegerEmbeddings():
 class OneHotEmbeddings():
 	
 	def __init__(self, 
-			  token_collection):
-		self.token_collection = token_collection # Dict with key being an id, value being a list of seq tokens
+				kmer_prefix,
+			  	kmer_suffix_size,
+			  	kmer_offset = 0,
+			  	data_directory = "."
+			  ):
+		
+		self.kmer_prefix = kmer_prefix
+		self.kmer_suffix_size = kmer_suffix_size
+		self.kmer_offset = kmer_offset
+		self.embedding_class = "onehot"
 
+	
+		self.data_directory = data_directory
+			
 
-	def run_embedder(self):
+	def run_embedder(self, token_collection):
+		
 		print(f'Running one-hot embedder')
-		embedding_results = [self.one_hot_embedding(id, tokens) for id, tokens in self.token_collection.items()]
+		embedding_results = [self.one_hot_embedding(id, tokens) for id, tokens in token_collection.items()]
 		
 		embeddings = dict()
 
@@ -95,11 +148,53 @@ class OneHotEmbeddings():
 
 		self.embeddings = embeddings
 
-		print(f'One-hot embedder done, vocab size: {self.vocab_size}')
+		print(f'One-hot embedder done, channel size: {self.channel_size}')
 		
 		return embeddings
 	
+	def save_embeddings(self, X, ids, groups):
+		print(f"Saving embeddings to: {self.file_path()}.npz")
+		np.savez_compressed(f'{self.file_path()}.npz', 
+					  		X=np.array(X, dtype=object), 
+					  		ids=np.array(ids, dtype=object), 
+							groups=np.array(groups, dtype=object),
+							channel_size = self.channel_size)
+		
+		return True
+
+	def load_stored_embeddings(self):
+		file_path = self.file_path()
+		print(f"Loading embeddings from: {file_path=}")
+		z = np.load(f'{file_path}.npz', allow_pickle=True)
+
+		X = list(z["X"])  # object array → list of arrays 
+		ids = list(z["ids"])  # map labels from current dict
+		groups = list(z["groups"])
+
+		channel_size = int(z["channel_size"]) if "channel_size" in z else None
+		
+		return X, ids, groups, channel_size
+		
+
+	def is_embedding_file(self):
+		file_types = [".npz"]
+		for type in file_types:
+			if not os.path.isfile(f'{self.file_path()}{type}'):
+				return False
+		return True
+
+	def file_path(self):
+
+		if self.kmer_offset == 0:
+			dataset_name = f'onehot_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
+		else:
+			dataset_name = f'onehot_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		
+		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
+
+		return file_path
 	
+
 	def one_hot_embedding(self, id, token_dict):
 		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
 		
@@ -117,6 +212,6 @@ class OneHotEmbeddings():
 		for i, ch in enumerate(kmer):
 			one_hot[i*len(m)+m[ch]] = 1.0
 
-		self.vocab_size = len(m) * len(kmer)
+		self.channel_size = len(m) * len(kmer)
 		return one_hot
 	

@@ -32,8 +32,7 @@ def embed_data(kmer_prefix = None,
 			   kmer_suffix_size = None, 
 			   input_data_directory = None, 
 			   output_directory = None, 
-			   reembed = False, 
-			   no_loading = False, 
+			   reembed = False,
 			   label_dict = None, 
 			   compress_embeddings = True,
 			   embedding_class = "IntegerEmbeddings",
@@ -42,8 +41,8 @@ def embed_data(kmer_prefix = None,
 			   dna_sequence_col = "dna_sequence_col",
 			   reverse_complement = True,
 			   nr_of_cores = 2,
-			   pooling = None,
 			   esmc_model = None,
+			   esmc_pooling = None,
 			   device = "cpu",
 			   kmer_offset = 0):
 	# Should return X and y
@@ -52,13 +51,42 @@ def embed_data(kmer_prefix = None,
 
 	print(f'{embedding_class=}')
 	
+	if embedding_class == "integer":
+			embedder = IntegerEmbeddings(
+						kmer_prefix=kmer_prefix,
+						kmer_suffix_size=kmer_suffix_size,
+						kmer_offset=kmer_offset,
+						data_directory=output_directory
+						)
+
+	elif embedding_class == "esmc":
+		embedder = ESMcEmbeddings(
+					kmer_prefix=kmer_prefix,
+					kmer_suffix_size=kmer_suffix_size,
+					esmc_model = esmc_model,
+					pooling = esmc_pooling,
+					device = device,
+					data_directory=output_directory,
+					kmer_offset=kmer_offset,
+					)
+
+	elif embedding_class == "onehot":
+		embedder = OneHotEmbeddings(
+					kmer_prefix=kmer_prefix,
+					kmer_suffix_size=kmer_suffix_size,
+					kmer_offset=kmer_offset,
+					data_directory=output_directory)
+
+		
+	else:
+		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 	
-	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedding_class=}.')
+	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedder.embedding_class=}.')
 	
 	if kmer_offset == 0:
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedding_class}' 
+		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedder.embedding_class}' 
 	else:
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedding_class}'
+		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedder.embedding_class}'
 	dataset_file_path = f'{output_directory}/{dataset_name}'
 	
 
@@ -76,82 +104,26 @@ def embed_data(kmer_prefix = None,
 							)
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
-		if embedding_class == "integer":
-			embedder = IntegerEmbeddings(token_collection=token_collection, 
-						kmer_suffix_size=kmer_suffix_size,
-						compress_embeddings=compress_embeddings
-						)
-			embeddings = embedder.run_embedder(nr_of_cores=1)
-			vocab_size = embedder.vocab_size
-		elif embedding_class == "esmc":
-			embedder = ESMcEmbeddings(token_collection=token_collection, 
-						kmer_suffix_size=kmer_suffix_size,
-						esmc_model = esmc_model,
-						device = device,
-						pooling = pooling
-						)
-			embeddings = embedder.run_embedder(nr_of_cores=1)
-			vocab_size = None
-		elif embedding_class == "onehot":
-			embedder = OneHotEmbeddings(token_collection=token_collection)
-			embeddings = embedder.run_embedder()
-			vocab_size = embedder.vocab_size
-			
-		else:
-			raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
+		embeddings = embedder.run_embedder(token_collection=token_collection)
 		
-
+		channel_size = embedder.channel_size
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
-
-		
-		
 		ids = [strand_id for _, strand_id in gid_and_strand_id]
 		groups = [gid for gid, _ in gid_and_strand_id]
 		print(f'{len(X)=}')
 		print(f'{len(ids)=}')
 		print(f'{len(groups)=}')
 
-		
-
-		if embedding_class == "integer":
-			print(f"Saving embeddings to: {dataset_file_path}.npz")
-			np.savez_compressed(f'{dataset_file_path}.npz', 
-					  		X=np.array(X, dtype=object), 
-					  		ids=np.array(ids, dtype=object), 
-							groups=np.array(groups, dtype=object),
-							vocab_size = vocab_size)
-		elif embedding_class == "onehot":
-			print(f"Saving embeddings to: {dataset_file_path}.npz")
-			np.savez_compressed(f'{dataset_file_path}.npz', 
-					  		X=np.array(X, dtype=object), 
-					  		ids=np.array(ids, dtype=object), 
-							groups=np.array(groups, dtype=object),
-							vocab_size = vocab_size)
-		elif embedding_class == "esmc":
-			# Convert tensors to numpy before saving
-			#X = [x.detach().cpu().numpy() if isinstance(x, torch.Tensor) else x for x in X]
-			#print(f'{X[0]=}')
-			# X is a torch tensor list
-			print(f"Saving embeddings (X) to: {dataset_file_path}.pt \nand metadata (ids and groups) to: {dataset_file_path}.npz")
-			torch.save(X, f"{dataset_file_path}.pt")
-			np.savez_compressed(f'{dataset_file_path}.npz', 
-								ids=np.array(ids, dtype=object), 
-								groups=np.array(groups, dtype=object)
-								)
+		embedder.save_embeddings(X, ids, groups)
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:
 
-		if is_embedding_file(dataset_file_path, embedding_class=embedding_class):
-			if no_loading is True:
-				return True
-			if embedding_class == "esmc":
-				torch_device = torch.device(device)
-				X, ids, groups = load_stored_embeddings(dataset_file_path, torch_device=torch_device)
-				vocab_size = None
-			else:
-				X, ids, groups, vocab_size = load_stored_embeddings(dataset_file_path)
+		if is_embedding_file(dataset_file_path, embedding_class=embedder.embedding_class):
+			
+			X, ids, groups, channel_size = embedder.load_stored_embeddings()
+			
 		else: 
 			# Force reembed
 			return embed_data(kmer_prefix = kmer_prefix, 
@@ -159,38 +131,30 @@ def embed_data(kmer_prefix = None,
 							input_data_directory=input_data_directory, 
 							output_directory=output_directory, 
 							reembed = True,
-							no_loading = no_loading, 
 							label_dict=label_dict, 
 							compress_embeddings=compress_embeddings,
-							embedding_class=embedding_class,
+							embedding_class=embedder.embedding_class,
 							file_type = file_type,
 							genome_col=genome_col,
 							dna_sequence_col=dna_sequence_col,
 							reverse_complement=reverse_complement,
 							nr_of_cores = nr_of_cores,
-							pooling = pooling,
+							esmc_pooling = esmc_pooling,
 							esmc_model = esmc_model,
 							device = device,
 			   				kmer_offset = kmer_offset,
 						)
-	elif is_embedding_file(dataset_file_path, embedding_class=embedding_class):
-		if no_loading is True:
-			return True
+	elif is_embedding_file(dataset_file_path, embedding_class=embedder.embedding_class):
 		# Don't reembed kmers
 		# Load np array instead
-		if embedding_class == "esmc":
-			X, ids, groups = load_stored_embeddings(dataset_file_path, torch_device = "cpu")
-			vocab_size = None
-		else:
-			X, ids, groups, vocab_size = load_stored_embeddings(dataset_file_path)
+		
+		X, ids, groups, channel_size = embedder.load_stored_embeddings(dataset_file_path)
 	   
 	else:
-		raise FileNotFoundError(f"No npz data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
+		raise FileNotFoundError(f"No data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
 
-	# Select only the rows where y is not None
-	if embedding_class == "integer":
-		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
-	elif embedding_class == "esmc":
+
+	if embedder.embedding_class == "esmc":
 		X = np.array(
 			[
 				(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
@@ -198,9 +162,8 @@ def embed_data(kmer_prefix = None,
 			],
 			dtype=np.float32
 		)	
-		vocab_size = X[0].shape[-1]
 
-	elif embedding_class == "onehot":
+	else:
 		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
 	
 		
@@ -213,10 +176,10 @@ def embed_data(kmer_prefix = None,
 	print(f'{len(X)=}')
 	print(f'{X.shape=}')
 	print(f'{len(groups)=}')
-	print(f'{vocab_size=}')
+	print(f'{channel_size=}')
 	
 	print(f'{np.array(X[0]).shape=}')
-	return X, y, groups, vocab_size
+	return X, y, groups, channel_size
 
 def is_embedding_file(dataset_file_path, embedding_class = "integer"):
 	if embedding_class == "integer":
@@ -254,8 +217,6 @@ def load_stored_embeddings(dataset_file_path, torch_device = None):
 		groups = list(z["groups"])
 
 		X = torch.load(f'{dataset_file_path}.pt', map_location=torch_device)
-
-		vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
 		
 		return X, ids, groups
 
@@ -617,23 +578,8 @@ def fit_model(
 		running_loss = 0.0
 		total = 0
 		correct = 0
-
-		if embedding_class == "esmc":
-			for xb, lengths, mask, yb in train_loader:
-				xb = xb.to(device)
-				yb = yb.to(device)
-
-				optimizer.zero_grad()
-				output = model(xb,lengths=lengths.to(device), mask=mask.to(device))
-				loss = criterion(output, yb)
-
-				loss.backward()
-				optimizer.step()
-				running_loss += loss.item()
-				preds = output.argmax(dim=1)
-				correct += (preds == yb).sum().item()
-				total += yb.size(0)
-		elif embedding_class == "integer":
+		
+		if embedding_class == "integer":
 			for xb, lengths, mask, yb in train_loader:
 				xb = xb.to(device)
 				yb = yb.to(device)
@@ -648,7 +594,7 @@ def fit_model(
 				preds = output.argmax(dim=1)
 				correct += (preds == yb).sum().item()
 				total += yb.size(0)
-		elif embedding_class == "onehot":
+		else:
 			for xb, lengths, mask, yb in train_loader:
 				xb = xb.to(device)
 				yb = yb.to(device)    
@@ -669,19 +615,14 @@ def fit_model(
 		model.eval()
 		with torch.no_grad():
 			val_running = 0.0
-			if embedding_class == "esmc":
-				for xb, lengths, mask, yb in val_loader:
-					xb = xb.to(device)
-					yb = yb.to(device)
-					out = model(xb,lengths=lengths.to(device), mask=mask.to(device))
-					val_running += criterion(out, yb).item()
-			elif embedding_class == "integer":
+			
+			if embedding_class == "integer":
 				for xb, lengths, mask, yb in val_loader:
 					xb = xb.to(device)
 					yb = yb.to(device)
 					out = model(xb)
 					val_running += criterion(out, yb).item()
-			elif embedding_class == "onehot":
+			else:
 				for xb, lengths, mask, yb in val_loader:
 					xb = xb.to(device)
 					yb = yb.to(device)
@@ -727,17 +668,13 @@ def fit_model(
 	model.eval()
 	with torch.no_grad():
 		outs = []
-		if embedding_class == "esmc":
-			for xb, lengths, mask, yb in test_loader:
-				xb = xb.to(device)
-				out = model(xb,lengths=lengths.to(device), mask=mask.to(device))
-				outs.append(out.cpu().numpy())
-		elif embedding_class == "integer":
+		
+		if embedding_class == "integer":
 			for xb, lengths, mask, yb in test_loader:
 				xb = xb.to(device)
 				out = model(xb)
 				outs.append(out.cpu().numpy())
-		elif embedding_class == "onehot":
+		else:
 			for xb, lengths, mask, yb in test_loader:
 				xb = xb.to(device)
 				out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
@@ -771,8 +708,8 @@ def get_model_performance(phenotype = None,
 						  genome_col = None,
 						  dna_sequence_col = None,
 						  nr_of_cores = 2,
-						  pooling = "mean",
 						  esmc_model = "esmc_300m",
+						  esmc_pooling = "mean",
 						  test_val_split = [0.2, 1/8],
 						  kmer_offset = 0,
 						  reverse_complement = True,
@@ -796,7 +733,7 @@ def get_model_performance(phenotype = None,
 											dna_sequence_col=dna_sequence_col,
 											reverse_complement=reverse_complement,
 											nr_of_cores = nr_of_cores,
-											pooling = pooling,
+											esmc_pooling = esmc_pooling,
 											esmc_model = esmc_model,
 											device=device,
 											kmer_offset=kmer_offset,
@@ -1046,6 +983,7 @@ def get_model_performance(phenotype = None,
 								"confusion_matrix" : conf_matrix,
 								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
+
 							}
 						)
 						run.log(results.to_dict())
@@ -1127,12 +1065,9 @@ if __name__ == "__main__":
 	print(f"{learning_rates=}")
 	print(f'{compress_vocab_space=}')
 	print(f'{test_val_split=}')
-   # base_kmer = "CGTCACA"
-		
-	# if embedding_class == "esmc":
-	# 	assert "CNNKmerClassifier_w_embeddings" == model_type, "Currently, ESMc embeddings can only be used with CNNKmerClassifier_w_embeddings model type"
-
-
+	
+	if embedding_class == "esmc":
+		print(f'{esmc_model=}, {esmc_pooling=}')
 
 	check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")
 
@@ -1187,7 +1122,7 @@ if __name__ == "__main__":
 									genome_col=id_column,
 									dna_sequence_col=dna_sequence_col,
 									nr_of_cores = nr_of_cores,
-									pooling = esmc_pooling,
+									esmc_pooling = esmc_pooling,
 									esmc_model = esmc_model,
 									test_val_split=test_val_split,
 									kmer_offset = kmer_offset,
