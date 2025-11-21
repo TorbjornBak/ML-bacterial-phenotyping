@@ -228,6 +228,7 @@ class CNN_ONEHOT_LARGE(nn.Module):
 			nn.Dropout1d(dropout),
 
 			
+
 			nn.Conv1d(conv_dim, conv_dim, kernel_size=kernel_size, padding=pad_1, stride=1, bias=self.bias),
 			nn.BatchNorm1d(conv_dim),
 			nn.ReLU(inplace=True),
@@ -244,7 +245,10 @@ class CNN_ONEHOT_LARGE(nn.Module):
 			nn.ReLU(inplace=True),
 			nn.Dropout1d(dropout),
 
-		
+			nn.Conv1d(conv_dim, conv_dim, kernel_size=k_3, padding=pad_3, stride=1, bias=self.bias),
+			nn.BatchNorm1d(conv_dim),
+			nn.ReLU(inplace=True),
+			nn.Dropout1d(dropout),
 		)
 		self.head = nn.Sequential(
 			nn.Linear(conv_dim, conv_dim//2),
