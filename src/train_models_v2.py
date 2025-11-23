@@ -106,7 +106,7 @@ def embed_data(kmer_prefix = None,
 
 		embeddings = embedder.run_embedder(token_collection=token_collection)
 		
-		channel_size = embedder.channel_size
+		
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
@@ -115,7 +115,12 @@ def embed_data(kmer_prefix = None,
 		print(f'{len(X)=}')
 		print(f'{len(ids)=}')
 		print(f'{len(groups)=}')
-
+		
+		if embedder.embedding_class == "esmc":
+			channel_size = X[0].shape[-1]
+		else:	
+			channel_size = embedder.channel_size
+			
 		embedder.save_embeddings(X, ids, groups)
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:
@@ -1065,7 +1070,7 @@ if __name__ == "__main__":
 	print(f"{learning_rates=}")
 	print(f'{compress_vocab_space=}')
 	print(f'{test_val_split=}')
-	
+
 	if embedding_class == "esmc":
 		print(f'{esmc_model=}, {esmc_pooling=}')
 

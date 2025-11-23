@@ -61,6 +61,7 @@ class ESMcEmbeddings():
 			embeddings.update(embedding)
 		
 		self.embeddings = embeddings
+		
 		print(f'Completed embedding of {len(embeddings)} sequences using ESM-c model: {self.esmc_model}')
 		
 		return embeddings
