@@ -136,7 +136,7 @@ class ESMcEmbeddings():
 				#print(f'{len(kmers)//3=}')
 				sequence_embedding = embedding_output.embeddings
 				token_embeddings = []
-				print(f'{sequence_embedding.shape=}')
+				#print(f'{sequence_embedding.shape=}')
 				
 
 				# if sequence_embedding.shape[1] <= 2:
@@ -147,8 +147,8 @@ class ESMcEmbeddings():
 					
 					token_embeddings.append(token_embedding)
 
-				if len(token_embeddings) != len(kmers):
-					print(f'{token_embeddings=}, {len(kmers)=}, {sequence_embedding.shape=}, {sequence=}')
+				#if len(token_embeddings) != len(kmers):
+					#print(f'{token_embeddings=}, {len(kmers)=}, {sequence_embedding.shape=}, {sequence=}')
 				
 				embeddings[id] = {strand: torch.vstack(token_embeddings)}
 
