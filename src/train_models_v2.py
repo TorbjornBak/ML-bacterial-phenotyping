@@ -46,8 +46,6 @@ def embed_data(kmer_prefix = None,
 			   device = "cpu",
 			   kmer_offset = 0):
 	# Should return X and y
-	if output_directory is None:
-		output_directory = input_data_directory
 
 	print(f'{embedding_class=}')
 	
@@ -112,15 +110,18 @@ def embed_data(kmer_prefix = None,
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
 		ids = [strand_id for _, strand_id in gid_and_strand_id]
 		groups = [gid for gid, _ in gid_and_strand_id]
+
+		assert len(X) == len(ids) == len(groups), "Length mismatch in embeddings output!"
+		assert len(X) > 0, "No embeddings were created! Aborting..."
 		print(f'{len(X)=}')
 		print(f'{len(ids)=}')
 		print(f'{len(groups)=}')
 		
-		if embedder.embedding_class == "esmc":
+		if embedder.embedding_class != "integer":
 			channel_size = X[0].shape[-1]
 		else:	
 			channel_size = embedder.channel_size
-			
+
 		embedder.save_embeddings(X, ids, groups)
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:

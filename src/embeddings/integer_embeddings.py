@@ -148,7 +148,7 @@ class OneHotEmbeddings():
 
 		self.embeddings = embeddings
 
-		print(f'One-hot embedder done, channel size: {self.channel_size}')
+		
 		
 		return embeddings
 	

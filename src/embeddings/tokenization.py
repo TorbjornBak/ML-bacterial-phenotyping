@@ -7,53 +7,9 @@ from joblib import Parallel, delayed
 from itertools import product
 from utilities import dna_bpe as bpe
 from Bio.Seq import Seq
+from Bio import SeqIO
 
 os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
-
-# Reads one fasta file
-
-# One-hot encoding.
-
-def read_fasta_binary(file_path):
-
-	sequences = list()
-
-	with open(file_path, 'r+b') as f:
-		
-		mm = mmap.mmap(f.fileno(),0, access=mmap.ACCESS_READ)
-	
-		header_position = 0
-
-		# Find header
-		header_position = mm.find(b">")
-		
-		while header_position > -1:
-			
-			# moves the pointer to one position after the header start position
-			mm.seek(header_position + 1)
-			
-			# finds end of the header
-			header_end = mm.find(b"\n")
-			# sequence starts at next position after header ends.
-			seq_start = header_end + 1
-			
-
-			#header = mm.read(header_end - header_position)
-		
-			
-			
-			# Find next header
-			header_position = mm.find(b">")
-			seq_end = header_position - 1
-
-			current_sequence = mm.read(seq_end - seq_start)
-			sequences.append(current_sequence)
-
-	mm.close()		
-
-	return sequences
-
-
 
 def kmerize_sequences_prefix_filtering_binary(sequences, kmer_prefix, kmer_suffix_size, array_size, array_type = "np.zeros"):
 	# Binary array (0 or 1)
@@ -255,6 +211,7 @@ class KmerTokenizer():
 		dir_list = os.listdir(self.input_path)
 		dir_list = [f'{self.input_path}/{file}' for file in dir_list if self.file_type == file.split(".")[-1]]
 		print(f'{dir_list=}')
+		assert len(dir_list) > 0, f'No files with type {self.file_type} found in {self.input_path}'
 		return dir_list
 
 	def fetch_sequences_from_parquet(self, file_path):
@@ -439,37 +396,6 @@ def int_to_kmer(x: int, k: int) -> str:
 	return ''.join(reversed(out))
 
 
-def kmer_sampling_multiple_files(directory, genome_ids = None, file_names = None, kmer_prefix = b"CGTGAT", kmer_suffix_size = 8, labels = None, file_suffix = ".fna", sample_nr = None):
-	
-	arrays = list()
-	y_labels = list()
-	array_size = get_array_size(alphabet_size = 4, kmer_size = kmer_suffix_size)
-	
-	if genome_ids is not None:
-		file_names = [f'{genome_id}{file_suffix}' for genome_id in genome_ids]
-
-
-	random.shuffle(file_names)
-
-	print("Sampling kmers from files")
-	for i, file_name in enumerate(file_names):
-		if i == sample_nr:
-			print(f"Stopped after {i} iterations")
-			return arrays, y_labels
-		file_path = f'{directory}/{file_name}'
-		sequences = read_fasta_binary(file_path=file_path)
-		
-		array = kmerize_sequences_prefix_filtering_binary(sequences, kmer_prefix, kmer_suffix_size, array_size)
-
-		#print(f'Unique kmers: {array.sum()}')
-		arrays.append(array)
-
-		genome_id = file_name.strip(file_suffix)
-
-		y_labels.append(labels[genome_id])
-
-	
-	return arrays, y_labels
 	
 def check_id_and_labels_exist(file_path, id, labels : list, sep = "\t"):
 	df = pd.read_csv(file_path, sep = sep)
@@ -529,18 +455,30 @@ def read_parquet(parquet_path):
 	return df
 
 def read_fasta(fasta_path):
+	# Assuming standard fasta format and that fasta file contains only one species
+	# and that the fasta file name is the genome id
 	print(f'Loading fasta file: {fasta_path}')
+	
+	sequence = []
 
 	with open(fasta_path, mode = "r") as file:
-		for line in file:
-			print(line)
+		for record in SeqIO.parse(file, "fasta"):
+			sequence.append(str(record.seq))
+	
+	df = pd.DataFrame({"genome_id" : [os.path.basename(fasta_path).rsplit(".", 1)[0]],
+					   "dna_sequence" : [" ".join(sequence)]})
+	
+	return df
+
+			
 
 def read_sequence_file(file_path, file_type):
 	if file_type == "parquet":
 		df = read_parquet(file_path)
 		return df
 	elif file_type == "fasta":
-		return NotImplementedError # Not implemented yet (see read_fasta above)
+		df = read_fasta(fasta_path=file_path)
+		return df
 
 	
 def kmerize_and_embed_dataset_return_integers(path, genome_col, dna_sequence_col, kmer_prefix = "CGTGAT", kmer_suffix_size = 8, file_type="parquet"):

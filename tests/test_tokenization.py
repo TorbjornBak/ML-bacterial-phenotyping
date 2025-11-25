@@ -25,69 +25,82 @@ from Bio.Seq import Seq
 #     assert kmers["reverse_kmers"] == [Seq('GAG')]
 
 
+class TestTokenizer():
 
-
-def test_kmer_tokenizer():
-	kmer_prefix="ACTCGCA"
-	kmer_suffix_size=6
-	
-	tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
-								genome_col="genome_name",
-								dna_sequence_col="dna_sequence",
-								kmer_prefix=kmer_prefix,
-								kmer_suffix_size = kmer_suffix_size,
-								file_type="parquet",
-								reverse_complement=True
-								)
-	
-	token_collection = tokenizer.run_tokenizer(nr_of_cores=2)
-
-	embedder = integer_embeddings.IntegerEmbeddings(token_collection=token_collection, 
-					kmer_suffix_size=kmer_suffix_size,
-					compress_embeddings=False)
+	def test_kmer_tokenizer(self):
+		kmer_prefix="ACTCGCA"
+		kmer_suffix_size=6
 		
-	embeddings, vocab_size = embedder.run_embedder(nr_of_cores=2)
-	
-	gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
-
-
-# def test_esmc_embedding():
-# 	kmer_prefix="ACTCGCA"
-# 	kmer_suffix_size=6
-	
-# 	tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
-# 								genome_col="genome_name",
-# 								dna_sequence_col="dna_sequence",
-# 								kmer_prefix=kmer_prefix,
-# 								kmer_suffix_size = kmer_suffix_size,
-# 								file_type="parquet",
-# 								reverse_complement=True
-# 								)
-	
-# 	token_collection = tokenizer.run_tokenizer(nr_of_cores=2)
-
-# 	embedder = tokenization.ESMcEmbeddings(token_collection=token_collection, 
-# 					kmer_suffix_size=kmer_suffix_size,
-# 					compress_embeddings=False)
+		tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
+									genome_col="genome_name",
+									dna_sequence_col="dna_sequence",
+									kmer_prefix=kmer_prefix,
+									kmer_suffix_size = kmer_suffix_size,
+									file_type="parquet",
+									reverse_complement=True
+									)
 		
-# 	embeddings = embedder.run_embedder(nr_of_cores=2)
-	
-# 	gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
-
-
-
-def test_kmer_tokenizer_2():
-	kmer_prefix="ACTCGCA"
-	kmer_suffix_size=7
-	
-	tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
-								genome_col="genome_name",
-								dna_sequence_col="dna_sequence",
-								kmer_prefix=kmer_prefix,
-								kmer_suffix_size = kmer_suffix_size,
-								file_type="parquet",
-								reverse_complement=True
-								)
-	# Should fail
-	with pytest.raises(AssertionError):
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=2)
+
+		embedder = integer_embeddings.IntegerEmbeddings(token_collection=token_collection, 
+						kmer_suffix_size=kmer_suffix_size,
+						compress_embeddings=False)
+			
+		embeddings, vocab_size = embedder.run_embedder(nr_of_cores=2)
+		
+		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
+
+
+	# def test_esmc_embedding():
+	# 	kmer_prefix="ACTCGCA"
+	# 	kmer_suffix_size=6
+		
+	# 	tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
+	# 								genome_col="genome_name",
+	# 								dna_sequence_col="dna_sequence",
+	# 								kmer_prefix=kmer_prefix,
+	# 								kmer_suffix_size = kmer_suffix_size,
+	# 								file_type="parquet",
+	# 								reverse_complement=True
+	# 								)
+		
+	# 	token_collection = tokenizer.run_tokenizer(nr_of_cores=2)
+
+	# 	embedder = tokenization.ESMcEmbeddings(token_collection=token_collection, 
+	# 					kmer_suffix_size=kmer_suffix_size,
+	# 					compress_embeddings=False)
+			
+	# 	embeddings = embedder.run_embedder(nr_of_cores=2)
+		
+	# 	gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
+
+
+
+	def test_kmer_tokenizer_2(self):
+		kmer_prefix="ACTCGCA"
+		kmer_suffix_size=7
+		
+		tokenizer = tokenization.KmerTokenizer(input_path="downloads/", 
+									genome_col="genome_name",
+									dna_sequence_col="dna_sequence",
+									kmer_prefix=kmer_prefix,
+									kmer_suffix_size = kmer_suffix_size,
+									file_type="parquet",
+									reverse_complement=True
+									)
+		# Should fail
+		with pytest.raises(AssertionError):
+			token_collection = tokenizer.run_tokenizer(nr_of_cores=2)
+
+
+class TestDNASequences():
+
+	def test_fasta_reader(self):
+		fasta_path = "tests/test_data/562.97505.fasta"
+		df = tokenization.read_sequence_file(fasta_path, file_type="fasta")
+		print(df)
+		
+		assert df["genome_id"][0] == "562.97505"
+		assert df["dna_sequence"][0].startswith("gagcaccgtattgacgc")
+
+
