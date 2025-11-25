@@ -183,8 +183,8 @@ class KmerTokenizer():
 		self.kmer_offset = kmer_offset
 
 	def run_tokenizer(self, nr_of_cores = 2):
-		print(f'Starting tokenization with {nr_of_cores} cores...')
 		file_paths = self.list_files()
+		print(f'Starting tokenization with {nr_of_cores} cores...')
 		tokenizer_results = Parallel(n_jobs = nr_of_cores)(delayed(self.tokenize)(file_path) for file_path in file_paths)
 
 		token_collection = dict()
@@ -198,7 +198,7 @@ class KmerTokenizer():
 
 	def tokenize(self, file_path):
 		# load df, loop over sequences
-		sequence_dict = self.fetch_sequences_from_parquet(file_path)
+		sequence_dict = self.fetch_sequences(file_path)
 
 		tokens = dict()
 
@@ -210,11 +210,12 @@ class KmerTokenizer():
 	def list_files(self):
 		dir_list = os.listdir(self.input_path)
 		dir_list = [f'{self.input_path}/{file}' for file in dir_list if self.file_type == file.split(".")[-1]]
-		print(f'{dir_list=}')
+		#print(f'{dir_list=}')
+		print(f'Found {len(dir_list)} files with type {self.file_type} in {self.input_path}')
 		assert len(dir_list) > 0, f'No files with type {self.file_type} found in {self.input_path}'
 		return dir_list
 
-	def fetch_sequences_from_parquet(self, file_path):
+	def fetch_sequences(self, file_path):
 		df = read_sequence_file(file_path=file_path, file_type = self.file_type)
 		sequence_dict = {genome_id : dna_sequences.split(" ") for genome_id, dna_sequences in zip(df[self.genome_col], df[self.dna_sequence_col])}
 
@@ -457,7 +458,7 @@ def read_parquet(parquet_path):
 def read_fasta(fasta_path):
 	# Assuming standard fasta format and that fasta file contains only one species
 	# and that the fasta file name is the genome id
-	print(f'Loading fasta file: {fasta_path}')
+	
 	
 	sequence = []
 

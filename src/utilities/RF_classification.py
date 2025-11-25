@@ -235,7 +235,7 @@ if __name__ == "__main__":
 		label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 
-		file_suffix = "parquet"
+		file_suffix = parser.file_type
 		dir_list = os.listdir(input_data_directory)
 		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
