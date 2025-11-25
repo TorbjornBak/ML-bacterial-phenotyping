@@ -81,10 +81,8 @@ def embed_data(kmer_prefix = None,
 	
 	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedder.embedding_class=}.')
 	
-	if kmer_offset == 0:
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{embedder.embedding_class}' 
-	else:
-		dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedder.embedding_class}'
+	
+	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedder.embedding_class}'
 	dataset_file_path = f'{output_directory}/{dataset_name}'
 	
 
@@ -200,7 +198,7 @@ def is_embedding_file(dataset_file_path, embedding_class = "integer"):
 	for type in file_types:
 		if not os.path.isfile(f'{dataset_file_path}{type}'):
 			return False
-			
+	print(f'Embedding file found at: {dataset_file_path} with types: {file_types}')
 	return True
 
 def load_stored_embeddings(dataset_file_path, torch_device = None):
