@@ -159,13 +159,22 @@ def embed_data(kmer_prefix = None,
 
 
 	if embedder.embedding_class == "esmc":
-		X = np.array(
-			[
-				(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
-				for gid, x in zip(groups, X) if gid in label_dict
-			],
-			dtype=np.float32
-		)	
+		if esmc_pooling == "mean":
+			X = np.array(
+				[
+					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
+					for gid, x in zip(groups, X) if gid in label_dict
+				],
+				dtype=np.float32
+			)	
+		else:
+			X = np.array(
+				[
+					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
+					for gid, x in zip(groups, X) if gid in label_dict
+				],
+				dtype=object
+			)	
 
 	else:
 		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
