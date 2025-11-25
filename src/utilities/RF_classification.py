@@ -37,7 +37,7 @@ def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4,
 	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
 	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
 	
-	if not os.path.isfile(dataset_file_path) or reembed:
+	if reembed or not os.path.isfile(dataset_file_path):
 		result_dict = kmerize_joblib(dir_list, 
 							   kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, 
 							   id_column=id_column, sequence_column=sequence_column, 
@@ -260,7 +260,7 @@ if __name__ == "__main__":
 					file_type=parser.file_type,
 					normalize=False,
 					)
-
+		reembed = False  # only reembed once per dataset
 
 		ctx = model_context(
 							X,
