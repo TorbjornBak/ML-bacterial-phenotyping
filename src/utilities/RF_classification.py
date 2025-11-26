@@ -120,7 +120,7 @@ def embed_data(label_dict,
 		print(f'{len(ids)=}')
 		print(f'{len(groups)=}')
 
-		print(f'{X.shape=}')
+		
 		
 		embedder.save_embeddings(X, ids, groups)
 
@@ -145,6 +145,7 @@ def embed_data(label_dict,
 	print(f'{len(X)=}')
 	print(f'{len(y)=}')
 	#print(label_dict)
+	assert len(X) == len(y), "Length mismatch between embeddings and labels!"
 	
 
 	return X, y
@@ -383,7 +384,7 @@ if __name__ == "__main__":
 					device=device
 					)
 		
-		print(X)
+	
 
 		reembed = False  # only reembed once per dataset
 
