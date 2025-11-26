@@ -136,6 +136,8 @@ def embed_data(label_dict,
 				],
 				dtype=np.float32
 			)
+		else:
+			raise NotImplementedError(f"Pooling method {esmc_pooling} not implemented for loading embeddings.")
 		
 	else:
 		X = [x for gid, x in zip(groups, X) if gid in label_dict]
