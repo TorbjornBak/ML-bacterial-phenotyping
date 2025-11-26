@@ -120,7 +120,7 @@ def embed_data(label_dict,
 		print(f'{len(ids)=}')
 		print(f'{len(groups)=}')
 
-		print(f'{ids[:10]=}')
+		print(f'{X.shape=}')
 		
 		embedder.save_embeddings(X, ids, groups)
 
@@ -132,7 +132,7 @@ def embed_data(label_dict,
 			X = np.array(
 				[
 					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
-					for gid, x in zip(groups, X) if gid in label_dict
+					for gid, x in zip(groups, X[0]) if gid in label_dict
 				],
 				dtype=np.float32
 			)
@@ -145,7 +145,7 @@ def embed_data(label_dict,
 	print(f'{len(X)=}')
 	print(f'{len(y)=}')
 	#print(label_dict)
-	print(f'{groups[:10]=}')
+	
 
 	return X, y
 
