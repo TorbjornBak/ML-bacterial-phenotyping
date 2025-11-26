@@ -132,7 +132,7 @@ def embed_data(label_dict,
 			X = np.array(
 				[
 					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
-					for gid, x in zip(groups, X[0]) if gid in label_dict
+					for gid, x in zip(groups, X) if gid in label_dict
 				],
 				dtype=np.float32
 			)
