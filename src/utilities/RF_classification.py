@@ -258,9 +258,7 @@ def pca_plot(context, save = True):
 	plt.tight_layout()
 
 	if save:
-
-		
-		pca_save_path = f'{context.output_directory}/pca_analysis_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.jpg'
+		pca_save_path = f'{context.output_directory}/pca_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
 		plt.savefig(pca_save_path)
 
 		print(f'{pca_save_path=}')
@@ -276,14 +274,6 @@ def pca_plot(context, save = True):
 # 	print(f'{umap_save_path=}')
 
 
-def kmer_frequency_plot(context):
-	plt.hist(context.X, bins = 50)
-	plt.xlabel('K-mer Frequency')
-	plt.ylabel('Normalized counts')
-	frequency_plot_path = f'{context.output_directory}/kmer_frequency_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.png'
-	print(f'{frequency_plot_path=}')
-	plt.savefig(frequency_plot_path)
-
 
 @dataclass
 class model_context:
@@ -296,6 +286,7 @@ class model_context:
 	model_type: str
 	int2label: dict
 	k_folds: int
+	embedding_class: str
 
 def create_classification_report(y_train,
 								 y_test, 
@@ -334,7 +325,7 @@ def create_classification_report(y_train,
 			"int2label" : ctx.int2label,
 		}
 		)
-	dataset_name = f"tmp_result_{ctx.model_type}_{ctx.phenotype}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
+	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
 	path = f'{ctx.output_directory}/{dataset_name}.csv'
 	results.to_csv(path)
 	print(f'Saved tmp result to {path=}')
@@ -394,13 +385,14 @@ if __name__ == "__main__":
 		ctx = model_context(
 							X,
 							y, 
-							parser.output, 
+							parser.output,
 							phenotype, 
 							kmer_prefix, 
 							kmer_suffix_size,
 							model_type=None,
 							int2label=int2label,
-							k_folds=5)
+							k_folds=5,
+							embedding_class=parser.embedding)
 		
 		
 		# kmer_frequency_plot(ctx)
