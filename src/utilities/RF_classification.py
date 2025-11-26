@@ -10,7 +10,7 @@ import os
 import numpy as np
 import pandas as pd
 
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
@@ -62,7 +62,7 @@ def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4,
 
 def random_forest_classification(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
-
+	context.model_type = "RandomForest"
 	for seed in range(context.k_folds):
 	
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
@@ -80,11 +80,13 @@ def random_forest_classification(context):
 							   y_pred=y_pred, 
 							   seed=seed, 
 							   ctx=context)
+	return clf
 
 	
 def hist_gradient_boosting_classifier(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
-
+	clf = None
+	context.model_type = "HistGradientBoosting"
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
 		clf = HistGradientBoostingClassifier(
@@ -97,6 +99,7 @@ def hist_gradient_boosting_classifier(context):
 		clf.fit(X_train, y_train)
 		y_pred = clf.predict(X_test)
 
+
 		# print(f'{y_test[:100]=}')
 		# print(f'{y_pred[:100]=}')
 		print(f'Accuracy of HistGradientBoost: {clf.score(X_test, y_test)}')
@@ -106,7 +109,38 @@ def hist_gradient_boosting_classifier(context):
 							   y_pred=y_pred, 
 							   seed=seed, 
 							   ctx=context)
+		
+	return clf
 
+
+def gradient_boosting_classifier(context):
+	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
+	clf = None
+	context.model_type = "GradientBoosting"
+	for seed in range(context.k_folds):
+		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
+		clf = GradientBoostingClassifier(
+										loss = 'log_loss', 
+										learning_rate=0.01, 
+										#l2_regularization = 1e-3,
+										max_features=0.9,
+										#class_weight="balanced"
+										)
+		clf.fit(X_train, y_train)
+		y_pred = clf.predict(X_test)
+
+
+		# print(f'{y_test[:100]=}')
+		# print(f'{y_pred[:100]=}')
+		print(f'Accuracy of GradientBoosting: {clf.score(X_test, y_test)}')
+		
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=seed, 
+							   ctx=context)
+		
+	return clf
 
 def pca_plot(context, save = True):
 	pca = PCA(n_components=2, random_state=0)

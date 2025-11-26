@@ -68,7 +68,7 @@ class ESMcEmbeddings():
 	
 	def save_embeddings(self, X, ids, groups):
 		
-		file_path = self.file_path()
+		file_path = self.file_path
 		print(f"Saving embeddings (X) to: {file_path}.pt \nand metadata (ids and groups) to: {file_path}.npz")
 		torch.save(X, f"{file_path}.pt")
 		np.savez_compressed(f'{file_path}.npz', 
@@ -79,13 +79,13 @@ class ESMcEmbeddings():
 		
 	
 	def load_stored_embeddings(self):
-		print(f"Loading embeddings from: {self.file_path()=}")
-		z = np.load(f'{self.file_path()}.npz', allow_pickle=True)
+		print(f"Loading embeddings from: {self.file_path=}")
+		z = np.load(f'{self.file_path}.npz', allow_pickle=True)
 
 		ids = list(z["ids"])  # map labels from current dict
 		groups = list(z["groups"])
 
-		X = torch.load(f'{self.file_path()}.pt', map_location="cpu")
+		X = torch.load(f'{self.file_path}.pt', map_location="cpu")
 
 		channel_size = X[0].shape[-1]
 
@@ -95,18 +95,23 @@ class ESMcEmbeddings():
 
 		file_types = [".npz", ".pt"]
 		for type in file_types:
-			if not os.path.isfile(f'{self.file_path()}{type}'):
+			if not os.path.isfile(f'{self.file_path}{type}'):
 				return False
 		return True
 
-
+	@property
 	def file_path(self):
+		if not hasattr(self, '_file_path'):
+			self._file_path = self.build_file_path()
+		return self._file_path
+
+	def build_file_path(self):
 		pooling_str = self.pooling if self.pooling is not None else "no_pooling"
 		hidden_state_str = f"_hiddenstate_{self.hidden_state}" if self.hidden_state is not None else ""
 		slice_str = f"_slice_{self.slice[0]}-{self.slice[1]}" if self.slice is not None else ""
 		file_path = f"{self.data_directory.rstrip("/")}/{self.esmc_model}_embeddings_{pooling_str}{hidden_state_str}{slice_str}_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}"
 		return file_path
-	
+
 	def embed_tokens(self, id, token_dict, pooling = "mean"):
 
 		# See https://github.com/facebookresearch/esm/blob/main/esm/tokenization.py#L22

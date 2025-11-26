@@ -41,8 +41,8 @@ class IntegerEmbeddings():
 		return embeddings
 	
 	def save_embeddings(self, X, ids, groups):
-		print(f"Saving embeddings to: {self.file_path()}.npz")
-		np.savez_compressed(f'{self.file_path()}.npz', 
+		print(f"Saving embeddings to: {self.file_path}.npz")
+		np.savez_compressed(f'{self.file_path}.npz', 
 					  		X=np.array(X, dtype=object), 
 					  		ids=np.array(ids, dtype=object), 
 							groups=np.array(groups, dtype=object),
@@ -51,8 +51,8 @@ class IntegerEmbeddings():
 		return True
 
 	def load_stored_embeddings(self):
-		file_path = self.file_path()
-		print(f"Loading embeddings from: {file_path=}")
+		file_path = self.file_path
+		print(f"Loading embeddings from: {file_path=}.npz")
 		z = np.load(f'{file_path}.npz', allow_pickle=True)
 
 		X = list(z["X"])  # object array → list of arrays 
@@ -67,12 +67,19 @@ class IntegerEmbeddings():
 	def is_embedding_file(self):
 		file_types = [".npz"]
 		for type in file_types:
-			if not os.path.isfile(f'{self.file_path()}{type}'):
+			if not os.path.isfile(f'{self.file_path}{type}'):
 				return False
 		return True
 
+
+	@property
 	def file_path(self):
 
+		if not hasattr(self, '_file_path'):
+			self._file_path = self.build_file_path()
+		return self._file_path
+
+	def build_file_path(self):
 		if self.kmer_offset == 0:
 			dataset_name = f'integer_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
 		else:
@@ -153,8 +160,8 @@ class OneHotEmbeddings():
 		return embeddings
 	
 	def save_embeddings(self, X, ids, groups):
-		print(f"Saving embeddings to: {self.file_path()}.npz")
-		np.savez_compressed(f'{self.file_path()}.npz', 
+		print(f"Saving embeddings to: {self.file_path}.npz")
+		np.savez_compressed(f'{self.file_path}.npz', 
 					  		X=np.array(X, dtype=object), 
 					  		ids=np.array(ids, dtype=object), 
 							groups=np.array(groups, dtype=object),
@@ -163,8 +170,8 @@ class OneHotEmbeddings():
 		return True
 
 	def load_stored_embeddings(self):
-		file_path = self.file_path()
-		print(f"Loading embeddings from: {file_path=}")
+		file_path = self.file_path
+		print(f"Loading embeddings from: {file_path=}.npz")
 		z = np.load(f'{file_path}.npz', allow_pickle=True)
 
 		X = list(z["X"])  # object array → list of arrays 
@@ -179,12 +186,19 @@ class OneHotEmbeddings():
 	def is_embedding_file(self):
 		file_types = [".npz"]
 		for type in file_types:
-			if not os.path.isfile(f'{self.file_path()}{type}'):
+			if not os.path.isfile(f'{self.file_path}{type}'):
 				return False
 		return True
 
-	def file_path(self):
 
+	@property
+	def file_path(self):
+		if not hasattr(self, '_file_path'):
+			self._file_path = self.build_file_path()
+		return self._file_path
+		
+	
+	def build_file_path(self):
 		if self.kmer_offset == 0:
 			dataset_name = f'onehot_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
 		else:

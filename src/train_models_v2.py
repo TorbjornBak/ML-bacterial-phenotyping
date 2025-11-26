@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split, GroupKFold, GroupShuffleSp
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
 import wandb
 
@@ -35,7 +36,7 @@ def embed_data(kmer_prefix = None,
 			   reembed = False,
 			   label_dict = None, 
 			   compress_embeddings = True,
-			   embedding_class = "IntegerEmbeddings",
+			   embedding_class = "integer",
 			   file_type = "parquet",
 			   genome_col = "genome_id",
 			   dna_sequence_col = "dna_sequence_col",
@@ -47,7 +48,7 @@ def embed_data(kmer_prefix = None,
 			   kmer_offset = 0):
 	# Should return X and y
 
-	print(f'{embedding_class=}')
+	
 	
 	if embedding_class == "integer":
 			embedder = IntegerEmbeddings(
@@ -79,14 +80,9 @@ def embed_data(kmer_prefix = None,
 	else:
 		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 	
-	print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedder.embedding_class=}.')
 	
-	
-	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_offset{kmer_offset}_{embedder.embedding_class}'
-	dataset_file_path = f'{output_directory}/{dataset_name}'
-	
-
 	if reembed:
+		print(f'Embedding dataset with {kmer_prefix=} and {kmer_suffix_size=} as {embedder.embedding_class=}.')
 		
 		tokenizer = KmerTokenizer(
 							input_data_directory,
@@ -124,12 +120,13 @@ def embed_data(kmer_prefix = None,
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:
 
-		if is_embedding_file(dataset_file_path, embedding_class=embedder.embedding_class):
+		if is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
 			
 			X, ids, groups, channel_size = embedder.load_stored_embeddings()
 			
 		else: 
 			# Force reembed
+			print (f'No embedding file found for {kmer_prefix=} and {kmer_suffix_size=} at {embedder.file_path=}. Re-embedding dataset.')
 			return embed_data(kmer_prefix = kmer_prefix, 
 					 		kmer_suffix_size = kmer_suffix_size, 
 							input_data_directory=input_data_directory, 
@@ -148,11 +145,11 @@ def embed_data(kmer_prefix = None,
 							device = device,
 			   				kmer_offset = kmer_offset,
 						)
-	elif is_embedding_file(dataset_file_path, embedding_class=embedder.embedding_class):
+	elif is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
 		# Don't reembed kmers
 		# Load np array instead
 		
-		X, ids, groups, channel_size = embedder.load_stored_embeddings(dataset_file_path)
+		X, ids, groups, channel_size = embedder.load_stored_embeddings()
 	   
 	else:
 		raise FileNotFoundError(f"No data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
@@ -195,6 +192,7 @@ def embed_data(kmer_prefix = None,
 	return X, y, groups, channel_size
 
 def is_embedding_file(dataset_file_path, embedding_class = "integer"):
+
 	if embedding_class == "integer":
 		file_types = [".npz"]
 	elif embedding_class == "esmc":
@@ -204,34 +202,37 @@ def is_embedding_file(dataset_file_path, embedding_class = "integer"):
 	else:
 		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 	
+	print(f'Checking for embedding file at: {dataset_file_path} with types: {file_types}')
+
 	for type in file_types:
 		if not os.path.isfile(f'{dataset_file_path}{type}'):
+			print(f'Embedding file not found: {dataset_file_path}{type}')
 			return False
-	print(f'Embedding file found at: {dataset_file_path} with types: {file_types}')
+	print(f'Embedding files found.')
 	return True
 
-def load_stored_embeddings(dataset_file_path, torch_device = None):
-	if torch_device is None:
-		print(f"Loading embeddings from: {dataset_file_path=}")
-		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
+# def load_stored_embeddings(dataset_file_path, torch_device = None):
+# 	if torch_device is None:
+# 		print(f"Loading embeddings from: {dataset_file_path=}")
+# 		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
 
-		X = list(z["X"])  # object array → list of arrays 
-		ids = list(z["ids"])  # map labels from current dict
-		groups = list(z["groups"])
+# 		X = list(z["X"])  # object array → list of arrays 
+# 		ids = list(z["ids"])  # map labels from current dict
+# 		groups = list(z["groups"])
 
-		vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
+# 		vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
 		
-		return X, ids, groups, vocab_size
-	else:
-		print(f"Loading embeddings from: {dataset_file_path=}")
-		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
+# 		return X, ids, groups, vocab_size
+# 	else:
+# 		print(f"Loading embeddings from: {dataset_file_path=}")
+# 		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
 
-		ids = list(z["ids"])  # map labels from current dict
-		groups = list(z["groups"])
+# 		ids = list(z["ids"])  # map labels from current dict
+# 		groups = list(z["groups"])
 
-		X = torch.load(f'{dataset_file_path}.pt', map_location=torch_device)
+# 		X = torch.load(f'{dataset_file_path}.pt', map_location=torch_device)
 		
-		return X, ids, groups
+# 		return X, ids, groups
 
 class SequenceDataset(Dataset):
 	"""Dataset that returns variable-length token sequences and labels.
@@ -385,6 +386,7 @@ class PadCollate:
 # 		return pad_embed_collate(batch)
 	
 
+
 def fit_model(
 	train_loader: DataLoader,
 	val_loader: DataLoader,
@@ -450,7 +452,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNNKmerClassifier_w_embeddings":
-		# For ESM-c embeddings
+		# For ESM-c embeddings - TODO: does this work still?
 		sample_batch = next(iter(train_loader))[0]  # [B,T,D]
 		emb_dim = sample_batch.size(-1)
 		model = CNNKmerClassifier_w_embeddings(
@@ -551,6 +553,7 @@ def fit_model(
 		weight_decay = 1e-4
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
+	
 
 	elif model_type == "TRANSFORMER":
 		emb_dim = 8
@@ -905,6 +908,37 @@ def get_model_performance(phenotype = None,
 								pin_memory=pin,
 								collate_fn=pad_onehot_collate,
 							)
+
+						elif embedding_class == "integer":
+							print(f'Using SequenceDataset for {model_type=}')
+							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+							val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+							test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+							pad_collate_fn = "pad_collate"
+
+							train_loader = DataLoader(
+							train_ds,
+							batch_size=bs,
+							shuffle=True,
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+							num_workers=num_workers,
+							pin_memory=False,
+							persistent_workers=(num_workers > 0),
+							)
+							val_loader = DataLoader(
+								val_ds,
+								batch_size=bs,
+								shuffle=False,
+								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+								num_workers=0,
+							)
+							test_loader = DataLoader(
+								test_ds,
+								batch_size=bs,
+								shuffle=False,
+								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+								num_workers=0,
+							)
 						else:
 							print(f'Using SequenceDataset for {model_type=}')
 							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
@@ -1009,6 +1043,8 @@ def get_model_performance(phenotype = None,
 						print(f'{results=}')
 
 	return
+
+
 
 
 

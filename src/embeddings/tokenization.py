@@ -209,10 +209,14 @@ class KmerTokenizer():
 
 	def list_files(self):
 		dir_list = os.listdir(self.input_path)
+	
 		dir_list = [f'{self.input_path}/{file}' for file in dir_list if self.file_type == file.split(".")[-1]]
-		#print(f'{dir_list=}')
+		
 		print(f'Found {len(dir_list)} files with type {self.file_type} in {self.input_path}')
 		assert len(dir_list) > 0, f'No files with type {self.file_type} found in {self.input_path}'
+
+		#print(f'{dir_list=}')
+		
 		return dir_list
 
 	def fetch_sequences(self, file_path):
@@ -368,6 +372,27 @@ def bin_to_dna(number, kmer_size):
 			kmer += b"C"
 		else:
 			kmer += b"G"
+	
+	return kmer
+
+def bin_to_dna_str(number, kmer_size):
+	# Converting bits to individual numbers
+	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
+	
+	kmer = ""
+	
+	#and every 2nd bit together with 0b11
+	
+	for twobit in twobits:
+		
+		if twobit == 0b00:
+			kmer += "A"
+		elif twobit == 0b11:
+			kmer += "T"
+		elif twobit == 0b01:
+			kmer += "C"
+		else:
+			kmer += "G"
 	
 	return kmer
 
