@@ -10,7 +10,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from joblib import Parallel, delayed
 
-from embeddings.tokenization import load_labels, kmerize_parquet_joblib
+from embeddings.tokenization import load_labels, kmerize_joblib
 from src.models.Transformers_and_S4Ms import TransformerKmerClassifier
 from tqdm import tqdm
 import re
@@ -34,7 +34,7 @@ def create_embeddings(input_data_directory, kmer_prefix, kmer_suffix_size, nr_of
     dir_list = os.listdir(input_data_directory)
     dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
 
-    X_dict = kmerize_parquet_joblib(dir_list, 
+    X_dict = kmerize_joblib(dir_list, 
                                        kmer_prefix, 
                                        kmer_suffix_size, 
                                        nr_of_cores = nr_of_cores,

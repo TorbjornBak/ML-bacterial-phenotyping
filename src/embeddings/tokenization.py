@@ -123,7 +123,6 @@ def kmerize_sequences_prefix_filtering_count(sequences, kmer_prefix, kmer_suffix
 	
 	if normalize:
 		counts /= kmer_count
-		
 			
 	return counts
 
