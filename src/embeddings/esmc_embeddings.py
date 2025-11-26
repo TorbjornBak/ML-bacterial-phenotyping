@@ -16,7 +16,7 @@ class ESMcEmbeddings():
 			  kmer_prefix,
 			  kmer_suffix_size,
 			  esmc_model = "esmc_300m",
-			  device = "mps",
+			  device = "cpu", # cuda, cpu, mps
 			  pooling = "mean",
 			  hidden_state = None,
 			  slice = None,

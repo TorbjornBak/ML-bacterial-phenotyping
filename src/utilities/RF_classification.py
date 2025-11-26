@@ -67,7 +67,8 @@ def embed_data(label_dict,
 			   reembed = False, 
 			   reverse_complement = False,
 			   esmc_model = "esmc_300m",
-			   esmc_pooling = "mean"):
+			   esmc_pooling = "mean",
+			   device = "cpu"):
 
 	if embedding_class in ["frequency", "counts"]:
 
@@ -86,6 +87,7 @@ def embed_data(label_dict,
 						data_directory=output_data_directory,
 						esmc_model=esmc_model,
 						pooling=esmc_pooling,
+						device=device,
 		)
 	else:
 		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
@@ -137,7 +139,7 @@ def embed_data(label_dict,
 		
 	else:
 		X = [x for gid, x in zip(groups, X) if gid in label_dict]
-		
+
 	y = np.array([label_dict[gid] for gid in groups if gid in label_dict], dtype=np.int64)
 
 	print(f'{len(X)=}')
@@ -346,6 +348,16 @@ if __name__ == "__main__":
 	
 	phenotypes = parser.phenotype
 
+	if torch.cuda.is_available(): 
+		device = torch.device("cuda")
+		
+	elif torch.backends.mps.is_available(): 
+		device = torch.device("mps")
+
+	else: 
+		# On CPU server
+		device = torch.device("cpu")
+
 	for phenotype in phenotypes:
 
 		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
@@ -367,7 +379,8 @@ if __name__ == "__main__":
 					reembed=parser.reembed,
 					file_type=parser.file_type,
 					esmc_model=parser.esmc_model,
-					esmc_pooling=parser.esmc_pooling
+					esmc_pooling=parser.esmc_pooling,
+					device=device
 					)
 		
 		print(X)
