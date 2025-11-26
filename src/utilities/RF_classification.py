@@ -1,4 +1,6 @@
 
+from embeddings.esmc_embeddings import ESMcEmbeddings
+import torch
 from utilities.cliargparser import ArgParser
 
 
@@ -15,7 +17,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 
-from embeddings.tokenization import kmerize_joblib, load_labels
+from embeddings.KmerTokenization import KmerTokenizer, load_labels
+from embeddings.integer_embeddings import KmerCountsEmbeddings
 from dataclasses import dataclass
 
 def load_stored_embeddings(dataset_file_path):
@@ -28,32 +31,119 @@ def load_stored_embeddings(dataset_file_path):
 	print(f'{len(ids)=}')
 	return X, ids
 
+def is_embedding_file(dataset_file_path, embedding_class = "frequency"):
 
-def embed_data(label_dict, dir_list, kmer_prefix="CGTCA", kmer_suffix_size = 4, 
-			   id_column = "genome_name", sequence_column = "dna_sequence", 
-			   cores = 4, output_directory = None, output_type = "counts", 
-			   file_type = "parquet", reembed = False, normalize = True):
+	if embedding_class == "frequency":
+		file_types = [".npz"]
+	elif embedding_class == "counts":
+		file_types = [".npz"]
+	elif embedding_class == "esmc":
+		file_types = [".npz", ".pt"]
 
-	dataset_name = f'{kmer_prefix}_{kmer_suffix_size}_{output_type}' 
-	dataset_file_path = f'{output_directory}/{dataset_name}.npz'
-	
-	if reembed or not os.path.isfile(dataset_file_path):
-		result_dict = kmerize_joblib(dir_list, 
-							   kmer_prefix=kmer_prefix, kmer_suffix_size=kmer_suffix_size, 
-							   id_column=id_column, sequence_column=sequence_column, 
-							   nr_of_cores=cores, output_type=output_type, 
-							   file_type=file_type, normalize=normalize)
-		data_dict = result_dict["joblib_result"]
-		ids = [gid for gid in data_dict.keys()]
-		X = [data_dict[gid] for gid in ids]
-		np.savez_compressed(dataset_file_path, X=X, ids=np.array(ids, dtype=object))	
-		print(f"{dataset_file_path=}")
 	else:
-		X, ids = load_stored_embeddings(dataset_file_path)
-		
+		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
+	
+	print(f'Checking for embedding file at: {dataset_file_path} with types: {file_types}')
 
-	X = [x for gid, x in zip(ids, X) if gid in label_dict]
-	y = np.array([label_dict[gid] for gid in ids if gid in label_dict], dtype=np.int64)
+	for type in file_types:
+		if not os.path.isfile(f'{dataset_file_path}{type}'):
+			print(f'Embedding file not found: {dataset_file_path}{type}')
+			return False
+	print(f'Embedding files found.')
+	return True
+
+
+def embed_data(label_dict, 
+			   input_data_directory, 
+			   output_data_directory,
+			   kmer_prefix="CGTCA", 
+			   kmer_suffix_size = 4, 
+			   kmer_offset = 0,
+			   id_column = "genome_name", 
+			   sequence_column = "dna_sequence", 
+			   embedding_class = "frequency",
+			   cores = 4, 
+			   file_type = "parquet", 
+			   reembed = False, 
+			   reverse_complement = False,
+			   esmc_model = "esmc_300m",
+			   esmc_pooling = "mean"):
+
+	if embedding_class in ["frequency", "counts"]:
+
+		embedder = KmerCountsEmbeddings(
+						kmer_prefix=kmer_prefix,
+						kmer_suffix_size=kmer_suffix_size,
+						kmer_offset=kmer_offset,
+						data_directory=output_data_directory,
+						embedding_class=embedding_class,
+		)
+	elif embedding_class == "esmc":
+		embedder = ESMcEmbeddings(
+						kmer_prefix=kmer_prefix,
+						kmer_suffix_size=kmer_suffix_size,
+						kmer_offset=kmer_offset,
+						data_directory=output_data_directory,
+						esmc_model=esmc_model,
+						pooling=esmc_pooling,
+		)
+	else:
+		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
+
+	if reembed or not is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
+		
+		tokenizer = KmerTokenizer(
+							input_data_directory,
+							genome_col=id_column,
+							dna_sequence_col=sequence_column,
+							kmer_prefix=kmer_prefix,
+							kmer_suffix_size=kmer_suffix_size,
+							file_type=file_type,
+							reverse_complement=reverse_complement,
+							kmer_offset = kmer_offset,
+							)
+		token_collection = tokenizer.run_tokenizer(nr_of_cores=cores)
+
+		embeddings = embedder.run_embedder(token_collection=token_collection)
+
+		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
+		print(f'{gid_and_strand_id[:10]=}')
+		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
+		ids = [strand_id for _, strand_id in gid_and_strand_id]
+		groups = [gid for gid, _ in gid_and_strand_id]
+
+		assert len(X) == len(ids) == len(groups), "Length mismatch in embeddings output!"
+		assert len(X) > 0, "No embeddings were created! Aborting..."
+		print(f'{len(X)=}')
+		print(f'{len(ids)=}')
+		print(f'{len(groups)=}')
+
+		print(f'{ids[:10]=}')
+		
+		embedder.save_embeddings(X, ids, groups)
+
+	else:
+		X, ids, groups, channel_size = embedder.load_stored_embeddings()
+		
+	if embedder.embedding_class == "esmc":
+		if esmc_pooling == "mean":
+			X = np.array(
+				[
+					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
+					for gid, x in zip(groups, X) if gid in label_dict
+				],
+				dtype=np.float32
+			)
+		
+	else:
+		X = [x for gid, x in zip(groups, X) if gid in label_dict]
+		
+	y = np.array([label_dict[gid] for gid in groups if gid in label_dict], dtype=np.int64)
+
+	print(f'{len(X)=}')
+	print(f'{len(y)=}')
+	#print(label_dict)
+	print(f'{groups[:10]=}')
 
 	return X, y
 
@@ -122,9 +212,7 @@ def gradient_boosting_classifier(context):
 		clf = GradientBoostingClassifier(
 										loss = 'log_loss', 
 										learning_rate=0.01, 
-										#l2_regularization = 1e-3,
 										max_features=0.9,
-										#class_weight="balanced"
 										)
 		clf.fit(X_train, y_train)
 		y_pred = clf.predict(X_test)
@@ -256,68 +344,56 @@ if __name__ == "__main__":
 	parser = parser.parser
 	
 	
-	phenotypes = parser.phenotype # is a list 
- 
-	labels_path = parser.labels_path
-	id_column = parser.id_column
-	input_data_directory = parser.input
-	output_data_directory = parser.output
-	reembed = parser.reembed
+	phenotypes = parser.phenotype
 
 	for phenotype in phenotypes:
 
-		label_return = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",")
+		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-
-		file_suffix = parser.file_type
-		dir_list = os.listdir(input_data_directory)
-		dir_list = [f'{input_data_directory}/{file}' for file in dir_list if file_suffix in file]
-
-		print(f'{dir_list=}')
 
 		kmer_prefix = parser.kmer_prefix
 		kmer_suffix_size = parser.kmer_suffix_size
-
-
-
 		
 		X, y = embed_data(label_dict=label_dict, 
-					dir_list=dir_list, 
-					kmer_prefix=kmer_prefix, 
-					kmer_suffix_size = kmer_suffix_size, 
+					input_data_directory=parser.input,
+					output_data_directory=parser.output,
+					kmer_prefix=parser.kmer_prefix, 
+					kmer_suffix_size = parser.kmer_suffix_size, 
+					kmer_offset=parser.kmer_offset,
 					id_column = parser.id_column,
 					sequence_column = parser.dna_sequence_column,
 					cores = parser.cores, 
-					output_directory = output_data_directory, 
-					output_type = "counts",
-					reembed=reembed,
+					embedding_class = parser.embedding,
+					reembed=parser.reembed,
 					file_type=parser.file_type,
-					normalize=False,
+					esmc_model=parser.esmc_model,
+					esmc_pooling=parser.esmc_pooling
 					)
+		
+		print(X)
+
 		reembed = False  # only reembed once per dataset
 
 		ctx = model_context(
 							X,
 							y, 
-							output_data_directory, 
+							parser.output, 
 							phenotype, 
 							kmer_prefix, 
 							kmer_suffix_size,
-							model_type="RandomForest",
+							model_type=None,
 							int2label=int2label,
 							k_folds=5)
 		
 		
-		kmer_frequency_plot(ctx)
-		# Plotting pca and umap
+		# kmer_frequency_plot(ctx)
+		# # Plotting pca and umap
 		pca_plot(ctx)
-		# umap_plot(ctx)
+		# # umap_plot(ctx)
 
-		y_pred = random_forest_classification(ctx)
+		random_forest_classification(ctx)
 
-		ctx.model_type = "HistGradientBoosting" 
-
-		y_pred = hist_gradient_boosting_classifier(ctx)
+		hist_gradient_boosting_classifier(ctx)
 
 
 		

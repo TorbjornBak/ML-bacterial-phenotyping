@@ -220,3 +220,4 @@ results
 wandb
 *.png
 *.jpg
+*.fasta

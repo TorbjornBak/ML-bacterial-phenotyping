@@ -1,8 +1,8 @@
-from joblib import Parallel, delayed
+
 import numpy as np
 import os
 
-os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
+#os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
 
 class IntegerEmbeddings():
 	
@@ -22,14 +22,11 @@ class IntegerEmbeddings():
 		self.channel_size = 4**self.kmer_suffix_size + 1
 
 
-	def run_embedder(self, token_collection, nr_of_cores = 1):
+	def run_embedder(self, token_collection):
 		
-		print(f'Running integer embedder with {nr_of_cores} cores')
-		if nr_of_cores == 1:
-			embedding_results = [self.embed_tokens(id, tokens) for id, tokens in token_collection.items()]
-		else:
-			embedding_results = Parallel(n_jobs = nr_of_cores)(delayed(self.embed_tokens)(id, tokens) for id, tokens in token_collection.items())
-
+		
+		embedding_results = [self.embed_tokens(id, tokens) for id, tokens in token_collection.items()]
+		
 		embeddings = dict()
 
 		for embedding in embedding_results:
@@ -156,7 +153,6 @@ class OneHotEmbeddings():
 		self.embeddings = embeddings
 
 		
-		
 		return embeddings
 	
 	def save_embeddings(self, X, ids, groups):
@@ -229,3 +225,127 @@ class OneHotEmbeddings():
 		self.channel_size = len(m) * len(kmer)
 		return one_hot
 	
+
+class KmerCountsEmbeddings():
+	
+	def __init__(self, 
+				kmer_prefix,
+			  	kmer_suffix_size,
+			  	kmer_offset = 0,
+			  	data_directory = ".",
+				embedding_class = "frequency",
+			  ):
+		
+		self.kmer_prefix = kmer_prefix
+		self.kmer_suffix_size = kmer_suffix_size
+		self.kmer_offset = kmer_offset
+
+		self.embedding_class = embedding_class
+		if self.embedding_class == "frequency":
+			self.normalize = True
+		else:
+			self.normalize = False
+	
+		self.data_directory = data_directory
+
+		self.channel_size = 4**self.kmer_suffix_size
+
+	def save_embeddings(self, X, ids, groups):
+		print(f"Saving embeddings to: {self.file_path}.npz")
+		np.savez_compressed(f'{self.file_path}.npz', 
+					  		X=np.array(X, dtype=object), 
+					  		ids=np.array(ids, dtype=object), 
+							groups=np.array(groups, dtype=object),
+							channel_size = self.channel_size)
+		
+		return True
+
+	def load_stored_embeddings(self):
+		file_path = self.file_path
+		print(f"Loading embeddings from: {file_path=}.npz")
+		z = np.load(f'{file_path}.npz', allow_pickle=True)
+
+		X = list(z["X"])  # object array → list of arrays 
+		ids = list(z["ids"])  # map labels from current dict
+		groups = list(z["groups"])
+
+		channel_size = int(z["channel_size"]) if "channel_size" in z else None
+		
+		return X, ids, groups, channel_size
+		
+
+	def is_embedding_file(self):
+		file_types = [".npz"]
+		for type in file_types:
+			if not os.path.isfile(f'{self.file_path}{type}'):
+				return False
+		return True
+
+
+	@property
+	def file_path(self):
+		if not hasattr(self, '_file_path'):
+			self._file_path = self.build_file_path()
+		return self._file_path
+		
+	
+	def build_file_path(self):
+		if self.kmer_offset == 0:
+			dataset_name = f'counts_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
+		else:
+			dataset_name = f'counts_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		
+		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
+
+		return file_path
+			
+
+	def run_embedder(self, token_collection: dict):
+		
+		print(f'Running counts embedder')
+		embedding_results = [self.counts_embedding(id, tokens) for id, tokens in token_collection.items()]
+		
+		embeddings = dict()
+
+		for embedding in embedding_results:
+			embeddings.update(embedding)
+
+		self.embeddings = embeddings
+
+		return embeddings
+	
+	def counts_embedding(self, id: str, token_dict: dict):
+		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
+		
+		counts = {id : {strand:
+							self.kmer_frequency_count(kmers) 
+							for strand, kmers in token_dict.items()}}
+
+		return counts
+	
+	def kmer_frequency_count(self, kmers: list[str]) -> dict[str, float]:
+		counts = np.zeros(self.channel_size, dtype=np.float32)
+		for kmer in kmers:
+				if "n" not in kmer:
+					counts[self.kmer_to_integer(kmer)] += 1
+		
+		if self.normalize:
+			counts = counts / np.sum(counts)  # Normalize to frequencies
+		
+		return counts
+
+
+	def kmer_to_integer(self, kmer: str) -> int:
+		m = {'A':0, 'C':1, 'G':2, 'T':3}
+		x = 0
+		for ch in kmer:
+			x = (x << 2) | m[ch]  # multiply by 4 and add digit
+		return x
+
+	def integer_to_kmer(self, x: int, k: int) -> str:
+		inv = 'ACGT'
+		out = []
+		for _ in range(k):
+			out.append(inv[x & 3])  # x % 4
+			x >>= 2                 # x //= 4
+		return ''.join(reversed(out))

@@ -43,6 +43,14 @@ class ArgParser():
         parser.add_argument("--file_type", default = "parquet", help = "fx parquet / fasta, the file ending to look for in input folder")
         parser.add_argument("--freq_others", default = None, help = "Bottom frequency of label counts that should be discarded. Useful if some labels only occur a few times.")
         parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
+        parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
+        parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
+        parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
+        parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
+        parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
+        parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
+
+        
         return parser
     
     def train_model_arguments(self):
@@ -64,15 +72,9 @@ class ArgParser():
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
         parser.add_argument("--dropout", default = 0.2, type = float, help = "%% to dropout for each layer")
-        parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
-        parser.add_argument("--embedding", default = "integer", help = "Type of embedding, choose between integer and esmc")
-        parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
-        parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
-        parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
-        parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
-        parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
+        parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, esmc or integer")
         
         return parser
         
@@ -85,6 +87,7 @@ class ArgParser():
         parser = self.default_arguments(parser)
         parser.add_argument("--kmer_prefix", required = True, help = "Kmer prefix to use for pca and umap")
         parser.add_argument("--kmer_suffix_size", required = True, type = int, help = "Kmer suffix size to use for pca and umap")
+        parser.add_argument("--embedding", default = "frequency", help = "Type of embedding, choose between frequency and counts")
         
         return parser
 

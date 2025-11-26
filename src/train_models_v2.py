@@ -12,12 +12,11 @@ from sklearn.model_selection import train_test_split, GroupKFold, GroupShuffleSp
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 
 import wandb
 
-from embeddings.tokenization import load_labels, check_id_and_labels_exist
-from embeddings.tokenization import KmerTokenizer
+from embeddings.tokenization import check_id_and_labels_exist
+from embeddings.KmerTokenization import KmerTokenizer, load_labels
 from embeddings.integer_embeddings import IntegerEmbeddings, OneHotEmbeddings
 from embeddings.esmc_embeddings import ESMcEmbeddings
 
@@ -102,8 +101,8 @@ def embed_data(kmer_prefix = None,
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
-		ids = [strand_id for _, strand_id in gid_and_strand_id]
-		groups = [gid for gid, _ in gid_and_strand_id]
+		ids = [strand_id for _, strand_id in gid_and_strand_id] # All strand ids (forwards, reverse)
+		groups = [gid for gid, _ in gid_and_strand_id] # Groups are the genome ids
 
 		assert len(X) == len(ids) == len(groups), "Length mismatch in embeddings output!"
 		assert len(X) > 0, "No embeddings were created! Aborting..."
@@ -647,7 +646,8 @@ def fit_model(
 					
 			val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 			train_acc = correct / total if total > 0 else 0.0
-			wandb_run.log({"train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
+			if wandb_run is not None:
+				wandb_run.log({"train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
 			if epoch == 0:
 				best_val_loss = val_loss
 				best_model_state = model.state_dict()
