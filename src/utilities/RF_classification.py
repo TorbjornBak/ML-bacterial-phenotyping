@@ -149,7 +149,7 @@ def embed_data(label_dict,
 	#print(label_dict)
 	assert len(X) == len(y), "Length mismatch between embeddings and labels!"
 	
-
+	print(f'{X.shape=}')
 	return X, y
 
 
