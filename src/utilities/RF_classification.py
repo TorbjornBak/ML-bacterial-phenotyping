@@ -136,6 +136,9 @@ def embed_data(label_dict,
 				],
 				dtype=np.float32
 			)
+			
+			if X.ndim == 3 and X.shape[1] == 1:
+				X = X[:, 0, :]      # (962, 960)
 		else:
 			raise NotImplementedError(f"Pooling method {esmc_pooling} not implemented for loading embeddings.")
 		
