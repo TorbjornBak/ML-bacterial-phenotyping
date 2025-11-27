@@ -1,14 +1,8 @@
-
-from embeddings.esmc_embeddings import ESMcEmbeddings
-import torch
-from utilities.cliargparser import ArgParser
-
-
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.decomposition import PCA
 
 import os
+import torch
 import numpy as np
 import pandas as pd
 
@@ -16,9 +10,15 @@ from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassif
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
+from sklearn.inspection import permutation_importance
+from sklearn.decomposition import PCA
 
 from embeddings.KmerTokenization import KmerTokenizer, load_labels
 from embeddings.integer_embeddings import KmerCountsEmbeddings
+from embeddings.esmc_embeddings import ESMcEmbeddings
+from utilities.cliargparser import ArgParser
+
+
 from dataclasses import dataclass
 
 def load_stored_embeddings(dataset_file_path):
@@ -209,9 +209,12 @@ def hist_gradient_boosting_classifier(context):
 	return clf
 
 
+
+
 def gradient_boosting_classifier(context):
-	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
-	clf = None
+	# Used for feature importance extraction
+	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
+	models = []
 	context.model_type = "GradientBoosting"
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
@@ -223,7 +226,7 @@ def gradient_boosting_classifier(context):
 		clf.fit(X_train, y_train)
 		y_pred = clf.predict(X_test)
 
-
+		
 		# print(f'{y_test[:100]=}')
 		# print(f'{y_pred[:100]=}')
 		print(f'Accuracy of GradientBoosting: {clf.score(X_test, y_test)}')
@@ -234,7 +237,39 @@ def gradient_boosting_classifier(context):
 							   seed=seed, 
 							   ctx=context)
 		
-	return clf
+
+		result = permutation_importance(
+			clf, X_test, y_test, n_repeats=10, random_state=42, n_jobs=2
+		)
+		feature_names = [f'{context.kmer_prefix}{bin_to_dna_str(i, 5)} | {i=}' for i in range(len(context.X[0]))]
+		forest_importances = pd.Series(result.importances_mean, index=feature_names)
+		print(f'{forest_importances[forest_importances > 0]}')
+		models.append(clf)
+	
+	return models
+
+
+
+def bin_to_dna_str(number, kmer_size):
+	# Converting bits to individual numbers
+	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
+	
+	kmer = ""
+	
+	#and every 2nd bit together with 0b11
+	
+	for twobit in twobits:
+		
+		if twobit == 0b00:
+			kmer += "A"
+		elif twobit == 0b11:
+			kmer += "T"
+		elif twobit == 0b01:
+			kmer += "C"
+		else:
+			kmer += "G"
+	
+	return kmer
 
 def pca_plot(context, save = True):
 	pca = PCA(n_components=2, random_state=0)
@@ -378,7 +413,6 @@ if __name__ == "__main__":
 					device=device
 					)
 		
-	
 
 		reembed = False  # only reembed once per dataset
 
@@ -391,7 +425,7 @@ if __name__ == "__main__":
 							kmer_suffix_size,
 							model_type=None,
 							int2label=int2label,
-							k_folds=5,
+							k_folds=parser.k_folds,
 							embedding_class=parser.embedding)
 		
 		
@@ -403,6 +437,8 @@ if __name__ == "__main__":
 		random_forest_classification(ctx)
 
 		hist_gradient_boosting_classifier(ctx)
+
+		gradient_boosting_classifier(ctx) # Feature extraction - (printed to terminal)
 
 
 		
