@@ -243,7 +243,7 @@ def gradient_boosting_classifier(context):
 		)
 		feature_names = [f'{context.kmer_prefix}{bin_to_dna_str(i, 5)} | {i=}' for i in range(len(context.X[0]))]
 		forest_importances = pd.Series(result.importances_mean, index=feature_names)
-		print(f'{forest_importances[forest_importances > 0]}')
+		print(f'{forest_importances.nlargest(10)=}')
 		models.append(clf)
 	
 	return models

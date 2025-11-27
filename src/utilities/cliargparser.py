@@ -46,7 +46,7 @@ class ArgParser():
         parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
         parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
         parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
-        parser.add_argument("--k_folds", default = 3, type = int, help = "Nr of folds for cross validation")
+        parser.add_argument("--k_folds", default = 5, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
 
