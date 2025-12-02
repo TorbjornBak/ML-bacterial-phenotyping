@@ -54,13 +54,11 @@ class SourMashClustering():
 		return distance_matrix, labels
 	
 
-	def plot_composite_matrix(self, distance_matrix, labels, output_path=None):
+	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
 		f, reordered_labels, reordered_matrix = fig.plot_composite_matrix(distance_matrix, labels, labels)
 
 		
-		if output_path:
-			f.savefig(f'{output_path.rstrip("/")}/output_smash_sourmash_distance_matrix.png')
-
+		
 
 		y = pd.Series([self.target_labels[label.split("_")[0]] for label in labels], index=labels)
 
@@ -102,11 +100,14 @@ class SourMashClustering():
 			handles=legend_elements)
 		
 		plot.ax_row_dendrogram.set_visible(False)
+		if title:
+			plot.ax_col_dendrogram.set_title(title)
+			#plot.figure.suptitle(title) 
+		
+		if subtitle:
+			plot.ax_heatmap.set_title(subtitle)
 
-		if output_path:
-			plt.savefig(f'{output_path.rstrip("/")}/output_sns_sourmash_distance_matrix.png')
-			#f.savefig()
-
+		return f, plot
 
 if __name__ == "__main__":
 
@@ -133,6 +134,14 @@ if __name__ == "__main__":
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
 
-	clusterer.plot_composite_matrix(distance_matrix=distance_matrix, labels=labels, output_path=parser.output)
+	smash_plot, sns_plot = clusterer.plot_composite_matrix(distance_matrix=distance_matrix, 
+														labels=labels, 
+														title = parser.clustermap_title,
+														subtitle = parser.clustermap_subtitle)
 
-	
+	if parser.output:
+			smash_plot.savefig(f'{parser.output.rstrip("/")}/smash_sourmash_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
+
+	if parser.output:
+			sns_plot.savefig(f'{parser.output.rstrip("/")}/sns_sourmash_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
+			#f.savefig()
