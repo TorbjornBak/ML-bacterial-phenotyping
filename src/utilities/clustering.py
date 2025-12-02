@@ -71,19 +71,37 @@ class SourMashClustering():
 		print(f'{unique_labels=}')
 
 		lut = dict(zip(unique_labels, "rbg"))
-		row_colors = y.map(lut)
+		col_colors = y.map(lut)
 		# see https://seaborn.pydata.org/generated/seaborn.clustermap.html
 		plot = sns.clustermap(
 			df,
 			method="single",
 			metric="euclidean",
 
-			row_colors=row_colors,
-			
-			cbar_pos=(0.02, 0.8, 0.05, 0.18),
+			col_colors=col_colors,
+			xticklabels = [],
+			yticklabels = [],
+			#cbar_pos=(0.02, 0.8, 0.05, 0.18),
 			cmap="YlGnBu",
 			figsize=(10, 10)
 		)
+		
+		legend_elements = []
+		for label in unique_labels:
+			legend_elements.append(
+				plt.Line2D(
+					[0], [0],
+					marker='o',
+					color='w',
+					label=label,
+					markerfacecolor=lut[label],
+					markersize=10
+				)
+			)
+		plot.ax_col_dendrogram.legend(
+			handles=legend_elements)
+		
+		plot.ax_row_dendrogram.set_visible(False)
 
 		if output_path:
 			plt.savefig(f'{output_path.rstrip("/")}/output_sns_sourmash_distance_matrix.png')
