@@ -38,14 +38,14 @@ def format_df(df,
     if "embedding_class" in df.columns:
         
         df["Parameters"] = (
-        df["model_name"].astype(str) + ", " +
+        df["model_name"].astype(str).str.replace("_ONEHOT","").str.replace("HistGradientBoosting","HGB").str.replace("_"," ") + ", " +
         df["embedding_class"].astype(str) + ", " +
         df["kmer_prefix"].astype(str) + ", " +
         df["kmer_suffix_size"].astype(str)
         )
     else:
         df["Parameters"] = (
-        df["model_name"].astype(str) + ", " +
+        df["model_name"].astype(str).str.replace("_ONEHOT","").str.replace("HistGradientBoosting","HGB").str.replace("_"," ") + ", " +
         df["kmer_prefix"].astype(str) + ", " +
         df["kmer_suffix_size"].astype(str)
         )
