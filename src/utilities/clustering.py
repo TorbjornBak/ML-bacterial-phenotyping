@@ -7,6 +7,7 @@ from embeddings.KmerTokenization import KmerTokenizer, load_labels
 from utilities.cliargparser import ArgParser
 import seaborn as sns
 import matplotlib.pyplot as plt
+import scipy.cluster.hierarchy as sch
 
 class SourMashClustering():
 	def __init__(self,
@@ -73,12 +74,21 @@ class SourMashClustering():
 		lut = dict(zip(unique_labels, "rbg"))
 		col_colors = y.map(lut)
 		# see https://seaborn.pydata.org/generated/seaborn.clustermap.html
+		linkage = sch.linkage(df, method='single')  # precompute linkage for consistent clustering
+		
+		# Z1 = sch.dendrogram(linkage, 
+		# 			  		orientation = "left",
+		# 					labels = reordered_labels,
+		# 					no_labels=False,
+		# 					get_leaves=True,)
+
 		plot = sns.clustermap(
 			df,
-			method="single",
-			metric="euclidean",
+			method='single',
+			metric='euclidean',
 
 			col_colors=col_colors,
+			col_linkage=linkage,
 			xticklabels = [],
 			yticklabels = [],
 			#cbar_pos=(0.02, 0.8, 0.05, 0.18),
