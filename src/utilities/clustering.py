@@ -12,10 +12,12 @@ class SourMashClustering():
 	def __init__(self,
 				 kmer_suffix_size,
 				 phenotype,
-				 target_labels: dict):
+				 target_labels: dict,
+				 n = 1000):
 		self.phenotype = phenotype
 		self.kmer_suffix_size = kmer_suffix_size
 		self.target_labels = target_labels
+		self.n = n
 		
 	def run_clustering(self, token_dict : dict[dict]):
 		print(f'Running sourmash clustering on tokenized data')
@@ -31,7 +33,7 @@ class SourMashClustering():
 		
 			for strand, kmers in tokens.items():
 
-				mh = sourmash.MinHash(n=500, ksize=self.kmer_suffix_size)
+				mh = sourmash.MinHash(n=self.n, ksize=self.kmer_suffix_size)
 
 				for record in kmers:
 
@@ -129,7 +131,7 @@ if __name__ == "__main__":
 	token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
 
 
-	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal)
+	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
 	minhashes = clusterer.run_clustering(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
@@ -140,8 +142,8 @@ if __name__ == "__main__":
 														subtitle = parser.clustermap_subtitle)
 
 	if parser.output:
-			smash_plot.savefig(f'{parser.output.rstrip("/")}/smash_sourmash_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
+			smash_plot.savefig(f'{parser.output.rstrip("/")}/smash_sourmash_{parser.n_minhashes}_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
 
 	if parser.output:
-			sns_plot.savefig(f'{parser.output.rstrip("/")}/sns_sourmash_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
+			sns_plot.savefig(f'{parser.output.rstrip("/")}/sns_sourmash_{parser.n_minhashes}_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
 			#f.savefig()

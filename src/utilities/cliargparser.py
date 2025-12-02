@@ -90,6 +90,7 @@ class ArgParser():
         parser.add_argument("--embedding", default = "frequency", help = "Type of embedding, choose between frequency and counts")
         parser.add_argument("--clustermap_title", default = None, type = str, help = "Title to use for clustermap plot")
         parser.add_argument("--clustermap_subtitle", default = None, type = str, help = "Subtitle to use for clustermap plot")
+        parser.add_argument("--n_minhashes", default = 1000, type = int, help = "Number of minhashes to use for sourmash sketching")
         return parser
 
 
