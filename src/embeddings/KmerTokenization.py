@@ -39,7 +39,7 @@ def read_sequence_file(file_path, file_type):
 	
 
 def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", freq_others = None):
-
+	assert isinstance(label, str), "label argument needs to be a single string, check that you are passing only one phenotype"
 	df = pd.read_csv(file_path, sep = sep)
 	print(f'{id=}, {label=}')
 	df = df.dropna(subset = [id, label])

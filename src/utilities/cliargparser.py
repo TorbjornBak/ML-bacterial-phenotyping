@@ -10,8 +10,8 @@ class ArgParser():
    
         if module == "train_models":
             parser = self.train_model_arguments()
-        elif module == "pca_analysis":
-            parser = self.pca_arguments()
+        elif module in ["pca_analysis", "baseline"]:
+            parser = self.baseline_arguments()
         elif module is not None:
             raise ValueError(f"Unknown module '{module}'")
                              
@@ -78,7 +78,7 @@ class ArgParser():
         
         return parser
         
-    def pca_arguments(self):
+    def baseline_arguments(self):
         parser = argparse.ArgumentParser(
                                         prog='src/utilities/pca_analysis.py',
                                         description='Toolbox of different ml models for downsampled genomes',
