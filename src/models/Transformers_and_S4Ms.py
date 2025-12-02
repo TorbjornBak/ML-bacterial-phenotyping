@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import contextlib
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, max_len: int = 15000, dropout: float = 0.1):
@@ -33,9 +34,11 @@ class TransformerKmerClassifier(nn.Module):
         pad_id: int = 0,
         dropout: float = 0.1,
         use_mask: bool = True,
+        use_flash: bool = True,  # enable FlashAttention (PyTorch SDPA) when on CUDA
     ):
         super().__init__()
         self.use_mask = use_mask
+        self.use_flash = use_flash
         self.pad_id = pad_id
 
         self.head_dropout = nn.Dropout(dropout)
@@ -61,13 +64,20 @@ class TransformerKmerClassifier(nn.Module):
         # Transformer expects src_key_padding_mask with True for PAD positions
         key_padding_mask = None
         if self.use_mask and mask is not None:
-            # mask is True for valid; invert for padding
-            key_padding_mask = (~mask.bool())   # [B, T], True where pad [web:60][web:67]
+            key_padding_mask = (~mask.bool())
         elif self.pad_id is not None:
-            # Derive from pad_id if mask not provided
-            key_padding_mask = (token_ids == self.pad_id)  # [B, T] [web:67][web:60]
+            key_padding_mask = (token_ids == self.pad_id)
 
-        out = self.enc(x, src_key_padding_mask=key_padding_mask)  # [B, T, D] [web:60][web:66]
+        # Enable FlashAttention backend if on CUDA
+        use_cuda = x.is_cuda and self.use_flash
+        sdp_ctx = (
+            torch.backends.cuda.sdp_kernel(enable_flash=True, enable_mem_efficient=True, enable_math=False)
+            if use_cuda else contextlib.nullcontext()
+        )
+        amp_ctx = (torch.amp.autocast("cuda", dtype=torch.bfloat16) if use_cuda else contextlib.nullcontext())
+
+        with sdp_ctx, amp_ctx:
+            out = self.enc(x, src_key_padding_mask=key_padding_mask)  # [B, T, D]
 
         # Masked mean pooling over time
         if mask is not None:

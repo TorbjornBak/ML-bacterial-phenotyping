@@ -573,12 +573,18 @@ def fit_model(
 	else:
 		raise ValueError(f"No valid model type was specified. Model_type was {model_type}. Aborting...")
 
+	# AMP/FlashAttention runtime helpers
+	use_amp = (device.type == "cuda")
+	if use_amp:
+		# Allow TF32 (optional, speeds conv/linear on Ampere+)
+		torch.backends.cuda.matmul.allow_tf32 = True
+		torch.backends.cudnn.allow_tf32 = True
+	scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
 	weight = None
 	if class_weight is not None:
 		weight = torch.tensor(class_weight, dtype=torch.float32).to(device)
 
-	
 	criterion = nn.CrossEntropyLoss(weight=weight)
 
 	print(model)
@@ -596,30 +602,40 @@ def fit_model(
 		
 		if embedding_class == "integer":
 			for xb, lengths, mask, yb in train_loader:
-				xb = xb.to(device)
-				yb = yb.to(device)
+				xb = xb.to(device, non_blocking=True)
+				yb = yb.to(device, non_blocking=True)
 
-				optimizer.zero_grad()
-				output = model(xb)
-				loss = criterion(output, yb)
+				optimizer.zero_grad(set_to_none=True)
+				with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+					# Transformer can infer padding from pad_id, so mask is optional here
+					output = model(xb) if model_type != "TRANSFORMER" else model(xb, mask=(mask.to(device, non_blocking=True)))
+					loss = criterion(output, yb)
 
-				loss.backward()
-				optimizer.step()
+				scaler.scale(loss).backward()
+				scaler.step(optimizer)
+				scaler.update()
+
 				running_loss += loss.item()
 				preds = output.argmax(dim=1)
 				correct += (preds == yb).sum().item()
 				total += yb.size(0)
 		else:
 			for xb, lengths, mask, yb in train_loader:
-				xb = xb.to(device)
-				yb = yb.to(device)    
+				xb = xb.to(device, non_blocking=True)
+				yb = yb.to(device, non_blocking=True)    
 
-				optimizer.zero_grad()
-				output = model(xb, lengths = lengths.to(device), mask=mask.to(device))
-				loss = criterion(output, yb)
+				optimizer.zero_grad(set_to_none=True)
+				with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+					if model_type == "TRANSFORMER":
+						output = model(xb, mask=mask.to(device, non_blocking=True))
+					else:
+						output = model(xb, lengths=lengths.to(device, non_blocking=True), mask=mask.to(device, non_blocking=True))
+					loss = criterion(output, yb)
 
-				loss.backward()
-				optimizer.step()
+				scaler.scale(loss).backward()
+				scaler.step(optimizer)
+				scaler.update()
+
 				running_loss += loss.item()
 				preds = output.argmax(dim=1)
 				correct += (preds == yb).sum().item()
@@ -630,20 +646,23 @@ def fit_model(
 		model.eval()
 		with torch.no_grad():
 			val_running = 0.0
-			
 			if embedding_class == "integer":
 				for xb, lengths, mask, yb in val_loader:
-					xb = xb.to(device)
-					yb = yb.to(device)
-					out = model(xb)
-					val_running += criterion(out, yb).item()
+					xb = xb.to(device, non_blocking=True)
+					yb = yb.to(device, non_blocking=True)
+					with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+						out = model(xb) if model_type != "TRANSFORMER" else model(xb, mask=(mask.to(device, non_blocking=True)))
+						val_running += criterion(out, yb).item()
 			else:
 				for xb, lengths, mask, yb in val_loader:
-					xb = xb.to(device)
-					yb = yb.to(device)
-					out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
-					val_running += criterion(out, yb).item()
-					
+					xb = xb.to(device, non_blocking=True)
+					yb = yb.to(device, non_blocking=True)
+					with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+						if model_type == "TRANSFORMER":
+							out = model(xb, mask=mask.to(device, non_blocking=True))
+						else:
+							out = model(xb, lengths=lengths.to(device, non_blocking=True), mask=mask.to(device, non_blocking=True))
+						val_running += criterion(out, yb).item()
 			val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 			train_acc = correct / total if total > 0 else 0.0
 			if wandb_run is not None:
@@ -684,16 +703,20 @@ def fit_model(
 	model.eval()
 	with torch.no_grad():
 		outs = []
-		
 		if embedding_class == "integer":
 			for xb, lengths, mask, yb in test_loader:
-				xb = xb.to(device)
-				out = model(xb)
+				xb = xb.to(device, non_blocking=True)
+				with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+					out = model(xb) if model_type != "TRANSFORMER" else model(xb, mask=(mask.to(device, non_blocking=True)))
 				outs.append(out.cpu().numpy())
 		else:
 			for xb, lengths, mask, yb in test_loader:
-				xb = xb.to(device)
-				out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
+				xb = xb.to(device, non_blocking=True)
+				with torch.amp.autocast("cuda", enabled=use_amp, dtype=(torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16)):
+					if model_type == "TRANSFORMER":
+						out = model(xb, mask=mask.to(device, non_blocking=True))
+					else:
+						out = model(xb, lengths=lengths.to(device, non_blocking=True), mask=mask.to(device, non_blocking=True))
 				outs.append(out.cpu().numpy())
 			
 	test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
