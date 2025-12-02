@@ -88,7 +88,8 @@ class ArgParser():
         parser.add_argument("--kmer_prefix", required = True, help = "Kmer prefix to use for pca and umap")
         parser.add_argument("--kmer_suffix_size", required = True, type = int, help = "Kmer suffix size to use for pca and umap")
         parser.add_argument("--embedding", default = "frequency", help = "Type of embedding, choose between frequency and counts")
-        
+        parser.add_argument("--clustermap_title", default = None, type = str, help = "Title to use for clustermap plot")
+        parser.add_argument("--clustermap_subtitle", default = None, type = str, help = "Subtitle to use for clustermap plot")
         return parser
 
 
