@@ -18,6 +18,7 @@ class ArgParser():
         self.parser = parser.parse_args()
         
         self.check_inputs()
+        self.show_startup_message()
 
     def check_inputs(self):
         parser = self.parser
@@ -30,7 +31,21 @@ class ArgParser():
         assert os.path.isdir(input_data_directory), f"Selected input directory does not exist: {input_data_directory}"
         assert os.path.isfile(labels_path), f"Path to labels does not exist: {labels_path}"
         
+
         self.parser = parser
+
+    def show_startup_message(self):
+        parser = self.parser
+        print("#############################################")
+        print("#                                           #")
+        print("#   Bacterial Phenotyping Toolbox           #")
+        print("#       Torbjørn Regueira 2025              #")
+        print("#############################################")
+        print(f"Input directory: {parser.input}")
+        print(f"Output directory: {parser.output}")
+        print(f"Labels path: {parser.labels_path}")
+        print(f"Phenotype(s): {parser.phenotype}")
+        print("#############################################")
 
     def default_arguments(self, parser):
         parser.add_argument("-ph", "--phenotype", type = str, nargs = "+", help = "Phenotype - target from file", required = True)
