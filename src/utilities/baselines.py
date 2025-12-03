@@ -251,6 +251,8 @@ def gradient_boosting_classifier(context):
 
 
 
+
+
 def bin_to_dna_str(number, kmer_size):
 	# Converting bits to individual numbers
 	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
@@ -390,6 +392,8 @@ if __name__ == "__main__":
 		device = torch.device("cpu")
 
 	for phenotype in phenotypes:
+		if not parser.extract_feature_importance and not parser.classify and not parser.plot_pca:
+			raise ValueError("No action specified - at least one of --classify, --plot_pca or --extract_feature_importance must be set. Aborting...")
 
 		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
@@ -432,14 +436,18 @@ if __name__ == "__main__":
 		
 		# kmer_frequency_plot(ctx)
 		# # Plotting pca and umap
-		pca_plot(ctx)
+		if parser.plot_pca:
+			pca_plot(ctx)
 		# # umap_plot(ctx)
 
-		random_forest_classification(ctx)
+		if parser.classify:
+			random_forest_classification(ctx)
 
-		hist_gradient_boosting_classifier(ctx)
+			hist_gradient_boosting_classifier(ctx)
 
-		gradient_boosting_classifier(ctx) # Feature extraction - (printed to terminal)
+		if parser.extract_feature_importance:
+
+			gradient_boosting_classifier(ctx) # Feature extraction
 
 
 		

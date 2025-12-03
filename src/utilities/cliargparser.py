@@ -33,20 +33,20 @@ class ArgParser():
         self.parser = parser
 
     def default_arguments(self, parser):
-        parser.add_argument("--phenotype", type = str, nargs = "+", help = "Phenotype - target from file", required = True)
-        parser.add_argument("--cores", default=2, type = int, help="nr of cores to use for embedding")
-        parser.add_argument("--input", required = True, help = "Path to input directory containing files for training")
+        parser.add_argument("-ph", "--phenotype", type = str, nargs = "+", help = "Phenotype - target from file", required = True)
+        parser.add_argument("-c", "--cores", default=2, type = int, help="nr of cores to use for embedding")
+        parser.add_argument("-i", "--input", required = True, help = "Path to input directory containing files for training")
         parser.add_argument("--labels_path", required = True, help = "Path to file containing labels for training")
         parser.add_argument("--id_column", default = "genome_name", type = str, help = "Name of column containing ids for labels")
         parser.add_argument("--dna_sequence_column", required = True, help = "Name of column containing dna sequences in parquet files")
-        parser.add_argument("--output", required = True, help = "Path to output directory for training results")
+        parser.add_argument("-o", "--output", required = True, help = "Path to output directory for training results")
         parser.add_argument("--file_type", default = "parquet", help = "fx parquet / fasta, the file ending to look for in input folder")
         parser.add_argument("--freq_others", default = None, help = "Bottom frequency of label counts that should be discarded. Useful if some labels only occur a few times.")
         parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
-        parser.add_argument("--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
+        parser.add_argument("-rc", "--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
         parser.add_argument("--test_val_split", default = [0.2, 1/8], type = float, nargs=2, help = "Fraction of train_val set to use as validation during training")
         parser.add_argument("--kmer_offset", default = 0, type = int, help = "Offset for kmer tokenization")
-        parser.add_argument("--k_folds", default = 5, type = int, help = "Nr of folds for cross validation")
+        parser.add_argument("-k", "--k_folds", default = 5, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
 
@@ -71,7 +71,7 @@ class ArgParser():
         parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
-        parser.add_argument("--dropout", default = 0.2, type = float, help = "%% to dropout for each layer")
+        parser.add_argument("--dropout", default = 0.2, type = float, help = "fraction to dropout for each layer")
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, esmc or integer")
@@ -91,6 +91,9 @@ class ArgParser():
         parser.add_argument("--clustermap_title", default = None, type = str, help = "Title to use for clustermap plot")
         parser.add_argument("--clustermap_subtitle", default = None, type = str, help = "Subtitle to use for clustermap plot")
         parser.add_argument("--n_minhashes", default = 1000, type = int, help = "Number of minhashes to use for sourmash sketching")
+        parser.add_argument("--classify", action="store_true", help = "Flag to indicate whether to run classification or not")
+        parser.add_argument("--plot_pca", action="store_true", help = "Flag to indicate whether to plot pca or not")
+        parser.add_argument("--extract_feature_importance", action="store_true", help = "Flag to indicate whether to extract feature importance or not (using standard GradientBoosting)")
         return parser
 
 
