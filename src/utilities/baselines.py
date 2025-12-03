@@ -219,11 +219,11 @@ def gradient_boosting_classifier(context):
 	# Used for feature importance extraction
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
 	models = []
-	context.model_type = "GradientBoosting"
-	print(f'Running GradientBoostingClassifier for feature importance extraction...')
+	context.model_type = "HistGradientBoosting"
+	print(f'Running HistGradientBoostingClassifier for feature importance extraction...')
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
-		clf = GradientBoostingClassifier(
+		clf = HistGradientBoostingClassifier(
 										loss = 'log_loss', 
 										learning_rate=0.01, 
 										max_features=0.9,
@@ -253,9 +253,6 @@ def gradient_boosting_classifier(context):
 		models.append(clf)
 	print(f'Finished GradientBoosting classification over {context.k_folds} folds.')
 	return models
-
-
-
 
 
 def bin_to_dna_str(number, kmer_size):
