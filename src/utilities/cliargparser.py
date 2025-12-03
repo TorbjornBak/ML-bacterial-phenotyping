@@ -100,7 +100,7 @@ class ArgParser():
                                         epilog='Made by Torbjørn Regueira',
                                         )
         parser = self.default_arguments(parser)
-        parser.add_argument("--kmer_prefix", required = True, help = "Kmer prefix to use for pca and umap")
+        parser.add_argument("--kmer_prefix", required = False, help = "Kmer prefix to use for pca and umap")
         parser.add_argument("--kmer_suffix_size", required = True, type = int, help = "Kmer suffix size to use for pca and umap")
         parser.add_argument("--embedding", default = "frequency", help = "Type of embedding, choose between frequency and counts")
         parser.add_argument("--clustermap_title", default = None, type = str, help = "Title to use for clustermap plot")
@@ -109,6 +109,7 @@ class ArgParser():
         parser.add_argument("--classify", action="store_true", help = "Flag to indicate whether to run classification or not")
         parser.add_argument("--plot_pca", action="store_true", help = "Flag to indicate whether to plot pca or not")
         parser.add_argument("--extract_feature_importance", action="store_true", help = "Flag to indicate whether to extract feature importance or not (using standard GradientBoosting)")
+        parser.add_argument("--hash_full_sequence", action="store_true", help = "Flag to indicate whether to hash full sequences instead of tokenized sequences")
         return parser
 
 

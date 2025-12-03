@@ -1,9 +1,9 @@
+import os
 import sourmash
-from sourmash import MinHash, signature
 import numpy as np
 from sourmash import fig
 import pandas as pd
-from embeddings.KmerTokenization import KmerTokenizer, load_labels
+from embeddings.KmerTokenization import KmerTokenizer, load_labels, read_sequence_file
 from utilities.cliargparser import ArgParser
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -20,13 +20,9 @@ class SourMashClustering():
 		self.target_labels = target_labels
 		self.n = n
 		
-	def run_clustering(self, token_dict : dict[dict]):
-		print(f'Running sourmash clustering on tokenized data')
-		self.create_hashes(token_dict=token_dict)
-		
-		return self.minhashes
 
-	def create_hashes(self, token_dict : dict[dict]):
+
+	def hash_tokens(self, token_dict : dict[dict]):
 		
 		minhashes = {}
 
@@ -43,6 +39,24 @@ class SourMashClustering():
 				minhashes[f'{id}_{strand}'] = mh
 			
 		self.minhashes = minhashes
+		return minhashes
+
+	def hash_sequences(self, sequence_df):
+		
+		minhashes = {}
+
+		for _, row in sequence_df.iterrows():         
+			
+				mh = sourmash.MinHash(n=self.n, ksize=self.kmer_suffix_size)
+
+				for record in row['dna_sequence'].split(" "):
+
+					mh.add_sequence(record, True)
+
+				minhashes[row['genome_id']] = mh
+			
+		self.minhashes = minhashes
+		return minhashes
 
 
 	def jaccard_distance_matrix(self, minhashes : dict):
@@ -60,8 +74,6 @@ class SourMashClustering():
 	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
 		f, reordered_labels, reordered_matrix = fig.plot_composite_matrix(distance_matrix, labels, labels)
 
-		
-		
 
 		y = pd.Series([self.target_labels[label.split("_")[0]] for label in labels], index=labels)
 
@@ -76,11 +88,6 @@ class SourMashClustering():
 		# see https://seaborn.pydata.org/generated/seaborn.clustermap.html
 		linkage = sch.linkage(df, method='single')  # precompute linkage for consistent clustering
 		
-		# Z1 = sch.dendrogram(linkage, 
-		# 			  		orientation = "left",
-		# 					labels = reordered_labels,
-		# 					no_labels=False,
-		# 					get_leaves=True,)
 
 		plot = sns.clustermap(
 			df,
@@ -114,12 +121,22 @@ class SourMashClustering():
 		plot.ax_row_dendrogram.set_visible(False)
 		if title:
 			plot.ax_col_dendrogram.set_title(title)
-			#plot.figure.suptitle(title) 
 		
 		if subtitle:
 			plot.ax_heatmap.set_title(subtitle)
 
 		return f, plot
+
+
+def list_files(input_path, file_type):
+		dir_list = os.listdir(input_path)
+	
+		dir_list = [f'{input_path}/{file}' for file in dir_list if file_type == file.split(".")[-1]]
+		
+		assert len(dir_list) > 0, f'No files with type {file_type} found in {input_path}'
+		print(f'Found {len(dir_list)} files with type {file_type} in {input_path}')
+		
+		return dir_list
 
 if __name__ == "__main__":
 
@@ -129,20 +146,32 @@ if __name__ == "__main__":
 	label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = parser.phenotype[0], sep = ",")
 	label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 	
-	tokenizer = KmerTokenizer(input_path=parser.input, 
-								genome_col=parser.id_column,
-								dna_sequence_col=parser.dna_sequence_column,
-								kmer_prefix=parser.kmer_prefix,
-								kmer_suffix_size=parser.kmer_suffix_size,
-								file_type=parser.file_type,
-								reverse_complement=parser.reverse_complement
-								)
-	
-	token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
+	if parser.hash_full_sequence:
+		list_dir = list_files(input_path=parser.input, file_type=parser.file_type)
+		
+		sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
+		sequence_df = pd.concat(sequence_df, ignore_index=True)
+		print(sequence_df)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
+		minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
+		
+	else:
+		assert parser.kmer_prefix is not None, "kmer_prefix argument is required when hashing tokenized sequences"
+		assert parser.kmer_suffix_size is not None, "kmer_suffix_size argument is required when hashing tokenized sequences"
+		tokenizer = KmerTokenizer(input_path=parser.input, 
+									genome_col=parser.id_column,
+									dna_sequence_col=parser.dna_sequence_column,
+									kmer_prefix=parser.kmer_prefix,
+									kmer_suffix_size=parser.kmer_suffix_size,
+									file_type=parser.file_type,
+									reverse_complement=parser.reverse_complement
+									)
+		
+		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
 
 
-	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
-	minhashes = clusterer.run_clustering(token_dict=token_collection)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
+		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
 

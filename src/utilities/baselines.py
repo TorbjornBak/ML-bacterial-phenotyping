@@ -215,7 +215,7 @@ def hist_gradient_boosting_classifier(context):
 
 
 
-def gradient_boosting_classifier(context):
+def feature_importance_extraction(context):
 	# Used for feature importance extraction
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
 	models = []
@@ -226,7 +226,9 @@ def gradient_boosting_classifier(context):
 		clf = HistGradientBoostingClassifier(
 										loss = 'log_loss', 
 										learning_rate=0.01, 
+										l2_regularization = 1e-3,
 										max_features=0.9,
+										class_weight="balanced"
 										)
 		clf.fit(X_train, y_train)
 		y_pred = clf.predict(X_test)
@@ -449,7 +451,7 @@ if __name__ == "__main__":
 
 		if parser.extract_feature_importance:
 
-			gradient_boosting_classifier(ctx) # Feature extraction
+			feature_importance_extraction(ctx) # Feature extraction
 
 
 		
