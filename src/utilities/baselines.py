@@ -176,6 +176,8 @@ def random_forest_classification(context):
 							   y_pred=y_pred, 
 							   seed=seed, 
 							   ctx=context)
+		
+	print(f'Finished RandomForest classification over {context.k_folds} folds.')
 	return clf
 
 	
@@ -183,6 +185,7 @@ def hist_gradient_boosting_classifier(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
 	clf = None
 	context.model_type = "HistGradientBoosting"
+	print(f'Running HistGradientBoostingClassifier for classification...')
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
 		clf = HistGradientBoostingClassifier(
@@ -205,7 +208,8 @@ def hist_gradient_boosting_classifier(context):
 							   y_pred=y_pred, 
 							   seed=seed, 
 							   ctx=context)
-		
+	
+	print(f'Finished HistGradientBoosting classification over {context.k_folds} folds.')
 	return clf
 
 
@@ -216,6 +220,7 @@ def gradient_boosting_classifier(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
 	models = []
 	context.model_type = "GradientBoosting"
+	print(f'Running GradientBoostingClassifier for feature importance extraction...')
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
 		clf = GradientBoostingClassifier(
@@ -246,7 +251,7 @@ def gradient_boosting_classifier(context):
 		print(f'{forest_importances.nlargest(10)=}')
 		forest_importances.to_csv(f'{context.output_directory}/feature_importances_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.csv')
 		models.append(clf)
-	
+	print(f'Finished GradientBoosting classification over {context.k_folds} folds.')
 	return models
 
 

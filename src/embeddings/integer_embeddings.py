@@ -25,7 +25,8 @@ class IntegerEmbeddings():
 	def run_embedder(self, token_collection):
 		
 		
-		embedding_results = [self.embed_tokens(id, tokens) for id, tokens in token_collection.items()]
+		embedding_results = [self.embed_tokens(id, tokens) 
+					   for id, tokens in token_collection.items()]
 		
 		embeddings = dict()
 
@@ -236,6 +237,8 @@ class KmerCountsEmbeddings():
 				embedding_class = "frequency",
 			  ):
 		
+		print(f'Initializing KmerCountsEmbeddings with {embedding_class} embedding.')
+
 		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
 		self.kmer_offset = kmer_offset
