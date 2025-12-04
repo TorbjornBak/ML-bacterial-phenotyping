@@ -22,7 +22,9 @@ dependencies = ["torch",
                 "biopython",
                 "joblib",
                 "httpx",
-                "fastparquet"]
+                "fastparquet",
+                "sourmash",
+                "shap"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
