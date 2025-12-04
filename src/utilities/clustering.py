@@ -59,6 +59,7 @@ class SourMashClustering():
 		return minhashes
 
 
+
 	def jaccard_distance_matrix(self, minhashes : dict):
 
 		distance_matrix = np.zeros((len(minhashes), len(minhashes)))
@@ -69,6 +70,16 @@ class SourMashClustering():
 				distance_matrix[i, j] = distance
 
 		return distance_matrix, labels
+	
+	def group_clusters(self, distance_matrix, labels, threshold = 0.5):
+		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
+		# Perform hierarchical clustering
+		linkage_matrix = sch.linkage(df, method='single')
+
+		# Form flat clusters based on the threshold
+		cluster_groups = sch.fcluster(Z = linkage_matrix, t = threshold, criterion='distance')
+
+		return cluster_groups
 	
 
 	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
@@ -174,6 +185,12 @@ if __name__ == "__main__":
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
+
+	cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.96)
+	
+	print(f'{cluster_groups=}')
+	print(f'Number of clusters formed: {len(set(cluster_groups))}')
+	print(f'Length of cluster groups: {len(cluster_groups)}')
 
 	smash_plot, sns_plot = clusterer.plot_composite_matrix(distance_matrix=distance_matrix, 
 														labels=labels, 

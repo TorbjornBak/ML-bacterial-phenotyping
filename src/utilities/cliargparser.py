@@ -64,7 +64,7 @@ class ArgParser():
         parser.add_argument("-k", "--k_folds", default = 5, type = int, help = "Nr of folds for cross validation")
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
-
+        parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
         
         return parser
     
@@ -90,7 +90,6 @@ class ArgParser():
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, esmc or integer")
-        
         return parser
         
     def baseline_arguments(self):
