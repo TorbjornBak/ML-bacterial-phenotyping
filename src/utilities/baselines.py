@@ -253,8 +253,8 @@ def feature_importance_extraction(context):
 		# print(f'{forest_importances.nlargest(10)=}')
 		# forest_importances.to_csv(f'{context.output_directory}/feature_importances_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.csv')
 		#models.append(clf)
-		shap_values = get_shap_values(clf, np.array(X_test))
-		plot_shap_summary(shap_values, context, seed, feature_names, np.array(X_test))
+		shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
+		plot_shap_summary(shap_values, context, seed)
 
 	print(f'Finished GradientBoosting classification over {context.k_folds} folds.')
 	#return models
@@ -262,36 +262,40 @@ def feature_importance_extraction(context):
 
 def get_shap_values(model, X):
 	#explainer = shap.explainers.Permutation(model, X)
-	explainer = shap.Explainer(model)
+	explainer = shap.TreeExplainer(model)
 	shap_values = explainer(X)
 	return shap_values
 
-def plot_shap_summary(shap_values, context, seed, feature_names, X_test):
-	shap_dict = {context.int2label[0]: shap_values[...,0], context.int2label[1]: shap_values[...,1]}
+def plot_shap_summary(shap_values, context, seed):
 	shap.plots.bar(shap_values, show = False)
 	path = f'{context.output_directory}/shap_bar_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
-	plt.savefig(path)
+	plt.savefig(path, bbox_inches='tight', dpi=300)
 	plt.close()
 	print(f'Saved SHAP bar plot to: {path}')
 
-	shap.plots.bar(shap_dict, show = False)
-	path = f'{context.output_directory}/shap_bar_divided_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
-	plt.savefig(path)
-	plt.close()
-	print(f'Saved SHAP bar plot to: {path}')
+	# shap.plots.bar(shap_dict, show = False)
+	# path = f'{context.output_directory}/shap_bar_divided_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
+	# plt.savefig(path)
+	# plt.close()
+	# print(f'Saved SHAP bar plot to: {path}')
 
 	shap.plots.beeswarm(shap_values, order=shap_values.abs.max(0), show = False)
 	path = f'{context.output_directory}/shap_beeswarm_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
-	plt.savefig(path)
+	plt.savefig(path, bbox_inches='tight', dpi=300)
 	plt.close()
 	print(f'Saved SHAP beeswarm plot to: {path}')
 
+	# shap.force_plot(expected_value, y_pred, X_test, matplotlib=True)
+	# path = f'{context.output_directory}/shap_force_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
+	# plt.savefig(path)
+	# plt.close()
+	# print(f'Saved SHAP force plot to: {path}')
 
-	shap.plots.violin(shap_values, features=X_test, feature_names=feature_names, plot_type="layered_violin", plot_size = (8, 8), show = False)
-	path = f'{context.output_directory}/shap_violin_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
-	plt.savefig(path)
-	plt.close()
-	print(f'Saved SHAP violin plot to: {path}')
+	# shap.plots.violin(shap_values, features=X_test, feature_names=feature_names, plot_type="layered_violin", show = False)
+	# path = f'{context.output_directory}/shap_violin_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
+	# plt.savefig(path)
+	# plt.close()
+	# print(f'Saved SHAP violin plot to: {path}')
 	# shap.plots.heatmap(shap_values)
 	# path = f'{context.output_directory}/shap_heatmap_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
 	# plt.savefig(path)
