@@ -24,7 +24,8 @@ dependencies = ["torch",
                 "httpx",
                 "fastparquet",
                 "sourmash",
-                "shap"]
+                "shap",
+                "tf-keras"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
