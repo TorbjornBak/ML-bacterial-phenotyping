@@ -66,14 +66,15 @@ class ESMcEmbeddings():
 		
 		return embeddings
 	
-	def save_embeddings(self, X, ids, groups):
+	def save_embeddings(self, X, strand_ids, groups, genome_ids):
 		
 		file_path = self.file_path
 		print(f"Saving embeddings (X) to: {file_path}.pt \nand metadata (ids and groups) to: {file_path}.npz")
 		torch.save(X, f"{file_path}.pt")
 		np.savez_compressed(f'{file_path}.npz', 
-							ids=np.array(ids, dtype=object), 
-							groups=np.array(groups, dtype=object)
+							strand_ids=np.array(strand_ids, dtype=object), 
+							groups=np.array(groups, dtype=object),
+							genome_ids=np.array(genome_ids, dtype=object),
 							)
 		return True
 		
@@ -82,14 +83,16 @@ class ESMcEmbeddings():
 		print(f"Loading embeddings from: {self.file_path=}")
 		z = np.load(f'{self.file_path}.npz', allow_pickle=True)
 
-		ids = list(z["ids"])  # map labels from current dict
+		strand_ids = list(z["strand_ids"])  # map labels from current dict
 		groups = list(z["groups"])
 
 		X = torch.load(f'{self.file_path}.pt', map_location="cpu", weights_only=True)
 
+		genome_ids = list(z["genome_ids"])
+
 		channel_size = X[0].shape[-1]
 
-		return X, ids, groups, channel_size
+		return X, strand_ids, groups, genome_ids, channel_size
 
 	def is_embedding_file(self):
 

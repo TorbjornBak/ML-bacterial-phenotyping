@@ -12,10 +12,9 @@ import scipy.cluster.hierarchy as sch
 class SourMashClustering():
 	def __init__(self,
 				 kmer_suffix_size,
-				 phenotype,
 				 target_labels: dict,
 				 n = 1000):
-		self.phenotype = phenotype
+		#self.phenotype = phenotype
 		self.kmer_suffix_size = kmer_suffix_size
 		self.target_labels = target_labels
 		self.n = n
@@ -151,6 +150,8 @@ def list_files(input_path, file_type):
 
 if __name__ == "__main__":
 
+	# TODO: filter by phenotype
+
 	parser = ArgParser(module = "baseline")
 	parser = parser.parser
 
@@ -163,7 +164,7 @@ if __name__ == "__main__":
 		sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
 		sequence_df = pd.concat(sequence_df, ignore_index=True)
 		print(sequence_df)
-		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, target_labels=label_dict_literal, n = parser.n_minhashes)
 		minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
 		
 	else:
@@ -181,7 +182,7 @@ if __name__ == "__main__":
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
 
 
-		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, phenotype=parser.phenotype, target_labels=label_dict_literal, n = parser.n_minhashes)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, target_labels=label_dict_literal, n = parser.n_minhashes)
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)

@@ -23,6 +23,7 @@ from embeddings.esmc_embeddings import ESMcEmbeddings
 from models.Transformers_and_S4Ms import TransformerKmerClassifier
 from models.CNN import CNNKmerClassifier, CNNKmerClassifier_v2, CNN_ONEHOT_SMALL, CNN_ONEHOT_MEDIUM, CNN_ONEHOT_LARGE, CNNKmerClassifier_w_embeddings, CNNKmerClassifierLarge
 from models.RNN import OneHot_RNN_MLP_KmerClassifier, OneHot_RNN_small, RNN_MLP_KmerClassifier, RNNKmerClassifier
+from utilities.clustering import SourMashClustering
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
 
@@ -44,7 +45,8 @@ def embed_data(kmer_prefix = None,
 			   esmc_model = None,
 			   esmc_pooling = None,
 			   device = "cpu",
-			   kmer_offset = 0):
+			   kmer_offset = 0,
+			   group_clusters = False):
 	# Should return X and y
 
 	
@@ -95,19 +97,48 @@ def embed_data(kmer_prefix = None,
 							)
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
 
+		
+		
+
 		embeddings = embedder.run_embedder(token_collection=token_collection)
+		print(f'Completed embedding of {len(embeddings)} sequences.')
 		
 		
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
 		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
-		ids = [strand_id for _, strand_id in gid_and_strand_id] # All strand ids (forwards, reverse)
-		groups = [gid for gid, _ in gid_and_strand_id] # Groups are the genome ids
+		strand_ids = [strand_id for _, strand_id in gid_and_strand_id] # All strand ids (forwards, reverse)
+		genome_ids = [gid for gid, _ in gid_and_strand_id] # Genome ids
+		print(f'{len(np.unique(genome_ids))=}')
+		print(f'{len(genome_ids)=}')
+		# Clustering
+		if group_clusters:
+			print(f'Grouping clusters to avoid data leakage during train test split...')
+			clusterer = SourMashClustering(kmer_suffix_size=kmer_suffix_size, target_labels=None, n = 1000)
+			minhashes = clusterer.hash_tokens(token_dict=token_collection)
+			distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
+			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.93)
+			print(f'{np.unique(cluster_groups)=}')
 
-		assert len(X) == len(ids) == len(groups), "Length mismatch in embeddings output!"
+			# Merge with groups
+
+			# Join gene id (group) with cluster group, both forward and reverse strand should have same cluster group
+			combined_groups = []
+			
+			step = len(genome_ids) // len(np.unique(genome_ids)) # Should be 1 or 2
+			assert step in [1,2], f"step should be one of 1 or 2, was {step}"
+			for i in range(0, len(genome_ids), step):
+				for _ in range(step):
+					combined_groups.append(cluster_groups[i])
+
+			groups = np.array(combined_groups)
+
+
+
+		assert len(X) == len(strand_ids) == len(groups), "Length mismatch in embeddings output!"
 		assert len(X) > 0, "No embeddings were created! Aborting..."
 		print(f'{len(X)=}')
-		print(f'{len(ids)=}')
+		print(f'{len(strand_ids)=}')
 		print(f'{len(groups)=}')
 		
 		if embedder.embedding_class != "integer":
@@ -115,13 +146,13 @@ def embed_data(kmer_prefix = None,
 		else:	
 			channel_size = embedder.channel_size
 
-		embedder.save_embeddings(X, ids, groups)
+		embedder.save_embeddings(X, strand_ids, groups, genome_ids)
 	
 	elif kmer_prefix is not None and kmer_suffix_size is not None:
 
 		if is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
 			
-			X, ids, groups, channel_size = embedder.load_stored_embeddings()
+			X, strand_ids, groups, genome_ids, channel_size = embedder.load_stored_embeddings()
 			
 		else: 
 			# Force reembed
@@ -143,12 +174,13 @@ def embed_data(kmer_prefix = None,
 							esmc_model = esmc_model,
 							device = device,
 			   				kmer_offset = kmer_offset,
+ 						    group_clusters=group_clusters
 						)
 	elif is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
 		# Don't reembed kmers
 		# Load np array instead
 		
-		X, ids, groups, channel_size = embedder.load_stored_embeddings()
+		X, strand_ids, groups, genome_ids, channel_size = embedder.load_stored_embeddings()
 	   
 	else:
 		raise FileNotFoundError(f"No data file with params {kmer_prefix=} and {kmer_suffix_size=} was found! \nAborting...")
@@ -159,7 +191,7 @@ def embed_data(kmer_prefix = None,
 			X = np.array(
 				[
 					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
-					for gid, x in zip(groups, X) if gid in label_dict
+					for gid, x in zip(genome_ids, X) if gid in label_dict
 				],
 				dtype=np.float32
 			)	
@@ -173,12 +205,11 @@ def embed_data(kmer_prefix = None,
 			)	
 
 	else:
-		X = np.array([x for gid, x in zip(groups, X) if gid in label_dict], dtype = object)
+		X = np.array([x for gid, x in zip(genome_ids, X) if gid in label_dict], dtype = object)
 	
 		
-	y = np.array([label_dict[gid] for gid in groups if gid in label_dict])
-	groups = np.array([gid for gid in groups if gid in label_dict])
-	
+	y = np.array([label_dict[gid] for gid in genome_ids if gid in label_dict])
+	groups = np.array([group_id for group_id, gid in zip(groups, genome_ids) if gid in label_dict])
 	
 	print(f'{np.unique(y)=}')
 	print(f'{len(y)=}')
@@ -707,7 +738,7 @@ def get_model_performance(phenotype = None,
 						  model_type = "CNN", 
 						  kmer_prefixes = None, 
 						  kmer_suffix_sizes = None, 
-						  n_seeds = 3, 
+						  n_seeds = 5, 
 						  label_dict = None, 
 						  learning_rates = None, 
 						  input_data_directory=None, 
@@ -729,6 +760,7 @@ def get_model_performance(phenotype = None,
 						  test_val_split = [0.2, 1/8],
 						  kmer_offset = 0,
 						  reverse_complement = True,
+						  group_clusters=False,
 						  ):
 	
 	num_epochs = epochs
@@ -753,6 +785,7 @@ def get_model_performance(phenotype = None,
 											esmc_model = esmc_model,
 											device=device,
 											kmer_offset=kmer_offset,
+											group_clusters=group_clusters,
 											)
 			pad_id = 0
 			num_classes = len(np.unique(y))
@@ -775,7 +808,7 @@ def get_model_performance(phenotype = None,
 					"test_val_split": test_val_split,
 					},
 					) as run:
-
+					print(f'{groups=}')
 					for seed in tqdm(range(n_seeds)):
 						# Split in train and test
 						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = test_val_split[0], random_state = seed)
@@ -987,7 +1020,7 @@ def get_model_performance(phenotype = None,
 												dropout = dropout,
 												wandb_run = run,
 												patience = patience, 
-												embedding_class=embedding_class)
+												embedding_class=embedding_class,)
 						
 						y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
 						
@@ -1035,7 +1068,7 @@ def get_model_performance(phenotype = None,
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}_{"grouped" if group_clusters else ""}"
 						path = f'{output_directory}/{dataset_name}.csv'
 						print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
 						results.to_csv(path)
@@ -1176,4 +1209,5 @@ if __name__ == "__main__":
 									test_val_split=test_val_split,
 									kmer_offset = kmer_offset,
 									reverse_complement=reverse_complement,
+									group_clusters=parser.group_clusters
 									)

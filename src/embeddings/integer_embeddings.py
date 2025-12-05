@@ -38,12 +38,13 @@ class IntegerEmbeddings():
 		print(f'Integer embedder finished, channel size: {self.channel_size}')
 		return embeddings
 	
-	def save_embeddings(self, X, ids, groups):
+	def save_embeddings(self, X, strand_ids, groups, genome_ids):
 		print(f"Saving embeddings to: {self.file_path}.npz")
 		np.savez_compressed(f'{self.file_path}.npz', 
 					  		X=np.array(X, dtype=object), 
-					  		ids=np.array(ids, dtype=object), 
+					  		strand_ids=np.array(strand_ids, dtype=object), 
 							groups=np.array(groups, dtype=object),
+							genome_ids=np.array(genome_ids, dtype=object),
 							channel_size = self.channel_size)
 		
 		return True
@@ -54,12 +55,13 @@ class IntegerEmbeddings():
 		z = np.load(f'{file_path}.npz', allow_pickle=True)
 
 		X = list(z["X"])  # object array → list of arrays 
-		ids = list(z["ids"])  # map labels from current dict
+		strand_ids = list(z["strand_ids"])  # map labels from current dict
 		groups = list(z["groups"])
+		genome_ids = list(z["genome_ids"])
 
 		channel_size = int(z["channel_size"]) if "channel_size" in z else None
 		
-		return X, ids, groups, channel_size
+		return X, strand_ids, groups, genome_ids, channel_size
 		
 
 	def is_embedding_file(self):
@@ -156,12 +158,13 @@ class OneHotEmbeddings():
 		
 		return embeddings
 	
-	def save_embeddings(self, X, ids, groups):
+	def save_embeddings(self, X, strand_ids, groups, genome_ids):
 		print(f"Saving embeddings to: {self.file_path}.npz")
 		np.savez_compressed(f'{self.file_path}.npz', 
 					  		X=np.array(X, dtype=object), 
-					  		ids=np.array(ids, dtype=object), 
+					  		strand_ids=np.array(strand_ids, dtype=object), 
 							groups=np.array(groups, dtype=object),
+							genome_ids=np.array(genome_ids, dtype=object),
 							channel_size = self.channel_size)
 		
 		return True
@@ -172,13 +175,13 @@ class OneHotEmbeddings():
 		z = np.load(f'{file_path}.npz', allow_pickle=True)
 
 		X = list(z["X"])  # object array → list of arrays 
-		ids = list(z["ids"])  # map labels from current dict
+		strand_ids = list(z["strand_ids"])  # map labels from current dict
 		groups = list(z["groups"])
+		genome_ids = list(z["genome_ids"])
 
 		channel_size = int(z["channel_size"]) if "channel_size" in z else None
 		
-		return X, ids, groups, channel_size
-		
+		return X, strand_ids, groups, genome_ids, channel_size
 
 	def is_embedding_file(self):
 		file_types = [".npz"]
@@ -253,12 +256,13 @@ class KmerCountsEmbeddings():
 
 		self.channel_size = 4**self.kmer_suffix_size
 
-	def save_embeddings(self, X, ids, groups):
+	def save_embeddings(self, X, strand_ids, groups, genome_ids):
 		print(f"Saving embeddings to: {self.file_path}.npz")
 		np.savez_compressed(f'{self.file_path}.npz', 
 					  		X=np.array(X, dtype=object), 
-					  		ids=np.array(ids, dtype=object), 
+					  		strand_ids=np.array(strand_ids, dtype=object), 
 							groups=np.array(groups, dtype=object),
+							genome_ids=np.array(genome_ids, dtype=object),
 							channel_size = self.channel_size)
 		
 		return True
@@ -269,12 +273,13 @@ class KmerCountsEmbeddings():
 		z = np.load(f'{file_path}.npz', allow_pickle=True)
 
 		X = list(z["X"])  # object array → list of arrays 
-		ids = list(z["ids"])  # map labels from current dict
+		strand_ids = list(z["strand_ids"])  # map labels from current dict
 		groups = list(z["groups"])
+		genome_ids = list(z["genome_ids"])
 
 		channel_size = int(z["channel_size"]) if "channel_size" in z else None
 		
-		return X, ids, groups, channel_size
+		return X, strand_ids, groups, genome_ids, channel_size
 		
 
 	def is_embedding_file(self):
