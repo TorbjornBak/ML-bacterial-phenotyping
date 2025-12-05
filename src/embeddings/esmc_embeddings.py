@@ -85,7 +85,7 @@ class ESMcEmbeddings():
 		ids = list(z["ids"])  # map labels from current dict
 		groups = list(z["groups"])
 
-		X = torch.load(f'{self.file_path}.pt', map_location="cpu")
+		X = torch.load(f'{self.file_path}.pt', map_location="cpu", weights_only=True)
 
 		channel_size = X[0].shape[-1]
 
