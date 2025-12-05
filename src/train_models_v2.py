@@ -56,7 +56,8 @@ def embed_data(kmer_prefix = None,
 						kmer_prefix=kmer_prefix,
 						kmer_suffix_size=kmer_suffix_size,
 						kmer_offset=kmer_offset,
-						data_directory=output_directory
+						data_directory=output_directory,
+						grouped=group_clusters,
 						)
 
 	elif embedding_class == "esmc":
@@ -68,6 +69,7 @@ def embed_data(kmer_prefix = None,
 					device = device,
 					data_directory=output_directory,
 					kmer_offset=kmer_offset,
+					grouped=group_clusters,
 					)
 
 	elif embedding_class == "onehot":
@@ -75,7 +77,8 @@ def embed_data(kmer_prefix = None,
 					kmer_prefix=kmer_prefix,
 					kmer_suffix_size=kmer_suffix_size,
 					kmer_offset=kmer_offset,
-					data_directory=output_directory)
+					data_directory=output_directory,
+					grouped=group_clusters,)
 
 		
 	else:
@@ -95,14 +98,11 @@ def embed_data(kmer_prefix = None,
 							reverse_complement=reverse_complement,
 							kmer_offset = kmer_offset,
 							)
+		
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=nr_of_cores)
-
-		
-		
 
 		embeddings = embedder.run_embedder(token_collection=token_collection)
 		print(f'Completed embedding of {len(embeddings)} sequences.')
-		
 		
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
 
@@ -111,7 +111,8 @@ def embed_data(kmer_prefix = None,
 		genome_ids = [gid for gid, _ in gid_and_strand_id] # Genome ids
 		print(f'{len(np.unique(genome_ids))=}')
 		print(f'{len(genome_ids)=}')
-		# Clustering
+		
+		# Create groups based on clustering
 		if group_clusters:
 			print(f'Grouping clusters to avoid data leakage during train test split...')
 			clusterer = SourMashClustering(kmer_suffix_size=kmer_suffix_size, target_labels=None, n = 1000)
@@ -123,17 +124,20 @@ def embed_data(kmer_prefix = None,
 			# Merge with groups
 
 			# Join gene id (group) with cluster group, both forward and reverse strand should have same cluster group
-			combined_groups = []
+			
 			
 			step = len(genome_ids) // len(np.unique(genome_ids)) # Should be 1 or 2
-			assert step in [1,2], f"step should be one of 1 or 2, was {step}"
-			for i in range(0, len(genome_ids), step):
-				for _ in range(step):
-					combined_groups.append(cluster_groups[i])
+			if step > 1:
+				combined_groups = []
+				assert step in [2], f"step should be one of 1 or 2, was {step}"
+				for i in range(0, len(genome_ids), step):
+					for _ in range(step):
+						combined_groups.append(cluster_groups[i])
 
-			groups = np.array(combined_groups)
+				groups = np.array(combined_groups)
 
-
+			else:
+				groups = np.array(cluster_groups)
 
 		assert len(X) == len(strand_ids) == len(groups), "Length mismatch in embeddings output!"
 		assert len(X) > 0, "No embeddings were created! Aborting..."
@@ -1068,7 +1072,7 @@ def get_model_performance(phenotype = None,
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}_{"grouped" if group_clusters else ""}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}{"_grouped" if group_clusters else ""}"
 						path = f'{output_directory}/{dataset_name}.csv'
 						print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
 						results.to_csv(path)

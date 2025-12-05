@@ -11,6 +11,7 @@ class IntegerEmbeddings():
 			  kmer_suffix_size,
 			  kmer_offset = 0,
 			  data_directory = ".",
+			  grouped = False
 			  ):
 		
 		self.kmer_prefix = kmer_prefix
@@ -18,6 +19,7 @@ class IntegerEmbeddings():
 		self.kmer_offset = kmer_offset
 		self.data_directory = data_directory
 		self.embedding_class = "integer"
+		self.grouped = grouped
 
 		self.channel_size = 4**self.kmer_suffix_size + 1
 
@@ -80,10 +82,9 @@ class IntegerEmbeddings():
 		return self._file_path
 
 	def build_file_path(self):
-		if self.kmer_offset == 0:
-			dataset_name = f'integer_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
-		else:
-			dataset_name = f'integer_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		dataset_name = f'{self.embedding_class}_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}'
+		dataset_name += "_grouped" if self.grouped else "" 
+		dataset_name += f'_offset_{self.kmer_offset}' if self.kmer_offset != 0 else ''
 		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
 
 		return file_path
@@ -131,13 +132,15 @@ class OneHotEmbeddings():
 				kmer_prefix,
 			  	kmer_suffix_size,
 			  	kmer_offset = 0,
-			  	data_directory = "."
+			  	data_directory = ".",
+				grouped = False,
 			  ):
 		
 		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
 		self.kmer_offset = kmer_offset
 		self.embedding_class = "onehot"
+		self.grouped = grouped
 
 	
 		self.data_directory = data_directory
@@ -199,10 +202,9 @@ class OneHotEmbeddings():
 		
 	
 	def build_file_path(self):
-		if self.kmer_offset == 0:
-			dataset_name = f'onehot_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
-		else:
-			dataset_name = f'onehot_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		dataset_name = f'{self.embedding_class}_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}'
+		dataset_name += "_grouped" if self.grouped else "" 
+		dataset_name += f'_offset_{self.kmer_offset}' if self.kmer_offset != 0 else ''
 		
 		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
 
@@ -238,6 +240,7 @@ class KmerCountsEmbeddings():
 			  	kmer_offset = 0,
 			  	data_directory = ".",
 				embedding_class = "frequency",
+				grouped = False
 			  ):
 		
 		print(f'Initializing KmerCountsEmbeddings with {embedding_class} embedding.')
@@ -245,6 +248,7 @@ class KmerCountsEmbeddings():
 		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
 		self.kmer_offset = kmer_offset
+		self.grouped = grouped
 
 		self.embedding_class = embedding_class
 		if self.embedding_class == "frequency":
@@ -298,10 +302,9 @@ class KmerCountsEmbeddings():
 		
 	
 	def build_file_path(self):
-		if self.kmer_offset == 0:
-			dataset_name = f'counts_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}' 
-		else:
-			dataset_name = f'counts_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}'
+		dataset_name = f'{self.embedding_class}_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}'
+		dataset_name += "_grouped" if self.grouped else "" 
+		dataset_name += f'_offset_{self.kmer_offset}' if self.kmer_offset != 0 else ''
 		
 		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
 

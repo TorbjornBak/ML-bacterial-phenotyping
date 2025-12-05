@@ -22,6 +22,7 @@ class ESMcEmbeddings():
 			  slice = None,
 			  data_directory = ".",
 			  kmer_offset = 0,
+			  grouped = False,
 			  ):
 		 # Dict with key being an id, value being a list of seq tokens
 		self.kmer_prefix = kmer_prefix
@@ -32,6 +33,7 @@ class ESMcEmbeddings():
 		self.slice = slice
 		self.device = device
 		self.kmer_offset = kmer_offset
+		self.grouped = grouped
 
 		self.embedding_class = "esmc"
 
@@ -112,7 +114,8 @@ class ESMcEmbeddings():
 		pooling_str = self.pooling if self.pooling is not None else "no_pooling"
 		hidden_state_str = f"_hiddenstate_{self.hidden_state}" if self.hidden_state is not None else ""
 		slice_str = f"_slice_{self.slice[0]}-{self.slice[1]}" if self.slice is not None else ""
-		file_path = f"{self.data_directory.rstrip("/")}/{self.esmc_model}_embeddings_{pooling_str}{hidden_state_str}{slice_str}_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}"
+		grouped_str = "_grouped" if self.grouped else ""
+		file_path = f"{self.data_directory.rstrip("/")}/{self.esmc_model}_embeddings_{pooling_str}{hidden_state_str}{slice_str}_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}{grouped_str}"
 		return file_path
 
 	def embed_tokens(self, id, token_dict, pooling = "mean"):
