@@ -42,7 +42,7 @@ def kmerize_sequences_prefix_filtering_binary(sequences, kmer_prefix, kmer_suffi
 			
 			if b'n' not in kmer_suffix:
 				# Converts dna to binary to use for indexing np.array
-				kmer_suffix_binary = dna_to_binary(kmer_suffix,	kmer_suffix_size)
+				kmer_suffix_binary = kmer_to_integer(kmer_suffix)
 
 				array[kmer_suffix_binary] = 1
 
@@ -286,114 +286,114 @@ class KmerTokenizer():
 
 
 
-def dna_to_binary_str(dna, kmer_size):
+# def dna_to_binary_str(dna, kmer_size):
 	
-	t = 0b11
-	t <<= (kmer_size*2 - 2)
-	c = 0b01
-	c <<= (kmer_size*2 - 2)
-	g = 0b10
-	g <<= (kmer_size*2 - 2)
+# 	t = 0b11
+# 	t <<= (kmer_size*2 - 2)
+# 	c = 0b01
+# 	c <<= (kmer_size*2 - 2)
+# 	g = 0b10
+# 	g <<= (kmer_size*2 - 2)
 
-	number = 0
+# 	number = 0
 
-	for char in dna:
-		number >>= 2
-		# A
-		if char == "A":
-			pass
-		# T
-		elif char == "T":
-			number |= t
-		# C
-		elif char == "C":
-			number |= c
-		# G
-		elif char == "G":
-			number |= g
+# 	for char in dna:
+# 		number >>= 2
+# 		# A
+# 		if char == "A":
+# 			pass
+# 		# T
+# 		elif char == "T":
+# 			number |= t
+# 		# C
+# 		elif char == "C":
+# 			number |= c
+# 		# G
+# 		elif char == "G":
+# 			number |= g
 		
-		else:
-			print("Illegal base in DNA sequence:", char)
-			sys.exit(1)
+# 		else:
+# 			print("Illegal base in DNA sequence:", char)
+# 			sys.exit(1)
 		
-	#print(bin_to_dna(number, 10))
-	return number
+# 	#print(bin_to_dna(number, 10))
+# 	return number
 
-def dna_to_binary(dna, kmer_size):
+# def dna_to_binary(dna, kmer_size):
 	
-	t = 0b11
-	t <<= (kmer_size*2 - 2)
-	c = 0b01
-	c <<= (kmer_size*2 - 2)
-	g = 0b10
-	g <<= (kmer_size*2 - 2)
+# 	t = 0b11
+# 	t <<= (kmer_size*2 - 2)
+# 	c = 0b01
+# 	c <<= (kmer_size*2 - 2)
+# 	g = 0b10
+# 	g <<= (kmer_size*2 - 2)
 
-	number = 0
+# 	number = 0
 
-	for char in dna:
-		number >>= 2
-		# A
-		if char == 65:
-			pass
-		# T
-		elif char == 84:
-			number |= t
-		# C
-		elif char == 67:
-			number |= c
-		# G
-		elif char == 71:
-			number |= g
+# 	for char in dna:
+# 		number >>= 2
+# 		# A
+# 		if char == 65:
+# 			pass
+# 		# T
+# 		elif char == 84:
+# 			number |= t
+# 		# C
+# 		elif char == 67:
+# 			number |= c
+# 		# G
+# 		elif char == 71:
+# 			number |= g
 		
-		else:
-			print("Illegal base in DNA sequence:", char)
-			sys.exit(1)
+# 		else:
+# 			print("Illegal base in DNA sequence:", char)
+# 			sys.exit(1)
 		
-	#print(bin_to_dna(number, 10))
-	return number
+# 	#print(bin_to_dna(number, 10))
+# 	return number
 
 
-def bin_to_dna(number, kmer_size):
-	# Converting bits to individual numbers
-	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
+# def bin_to_dna(number, kmer_size):
+# 	# Converting bits to individual numbers
+# 	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
 	
-	kmer = b""
+# 	kmer = b""
 	
-	#and every 2nd bit together with 0b11
+# 	#and every 2nd bit together with 0b11
 	
-	for twobit in twobits:
+# 	for twobit in twobits:
 		
-		if twobit == 0b00:
-			kmer += b"A"
-		elif twobit == 0b11:
-			kmer += b"T"
-		elif twobit == 0b01:
-			kmer += b"C"
-		else:
-			kmer += b"G"
+# 		if twobit == 0b00:
+# 			kmer += b"A"
+# 		elif twobit == 0b11:
+# 			kmer += b"T"
+# 		elif twobit == 0b01:
+# 			kmer += b"C"
+# 		else:
+# 			kmer += b"G"
 	
-	return kmer
+# 	return kmer
 
-def bin_to_dna_str(number, kmer_size):
-	# Converting bits to individual numbers
-	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
+# def bin_to_dna_str(number, kmer_size):
+# 	# Converting bits to individual numbers
+# 	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
 	
-	kmer = ""
+# 	kmer = ""
 	
-	#and every 2nd bit together with 0b11
+# 	#and every 2nd bit together with 0b11
 	
-	for twobit in twobits:
+# 	for twobit in twobits:
 		
-		if twobit == 0b00:
-			kmer += "A"
-		elif twobit == 0b11:
-			kmer += "T"
-		elif twobit == 0b01:
-			kmer += "C"
-		else:
-			kmer += "G"
+# 		if twobit == 0b00:
+# 			kmer += "A"
+# 		elif twobit == 0b11:
+# 			kmer += "T"
+# 		elif twobit == 0b01:
+# 			kmer += "C"
+# 		else:
+# 			kmer += "G"
 	
-	return kmer
+# 	return kmer
 
 
 

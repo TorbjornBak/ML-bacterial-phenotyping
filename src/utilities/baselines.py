@@ -56,8 +56,8 @@ def is_embedding_file(dataset_file_path, embedding_class = "frequency"):
 def embed_data(label_dict, 
 			   input_data_directory, 
 			   output_data_directory,
-			   kmer_prefix="CGTCA", 
-			   kmer_suffix_size = 4, 
+			   kmer_prefix=None, 
+			   kmer_suffix_size = None, 
 			   kmer_offset = 0,
 			   id_column = "genome_name", 
 			   sequence_column = "dna_sequence", 
@@ -244,7 +244,7 @@ def feature_importance_extraction(context):
 							   seed=seed, 
 							   ctx=context)
 		
-		feature_names = [f'{context.kmer_prefix}{bin_to_dna_str(i, context.kmer_suffix_size)}' for i in range(len(context.X[0]))]
+		feature_names = [f'{context.kmer_prefix}{integer_to_kmer(i, context.kmer_suffix_size)}' for i in range(len(context.X[0]))]
 		# result = permutation_importance(
 		# 	clf, X_test, y_test, n_repeats=10, random_state=42, n_jobs=2
 		# )
@@ -269,6 +269,7 @@ def get_shap_values(model, X):
 def plot_shap_summary(shap_values, context, seed):
 	shap.plots.bar(shap_values, show = False)
 	path = f'{context.output_directory}/shap_bar_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
+	plt.title('SHAP Feature Importance')
 	plt.savefig(path, bbox_inches='tight', dpi=300)
 	plt.close()
 	print(f'Saved SHAP bar plot to: {path}')
@@ -304,26 +305,15 @@ def plot_shap_summary(shap_values, context, seed):
 
 
 
-def bin_to_dna_str(number, kmer_size):
-	# Converting bits to individual numbers
-	twobits = [(number >> bit) & 0b11 for bit in range(0, kmer_size*2, 2)]
-	
-	kmer = ""
-	
-	#and every 2nd bit together with 0b11
-	
-	for twobit in twobits:
-		
-		if twobit == 0b00:
-			kmer += "A"
-		elif twobit == 0b11:
-			kmer += "T"
-		elif twobit == 0b01:
-			kmer += "C"
-		else:
-			kmer += "G"
-	
-	return kmer
+def integer_to_kmer(x: int, k: int) -> str:
+		inv = 'ACGT'
+		out = []
+		for _ in range(k):
+			out.append(inv[x & 3])  # x % 4
+			x >>= 2                 # x //= 4
+		kmer = ''.join(reversed(out))
+		print(kmer)
+		return kmer
 
 def pca_plot(context, save = True):
 	pca = PCA(n_components=2, random_state=0)
@@ -485,7 +475,6 @@ if __name__ == "__main__":
 							embedding_class=parser.embedding)
 		
 		
-		# kmer_frequency_plot(ctx)
 		# # Plotting pca and umap
 		if parser.plot_pca:
 			pca_plot(ctx)
