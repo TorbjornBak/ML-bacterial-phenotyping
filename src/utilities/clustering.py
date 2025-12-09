@@ -73,7 +73,7 @@ class SourMashClustering():
 	def group_clusters(self, distance_matrix, labels, threshold = 0.5):
 		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
 		# Perform hierarchical clustering
-		linkage_matrix = sch.linkage(df, method='single')
+		linkage_matrix = sch.linkage(df, method='average')
 
 		# Form flat clusters based on the threshold
 		cluster_groups = sch.fcluster(Z = linkage_matrix, t = threshold, criterion='distance')
