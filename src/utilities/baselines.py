@@ -6,11 +6,10 @@ import torch
 import numpy as np
 import pandas as pd
 
-from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, GradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
 from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
-from sklearn.inspection import permutation_importance
 from sklearn.decomposition import PCA
 
 from embeddings.KmerTokenization import KmerTokenizer, load_labels
@@ -21,16 +20,6 @@ from utilities.clustering import SourMashClustering
 
 import shap
 from dataclasses import dataclass
-
-def load_stored_embeddings(dataset_file_path):
-	print(f"Loading embeddings from: {dataset_file_path=}")
-	z = np.load(dataset_file_path, allow_pickle=True)
-
-	X = list(z["X"])  # object array → list of arrays 
-	ids = list(z["ids"])  # map labels from current dict
-	print(f'{len(X)=}')
-	print(f'{len(ids)=}')
-	return X, ids
 
 def is_embedding_file(dataset_file_path, embedding_class = "frequency"):
 
@@ -80,6 +69,7 @@ def embed_data(label_dict,
 						kmer_offset=kmer_offset,
 						data_directory=output_data_directory,
 						embedding_class=embedding_class,
+						grouped=group_clusters,
 		)
 	elif embedding_class == "esmc":
 		embedder = ESMcEmbeddings(
@@ -90,6 +80,7 @@ def embed_data(label_dict,
 						esmc_model=esmc_model,
 						pooling=esmc_pooling,
 						device=device,
+						grouped=group_clusters,
 		)
 	else:
 		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
