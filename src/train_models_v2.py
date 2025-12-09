@@ -118,7 +118,7 @@ def embed_data(kmer_prefix = None,
 			clusterer = SourMashClustering(kmer_suffix_size=kmer_suffix_size, target_labels=None, n = 1000)
 			minhashes = clusterer.hash_tokens(token_dict=token_collection)
 			distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
-			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.93)
+			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.96)
 			print(f'{np.unique(cluster_groups)=}')
 
 			# Merge with groups
@@ -138,6 +138,8 @@ def embed_data(kmer_prefix = None,
 
 			else:
 				groups = np.array(cluster_groups)
+		else:
+			groups = np.array(genome_ids)
 
 		assert len(X) == len(strand_ids) == len(groups), "Length mismatch in embeddings output!"
 		assert len(X) > 0, "No embeddings were created! Aborting..."
@@ -221,6 +223,7 @@ def embed_data(kmer_prefix = None,
 	print(f'{X.shape=}')
 	print(f'{len(groups)=}')
 	print(f'{channel_size=}')
+	assert len(X) == len(y), "Length mismatch between X and y!"
 	
 	print(f'{np.array(X[0]).shape=}')
 	return X, y, groups, channel_size

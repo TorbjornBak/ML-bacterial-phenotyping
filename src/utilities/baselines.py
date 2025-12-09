@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, GradientBoostingClassifier
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.inspection import permutation_importance
@@ -17,6 +17,7 @@ from embeddings.KmerTokenization import KmerTokenizer, load_labels
 from embeddings.integer_embeddings import KmerCountsEmbeddings
 from embeddings.esmc_embeddings import ESMcEmbeddings
 from utilities.cliargparser import ArgParser
+from utilities.clustering import SourMashClustering
 
 import shap
 from dataclasses import dataclass
@@ -68,7 +69,8 @@ def embed_data(label_dict,
 			   reverse_complement = False,
 			   esmc_model = "esmc_300m",
 			   esmc_pooling = "mean",
-			   device = "cpu"):
+			   device = "cpu",
+			   group_clusters = False):
 
 	if embedding_class in ["frequency", "counts"]:
 
@@ -109,30 +111,57 @@ def embed_data(label_dict,
 		embeddings = embedder.run_embedder(token_collection=token_collection)
 
 		gid_and_strand_id = [[gid, strand_id] for gid, strands in embeddings.items() for strand_id in strands]
-		print(f'{gid_and_strand_id[:10]=}')
-		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
-		ids = [strand_id for _, strand_id in gid_and_strand_id]
-		groups = [gid for gid, _ in gid_and_strand_id]
 
-		assert len(X) == len(ids) == len(groups), "Length mismatch in embeddings output!"
+		X = [embeddings[gid][strand_id] for gid, strand_id in gid_and_strand_id]
+		strand_ids = [strand_id for _, strand_id in gid_and_strand_id] # All strand ids (forwards, reverse)
+		genome_ids = [gid for gid, _ in gid_and_strand_id] # Genome ids
+		print(f'{len(np.unique(genome_ids))=}')
+		print(f'{len(genome_ids)=}')
+
+		# Create groups based on clustering
+		if group_clusters:
+			print(f'Grouping clusters to avoid data leakage during train test split...')
+			clusterer = SourMashClustering(kmer_suffix_size=kmer_suffix_size, target_labels=None, n = 1000)
+			minhashes = clusterer.hash_tokens(token_dict=token_collection)
+			distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
+			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.99)
+			print(f'{np.unique(cluster_groups)=}')
+
+			# Merge with groups
+
+			# Join gene id (group) with cluster group, both forward and reverse strand should have same cluster group
+			step = len(genome_ids) // len(np.unique(genome_ids)) # Should be 1 or 2
+			if step > 1:
+				combined_groups = []
+				assert step in [2], f"step should be one of 1 or 2, was {step}"
+				for i in range(0, len(genome_ids), step):
+					for _ in range(step):
+						combined_groups.append(cluster_groups[i])
+
+				groups = np.array(combined_groups)
+
+			else:
+				groups = np.array(cluster_groups)
+		else:
+			groups = np.array(genome_ids)
+			
+
+		assert len(X) == len(strand_ids) == len(groups), "Length mismatch in embeddings output!"
 		assert len(X) > 0, "No embeddings were created! Aborting..."
 		print(f'{len(X)=}')
-		print(f'{len(ids)=}')
+		print(f'{len(strand_ids)=}')
 		print(f'{len(groups)=}')
 
-		
-		
-		embedder.save_embeddings(X, ids, groups)
-
+		embedder.save_embeddings(X, strand_ids, groups, genome_ids)
 	else:
-		X, ids, groups, channel_size = embedder.load_stored_embeddings()
+		X, strand_ids, groups, genome_ids, channel_size = embedder.load_stored_embeddings()
 		
 	if embedder.embedding_class == "esmc":
 		if esmc_pooling == "mean":
 			X = np.array(
 				[
 					(x.detach().cpu() if isinstance(x, torch.Tensor) else torch.as_tensor(x, dtype=torch.float32))
-					for gid, x in zip(groups, X) if gid in label_dict
+					for gid, x in zip(genome_ids, X) if gid in label_dict
 				],
 				dtype=np.float32
 			)
@@ -143,22 +172,45 @@ def embed_data(label_dict,
 			raise NotImplementedError(f"Pooling method {esmc_pooling} not implemented for loading embeddings.")
 		
 	else:
-		X = [x for gid, x in zip(groups, X) if gid in label_dict]
+		X = np.array([x for gid, x in zip(genome_ids, X) if gid in label_dict], dtype = object)
 
-	y = np.array([label_dict[gid] for gid in groups if gid in label_dict], dtype=np.int64)
-
+	y = np.array([label_dict[gid] for gid in genome_ids if gid in label_dict])
+	groups = np.array([group_id for group_id, gid in zip(groups, genome_ids) if gid in label_dict])
+	
 	print(f'{len(X)=}')
 	print(f'{len(y)=}')
-	assert len(X) == len(y), "Length mismatch between embeddings and labels!"
+	assert len(X) == len(y), "Length mismatch between X and y!"
 
-	return X, y
-
-
-
+	return X, y, groups
 
 def random_forest_classification(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
 	context.model_type = "RandomForest"
+
+	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	i = 0
+	for train, test in gss.split(context.X, context.y, groups = context.groups):
+		X_train, y_train = context.X[train], context.y[train]
+		X_test, y_test = context.X[test], context.y[test]
+
+		clf = RandomForestClassifier(max_depth=None, 
+							   		random_state=0)
+		clf.fit(X_train, y_train)
+		y_pred = clf.predict(X_test)
+
+		print(f'{y_test[:100]=}')
+		print(f'{y_pred[:100]=}')
+		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
+		
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=i, 
+							   ctx=context)
+		i+= 1
+	print(f'Finished RandomForest classification over {context.k_folds} folds.')
+	return
+
 	for seed in range(context.k_folds):
 	
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
@@ -186,6 +238,34 @@ def hist_gradient_boosting_classifier(context):
 	clf = None
 	context.model_type = "HistGradientBoosting"
 	print(f'Running HistGradientBoostingClassifier for classification...')
+	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	i=0
+	for train, test in gss.split(context.X, context.y, groups = context.groups):
+		X_train, y_train = context.X[train], context.y[train]
+		X_test, y_test = context.X[test], context.y[test]
+
+		clf = HistGradientBoostingClassifier(
+										loss = 'log_loss', 
+										learning_rate=0.01, 
+										l2_regularization = 1e-3,
+										max_features=0.9,
+										class_weight="balanced"
+										)
+		clf.fit(X_train, y_train)
+		y_pred = clf.predict(X_test)
+
+		print(f'{y_test[:100]=}')
+		print(f'{y_pred[:100]=}')
+		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
+		
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=i, 
+							   ctx=context)
+		i+=1
+	print(f'Finished HistGradientBoosting classification over {context.k_folds} splits.')
+	return 
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
 		clf = HistGradientBoostingClassifier(
@@ -209,7 +289,7 @@ def hist_gradient_boosting_classifier(context):
 							   seed=seed, 
 							   ctx=context)
 	
-	print(f'Finished HistGradientBoosting classification over {context.k_folds} folds.')
+	
 	return clf
 
 
@@ -219,8 +299,45 @@ def feature_importance_extraction(context):
 	# Used for feature importance extraction
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
 	#models = []
+	
 	context.model_type = "HistGradientBoosting"
+
 	print(f'Running HistGradientBoostingClassifier for feature importance extraction...')
+	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	i = 0
+	for train, test in gss.split(context.X, context.y, groups = context.groups):
+		X_train, y_train = context.X[train], context.y[train]
+		X_test, y_test = context.X[test], context.y[test]
+
+		clf = HistGradientBoostingClassifier(
+										loss = 'log_loss', 
+										learning_rate=0.01, 
+										l2_regularization = 1e-3,
+										max_features=0.9,
+										class_weight="balanced"
+										)
+		clf.fit(X_train, y_train)
+		y_pred = clf.predict(X_test)
+
+		print(f'{y_test[:100]=}')
+		print(f'{y_pred[:100]=}')
+		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
+		
+		create_classification_report(y_train=y_train, 
+							   y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=i, 
+							   ctx=context)
+		feature_names = [f'{context.kmer_prefix}{integer_to_kmer(j, context.kmer_suffix_size)}' for j in range(len(context.X[0]))]
+		shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
+		plot_shap_summary(shap_values, context, i)
+		i+=1
+	
+	
+	print(f'Finished HistGradientBoosting classification over {context.k_folds} folds.')
+	
+	return clf
+
 	for seed in range(context.k_folds):
 		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
 		clf = HistGradientBoostingClassifier(
@@ -312,7 +429,6 @@ def integer_to_kmer(x: int, k: int) -> str:
 			out.append(inv[x & 3])  # x % 4
 			x >>= 2                 # x //= 4
 		kmer = ''.join(reversed(out))
-		print(kmer)
 		return kmer
 
 def pca_plot(context, save = True):
@@ -358,6 +474,7 @@ def pca_plot(context, save = True):
 class model_context:
 	X: np.array
 	y: np.array
+	groups: np.array
 	output_directory: str
 	phenotype: str
 	kmer_prefix: str
@@ -365,7 +482,7 @@ class model_context:
 	model_type: str
 	int2label: dict
 	k_folds: int
-	embedding_class: str
+	embedding_class: str	
 
 def create_classification_report(y_train,
 								 y_test, 
@@ -442,7 +559,7 @@ if __name__ == "__main__":
 		kmer_prefix = parser.kmer_prefix
 		kmer_suffix_size = parser.kmer_suffix_size
 		
-		X, y = embed_data(label_dict=label_dict, 
+		X, y, groups = embed_data(label_dict=label_dict, 
 					input_data_directory=parser.input,
 					output_data_directory=parser.output,
 					kmer_prefix=parser.kmer_prefix, 
@@ -456,7 +573,8 @@ if __name__ == "__main__":
 					file_type=parser.file_type,
 					esmc_model=parser.esmc_model,
 					esmc_pooling=parser.esmc_pooling,
-					device=device
+					device=device,
+					group_clusters=parser.group_clusters,
 					)
 		
 
@@ -465,6 +583,7 @@ if __name__ == "__main__":
 		ctx = model_context(
 							X,
 							y, 
+							groups,
 							parser.output,
 							phenotype, 
 							kmer_prefix, 
