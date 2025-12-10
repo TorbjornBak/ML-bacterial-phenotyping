@@ -70,16 +70,56 @@ class SourMashClustering():
 
 		return distance_matrix, labels
 	
-	def group_clusters(self, distance_matrix, labels, threshold = 0.5):
+	def group_clusters(self, distance_matrix, labels, threshold = None, method = "ward", nr_of_clusters = None):
 		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
 		# Perform hierarchical clustering
-		linkage_matrix = sch.linkage(df, method='centroid')
+		linkage_matrix = sch.linkage(df, method=method)
 
-		# Form flat clusters based on the threshold
-		cluster_groups = sch.fcluster(Z = linkage_matrix, t = threshold, criterion='distance')
+		if nr_of_clusters is None:
+			# Form flat clusters based on the threshold
+			assert threshold != None, "threshold should be set, cannot be None"
+			cluster_groups = sch.fcluster(Z = linkage_matrix, t = threshold, criterion='distance')
 
+			
+		
+		else:
+			print(f'Searching for optimal clustering threshold to get {nr_of_clusters} clusters.')
+			cluster_count = 0
+			# binary search starting threshold
+			#threshold = 1
+			ceiling = 1
+			floor = 0
+
+			assert nr_of_clusters < distance_matrix.shape[0]
+
+			# Desired result = unique_clusters < nr_of_clusters
+
+			while True:
+				threshold = (ceiling + floor) / 2
+				
+				cluster_groups = sch.fcluster(Z = linkage_matrix, t = threshold, criterion='distance')
+
+				unique_clusters = len(np.unique(cluster_groups))
+
+				# if unique is within 5 % of desired we say it's good enough overlap
+				if unique_clusters * 1.05 >= nr_of_clusters and unique_clusters * 0.95 <= nr_of_clusters:
+					break
+				
+				elif threshold >= 0.99999:
+					break
+				
+				elif unique_clusters < nr_of_clusters:
+					ceiling = threshold
+				# if unique clusters is too big, increase threshold by increasing the floor.
+				elif unique_clusters > nr_of_clusters:
+					floor = threshold
+				#break
+			print(f'Final nr of {unique_clusters=}, {threshold=}')
+		# Check cluster quality
+		
 		return cluster_groups
-	
+
+
 
 	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
 		f, reordered_labels, reordered_matrix = fig.plot_composite_matrix(distance_matrix, labels, labels)
@@ -187,7 +227,7 @@ if __name__ == "__main__":
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
 
-	cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.96)
+	cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=None, nr_of_clusters=30)
 	
 	print(f'{cluster_groups=}')
 	print(f'Number of clusters formed: {len(set(cluster_groups))}')
