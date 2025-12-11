@@ -118,7 +118,7 @@ def embed_data(kmer_prefix = None,
 			clusterer = SourMashClustering(kmer_suffix_size=kmer_suffix_size, target_labels=None, n = 1000)
 			minhashes = clusterer.hash_tokens(token_dict=token_collection)
 			distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
-			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=0.96)
+			cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, method = "average", nr_of_clusters=40)
 			print(f'{np.unique(cluster_groups)=}')
 
 			# Merge with groups

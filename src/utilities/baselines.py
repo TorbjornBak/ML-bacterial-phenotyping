@@ -247,7 +247,7 @@ def hist_gradient_boosting_classifier(context):
 
 		print(f'{y_test[:100]=}')
 		print(f'{y_pred[:100]=}')
-		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
+		print(f'Accuracy: {clf.score(X_test, y_test)}')
 		
 		create_classification_report(y_train=y_train, 
 							   y_test=y_test, 
@@ -312,7 +312,7 @@ def feature_importance_extraction(context):
 
 		print(f'{y_test[:100]=}')
 		print(f'{y_pred[:100]=}')
-		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
+		print(f'Accuracy: {clf.score(X_test, y_test)}')
 		
 		create_classification_report(y_train=y_train, 
 							   y_test=y_test, 
