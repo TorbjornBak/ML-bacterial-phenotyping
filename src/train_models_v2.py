@@ -1068,6 +1068,8 @@ def get_model_performance(phenotype = None,
 								"n_classes": len(np.unique(y_train)),
 								"vocab_compression": compress_vocab_space,
 								"confusion_matrix" : conf_matrix,
+								"grouped" : group_clusters,
+								"groups" : len(set(groups)),
 								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
 
@@ -1075,15 +1077,14 @@ def get_model_performance(phenotype = None,
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}{"_grouped" if group_clusters else ""}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}"
 						path = f'{output_directory}/{dataset_name}.csv'
-						print(f'Finished training model with params:{prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
+						print(f'Finished training model with params:{prefix=}, {suffix_size=}, {group_clusters=}, ,{lr=}, {seed=}, {compress_vocab_space=}')
 						results.to_csv(path)
 						print(f'Saved tmp result to {path=}')
 						print(f'{results=}')
 
 	return
-
 
 
 

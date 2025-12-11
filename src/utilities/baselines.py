@@ -466,6 +466,7 @@ class model_context:
 	X: np.array
 	y: np.array
 	groups: np.array
+	grouped: bool
 	output_directory: str
 	phenotype: str
 	kmer_prefix: str
@@ -510,9 +511,14 @@ def create_classification_report(y_train,
 			"n_classes": len(np.unique(y_train)),
 			"confusion_matrix" : conf_matrix,
 			"int2label" : ctx.int2label,
+			"grouped": ctx.grouped,
+			"groups" : len(set(ctx.groups)),
+			"embedding_class": ctx.embedding_class,
 		}
 		)
-	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
+	
+
+	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
 	path = f'{ctx.output_directory}/{dataset_name}.csv'
 	results.to_csv(path)
 	print(f'Saved tmp result to {path=}')
@@ -575,6 +581,7 @@ if __name__ == "__main__":
 							X,
 							y, 
 							groups,
+							parser.group_clusters,
 							parser.output,
 							phenotype, 
 							kmer_prefix, 
