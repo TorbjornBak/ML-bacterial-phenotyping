@@ -65,7 +65,7 @@ class ArgParser():
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
-        
+        parser.add_argument("--train_split_method", default = "GroupShuffleSplit", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
         return parser
     
     def train_model_arguments(self):

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
-from sklearn.model_selection import train_test_split, GroupShuffleSplit
+from sklearn.model_selection import GroupKFold, train_test_split, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
@@ -178,9 +178,14 @@ def random_forest_classification(context):
 	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
 	context.model_type = "RandomForest"
 
-	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	if context.train_split_method == "GroupShuffleSplit":
+		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	elif context.train_split_method == "GroupKFold":
+		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	else:
+		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
 	i = 0
-	for train, test in gss.split(context.X, context.y, groups = context.groups):
+	for train, test in splitter.split(context.X, context.y, groups = context.groups):
 		X_train, y_train = context.X[train], context.y[train]
 		X_test, y_test = context.X[test], context.y[test]
 
@@ -229,9 +234,14 @@ def hist_gradient_boosting_classifier(context):
 	clf = None
 	context.model_type = "HistGradientBoosting"
 	print(f'Running HistGradientBoostingClassifier for classification...')
-	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	if context.train_split_method == "GroupShuffleSplit":
+		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	elif context.train_split_method == "GroupKFold":
+		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	else:
+		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
 	i=0
-	for train, test in gss.split(context.X, context.y, groups = context.groups):
+	for train, test in splitter.split(context.X, context.y, groups = context.groups):
 		X_train, y_train = context.X[train], context.y[train]
 		X_test, y_test = context.X[test], context.y[test]
 
@@ -294,9 +304,15 @@ def feature_importance_extraction(context):
 	context.model_type = "HistGradientBoosting"
 
 	print(f'Running HistGradientBoostingClassifier for feature importance extraction...')
-	gss = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	if context.train_split_method == "GroupShuffleSplit":
+		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
+	elif context.train_split_method == "GroupKFold":
+		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	else:
+		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
+	
 	i = 0
-	for train, test in gss.split(context.X, context.y, groups = context.groups):
+	for train, test in splitter.split(context.X, context.y, groups = context.groups):
 		X_train, y_train = context.X[train], context.y[train]
 		X_test, y_test = context.X[test], context.y[test]
 
@@ -475,6 +491,7 @@ class model_context:
 	int2label: dict
 	k_folds: int
 	embedding_class: str	
+	train_split_method: str = "GroupShuffleSplit"  # or GroupKFold
 
 def create_classification_report(y_train,
 								 y_test, 
@@ -576,6 +593,7 @@ if __name__ == "__main__":
 		
 
 		reembed = False  # only reembed once per dataset
+		
 
 		ctx = model_context(
 							X,
@@ -589,7 +607,8 @@ if __name__ == "__main__":
 							model_type=None,
 							int2label=int2label,
 							k_folds=parser.k_folds,
-							embedding_class=parser.embedding)
+							embedding_class=parser.embedding,
+							train_split_method=parser.train_split_method)
 		
 		
 		# # Plotting pca and umap
