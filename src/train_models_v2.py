@@ -8,7 +8,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
-from sklearn.model_selection import train_test_split, GroupKFold, GroupShuffleSplit
+from sklearn.model_selection import LeavePGroupsOut, train_test_split, GroupKFold, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
@@ -768,6 +768,7 @@ def get_model_performance(phenotype = None,
 						  kmer_offset = 0,
 						  reverse_complement = True,
 						  group_clusters=False,
+						  train_split_method = "GroupShuffleSplit",
 						  ):
 	
 	num_epochs = epochs
@@ -816,24 +817,34 @@ def get_model_performance(phenotype = None,
 					},
 					) as run:
 					print(f'{groups=}')
-					for seed in tqdm(range(n_seeds)):
-						# Split in train and test
-						gss_test =  GroupShuffleSplit(n_splits = 1, test_size = test_val_split[0], random_state = seed)
-						train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
-						print(f'{train_val_idx=}, {test_idx=}')
-						
-						X_trainval, y_trainval = X[train_val_idx], np.array(y)[train_val_idx]
-						groups_trainval = groups[train_val_idx]
-						
-						# Split train into train and val
-						gss_val = GroupShuffleSplit(n_splits=1, test_size=test_val_split[1], random_state=42)
-						train_idx, val_idx = next(gss_val.split(X_trainval, y_trainval, groups=groups_trainval))
 
+
+
+
+					# split into train test once using LeavePGroupsOut
 					
-						print(f'Training models with {prefix=}, {suffix_size=}, {lr=}, {seed=}, {compress_vocab_space=}')
+					gss_test = LeavePGroupsOut(n_groups = int(test_val_split[0] * len(np.unique(groups))))
+					train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+
+					# then split train into train val n_folds times
+
+					if train_split_method == "GroupShuffleSplit":
+						split = GroupShuffleSplit(n_splits = n_seeds, test_size = test_val_split[1], random_state = 42)
+					elif train_split_method == "GroupKFold":
+						split = GroupKFold(n_splits = n_seeds)
+					else:
+						raise ValueError(f"train_split_method {train_split_method} not recognized. Aborting...")
 					
-						X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
-						X_val,   y_val   = X_trainval[val_idx],   y_trainval[val_idx]
+					
+					
+					X_train_val, y_train_val, groups_train_val = X[train_val_idx], np.array(y)[train_val_idx], groups[train_val_idx]
+					i = 0 
+					for train_idx, val_idx in split.split(X_train_val, y_train_val, groups = groups_train_val):				
+						
+						print(f'Training models with {prefix=}, {suffix_size=}, {lr=},  {compress_vocab_space=}')
+					
+						X_train, y_train = X_train_val[train_idx], y_train_val[train_idx]
+						X_val,   y_val   = X_train_val[val_idx],   y_train_val[val_idx]
 						X_test,  y_test  = X[test_idx],           np.array(y)[test_idx]
 
 						label_encoder = LabelEncoder()
@@ -887,36 +898,6 @@ def get_model_performance(phenotype = None,
 								collate_fn=pad_onehot_collate,
 							)
 
-						# elif embedding_class == "esmc":
-						# 	print(f'Using SequenceDataset for {model_type=}')
-						# 	train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-						# 	val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-						# 	test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-						# 	pad_collate_fn = "pad_collate"
-
-						# 	train_loader = DataLoader(
-						# 	train_ds,
-						# 	batch_size=bs,
-						# 	shuffle=True,
-						# 	collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-						# 	num_workers=num_workers,
-						# 	pin_memory=False,
-						# 	persistent_workers=(num_workers > 0),
-						# 	)
-						# 	val_loader = DataLoader(
-						# 		val_ds,
-						# 		batch_size=bs,
-						# 		shuffle=False,
-						# 		collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-						# 		num_workers=0,
-						# 	)
-						# 	test_loader = DataLoader(
-						# 		test_ds,
-						# 		batch_size=bs,
-						# 		shuffle=False,
-						# 		collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-						# 		num_workers=0,
-						# 	)
 						elif embedding_class == "onehot":
 							print(f'Using OneHotSequenceDataset for {model_type=}')
 							train_ds = OneHotSequenceDataset(X_train, y_train)
@@ -1054,7 +1035,7 @@ def get_model_performance(phenotype = None,
 								"kmer_offset": kmer_offset,
 								"embedding_class": embedding_class,
 								"learning_rate" : lr,
-								"seed": seed,
+								"seed": i,
 								"f1_score_weighted": report["weighted avg"]["f1-score"],
 								"f1_score_macro": report["macro avg"]["f1-score"],
 								"precision_weighted": report["weighted avg"]["precision"],
@@ -1077,12 +1058,14 @@ def get_model_performance(phenotype = None,
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{seed}_{lr}_{embedding_class}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
 						path = f'{output_directory}/{dataset_name}.csv'
-						print(f'Finished training model with params:{prefix=}, {suffix_size=}, {group_clusters=}, ,{lr=}, {seed=}, {compress_vocab_space=}')
+						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {compress_vocab_space=}')
 						results.to_csv(path)
 						print(f'Saved tmp result to {path=}')
 						print(f'{results=}')
+
+						i += 1
 
 	return
 
