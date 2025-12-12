@@ -531,11 +531,12 @@ def create_classification_report(y_train,
 			"grouped": ctx.grouped,
 			"groups" : len(set(ctx.groups)),
 			"embedding_class": ctx.embedding_class,
+			"train_split_method" : ctx.train_split_method,
 		}
 		)
 	
 
-	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
+	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.train_split_method}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
 	path = f'{ctx.output_directory}/{dataset_name}.csv'
 	results.to_csv(path)
 	print(f'Saved tmp result to {path=}')

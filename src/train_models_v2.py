@@ -48,8 +48,6 @@ def embed_data(kmer_prefix = None,
 			   kmer_offset = 0,
 			   group_clusters = False):
 	# Should return X and y
-
-	
 	
 	if embedding_class == "integer":
 			embedder = IntegerEmbeddings(
@@ -1053,14 +1051,15 @@ def get_model_performance(phenotype = None,
 								"groups" : len(set(groups)),
 								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
+								"train_split_method" : train_split_method,
 
 							}
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
 						path = f'{output_directory}/{dataset_name}.csv'
-						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {compress_vocab_space=}')
+						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_vocab_space=}')
 						results.to_csv(path)
 						print(f'Saved tmp result to {path=}')
 						print(f'{results=}')
