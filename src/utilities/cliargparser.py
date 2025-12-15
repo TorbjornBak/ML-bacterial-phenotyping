@@ -67,6 +67,7 @@ class ArgParser():
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
         parser.add_argument("--train_split_method", default = "GroupKFold", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
+        parser.add_argument("--subset_ratio", default = None, type = float, help = "Fraction to subset dataset to, for analysis purposes")
         return parser
     
     def train_model_arguments(self):
@@ -94,7 +95,7 @@ class ArgParser():
         
     def baseline_arguments(self):
         parser = argparse.ArgumentParser(
-                                        prog='src/utilities/pca_analysis.py',
+                                        prog='utilities/baselines.py',
                                         description='Toolbox of different ml models for downsampled genomes',
                                         epilog='Made by Torbjørn Regueira',
                                         )

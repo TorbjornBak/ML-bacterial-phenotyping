@@ -434,7 +434,7 @@ def check_id_and_labels_exist(file_path, id, labels : list, sep = "\t"):
 
 
 
-def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", freq_others = None):
+def load_labels_old(file_path, id = "genome_id", label = "class", sep = "\t", freq_others = None):
 
 	df = pd.read_csv(file_path, sep = sep)
 	print(f'{id=}, {label=}')
@@ -463,6 +463,44 @@ def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", freq_o
 	return return_dict
 
 
+def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset_ratio = None):
+	df = pd.read_csv(file_path, sep = sep)
+	print(f'{id=}, {label=}')
+	df = df.dropna(subset = [id, label])
+
+	label_dict = dict(zip(df[id].apply(str), df[label])) 
+
+	unique_labels = np.unique(df[label])
+
+	if subset_ratio is not None:
+		# Downsampling the dataset for specific analysis (if needed)
+					
+		# Downsample as a % of the full dataset
+		print(f'Original dataset size: {len(df)=}')
+		print(f'Original class distribution: {np.unique(df[label], return_counts=True)}')
+		print(f'Downsampling dataset to {subset_ratio*len(df[label])} samples per class...')
+
+		selected_ids = np.random.choice([df[id]], size=int(len(df[id]) * subset_ratio), replace=False)
+		unique_ids = np.unique(selected_ids)
+		label_dict = {id : label for id, label in label_dict.items() if id in unique_ids}
+
+		print(f'After downsampling: {len(unique_ids)=}')
+		print(f'After downsampling class distribution: {np.unique(list(label_dict.values()), return_counts=True)}')
+					
+
+	# Creating label mappings
+	
+	label2int = {label: i for i, label in enumerate(unique_labels)}
+
+	int2label = {i : label for i, label in enumerate(unique_labels)}
+
+	# Creating mapping from id to integer labels
+
+	label_dict_int = {id : label2int[label] for id, label in label_dict.items()}
+
+	return_dict = {"label_dict":label_dict, "label_dict_int": label_dict_int, "int2label":int2label}
+	
+	return return_dict
 	
 
 def save_kmerized_files_with_numpy(X, X_file_path, y, y_file_path):

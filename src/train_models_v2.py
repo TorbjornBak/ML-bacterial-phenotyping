@@ -814,17 +814,17 @@ def get_model_performance(phenotype = None,
 					"test_val_split": test_val_split,
 					},
 					) as run:
-					print(f'{groups=}')
+					#print(f'{groups=}')
 
 
+					
 
-
-					# split into train test once using LeavePGroupsOut
+					# Split into train test once using LeavePGroupsOut
 					
 					gss_test = LeavePGroupsOut(n_groups = int(test_val_split[0] * len(np.unique(groups))))
 					train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
 
-					# then split train into train val n_folds times
+					# Then split train into train val n_folds times
 
 					if train_split_method == "GroupShuffleSplit":
 						split = GroupShuffleSplit(n_splits = n_seeds, test_size = test_val_split[1], random_state = 42)
@@ -1010,8 +1010,8 @@ def get_model_performance(phenotype = None,
 						
 						y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
 						
-						print(f'{y_test=}')
-						print(f'{y_test_pred=}')
+						#print(f'{y_test=}')
+						#print(f'{y_test_pred=}')
 						report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
 						conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
 
@@ -1118,7 +1118,7 @@ if __name__ == "__main__":
 	
 	for phenotype in parser.phenotype:
 		print(f'{phenotype=}')
-		labels = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", freq_others=parser.freq_others)
+		labels = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", subset_ratio=parser.subset_ratio)
 		label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
 
 
