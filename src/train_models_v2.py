@@ -1092,112 +1092,62 @@ if __name__ == "__main__":
 	
 	print(f"Using {device=}")
 
+	print(f'Model architecture: {parser.model_arch}')
+	print(f'kmer_prefixes: {parser.kmer_prefixes}')
+	print(f'kmer_suffix_sizes: {parser.kmer_suffix_sizes}')
 
 
-	id_column = parser.id_column
-	dna_sequence_col = parser.dna_sequence_column
-	labels_path = parser.labels_path
-	input_directory = parser.input
-	phenotypes = parser.phenotype
-	
-
-	kmer_prefixes = parser.kmer_prefixes
-	kmer_suffix_sizes = parser.kmer_suffix_sizes
-	print(f'{kmer_prefixes=}')
-	print(f'{kmer_suffix_sizes=}')
-	
-	nr_of_cores = parser.cores
-	output_directory = parser.output
-
-
-	print(f'{labels_path=}')
-	print(f'{input_directory=}')
-	print(f'{output_directory=}')
-
-	embed_only = parser.embed_only
-	model_type = parser.model_arch
-	compress_vocab_space = parser.compress
-	trace_memory_usage = parser.trace_memory
-	learning_rates = parser.lr
-	epochs = parser.epochs
-	dropout = parser.dropout
-	k_folds = parser.k_folds
-	freq_others = parser.freq_others
-	patience = parser.patience
-	reembed = parser.reembed
-	embedding_class = parser.embedding
-	file_type = parser.file_type
-	esmc_model = parser.esmc_model
-	esmc_pooling = parser.esmc_pooling
-	test_val_split = parser.test_val_split
-	kmer_offset = parser.kmer_offset
-	reverse_complement = parser.reverse_complement
-
-	print(f'{trace_memory_usage=}')
-	print(f"{learning_rates=}")
-	print(f'{compress_vocab_space=}')
-	print(f'{test_val_split=}')
-
-	if embedding_class == "esmc":
-		print(f'{esmc_model=}, {esmc_pooling=}')
-
-	check_id_and_labels_exist(file_path=labels_path, id = id_column, labels = phenotypes, sep = ",")
 
 	
-	if embed_only is True:
-		for phenotype in phenotypes:
-			labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
-			label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
-
-			for prefix in kmer_prefixes:
-				for suffix_size in kmer_suffix_sizes:
-					pad_id = 0 # reserve 0 for padding in tokenizer
-					result = embed_data(
-										kmer_prefix = prefix, 
-										kmer_suffix_size=suffix_size, 
-										input_data_directory=input_directory, 
-										output_directory=output_directory,
-										reembed=reembed,
-										label_dict=label_dict, 
-										compress_embeddings=compress_vocab_space,
-										embedding_class=embedding_class,
-										file_type=file_type,
-										genome_col=id_column,
-										dna_sequence_col=dna_sequence_col,
-										nr_of_cores = nr_of_cores
-										)
-	else:
-		for phenotype in phenotypes:
-			print(f'{phenotype=}')
-			labels = load_labels(file_path=labels_path, id = id_column, label = phenotype, sep = ",", freq_others=freq_others)
-			label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
+	print(f'Input directory = {parser.input}')
+	print(f'Labels path = {parser.labels_path}')
+	print(f'Output directory = {parser.output}')
 
 
-			get_model_performance(phenotype=phenotype,
-									model_type=model_type, 
-									kmer_prefixes=kmer_prefixes, 
-									kmer_suffix_sizes=kmer_suffix_sizes, 
-									n_seeds = k_folds,
-									label_dict=label_dict_literal,
-									learning_rates=learning_rates, 
-									input_data_directory=input_directory, 
-									output_directory=output_directory, 
-									compress_embeddings=compress_vocab_space,
-									trace_memory_usage=trace_memory_usage,
-									epochs = epochs,
-									dropout = dropout,
-									patience=patience,
-									embedding_class=embedding_class,
-									reembed=reembed,
-									device=device,
-									file_type=file_type,
-									genome_col=id_column,
-									dna_sequence_col=dna_sequence_col,
-									nr_of_cores = nr_of_cores,
-									esmc_pooling = esmc_pooling,
-									esmc_model = esmc_model,
-									test_val_split=test_val_split,
-									kmer_offset = kmer_offset,
-									reverse_complement=reverse_complement,
-									group_clusters=parser.group_clusters
-									)
+
+	print(f'Trace memory: {parser.trace_memory}')
+	print(f"Learning rates: {parser.lr}")
+	print(f'Test val split: {parser.test_val_split}')
+
+	if parser.embedding == "esmc":
+		print(f'{parser.esmc_model=}, {parser.esmc_pooling=}')
+
+	check_id_and_labels_exist(file_path=parser.labels_path, id = parser.id_column, labels = parser.phenotype, sep = ",")
+
+	
+	
+	for phenotype in parser.phenotype:
+		print(f'{phenotype=}')
+		labels = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", freq_others=parser.freq_others)
+		label_dict_literal, label_dict, int2label = labels["label_dict"], labels["label_dict_int"], labels["int2label"] 
+
+
+		get_model_performance(phenotype=phenotype,
+								model_type=parser.model_arch, 
+								kmer_prefixes=parser.kmer_prefixes, 
+								kmer_suffix_sizes=parser.kmer_suffix_sizes, 
+								n_seeds = parser.k_folds,
+								label_dict=label_dict_literal,
+								learning_rates=parser.lr, 
+								input_data_directory=parser.input, 
+								output_directory=parser.output, 
+								compress_embeddings=parser.compress,
+								trace_memory_usage=parser.trace_memory,
+								epochs = parser.epochs,
+								dropout = parser.dropout,
+								patience=parser.patience,
+								embedding_class=parser.embedding,
+								reembed=parser.reembed,
+								device=device,
+								file_type=parser.file_type,
+								genome_col=parser.id_column,
+								dna_sequence_col=parser.dna_sequence_column,
+								nr_of_cores = parser.cores,
+								esmc_pooling = parser.esmc_pooling,
+								esmc_model = parser.esmc_model,
+								test_val_split=parser.test_val_split,
+								kmer_offset = parser.kmer_offset,
+								reverse_complement=parser.reverse_complement,
+								group_clusters=parser.group_clusters,
+								train_split_method=parser.train_split_method
+								)

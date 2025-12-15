@@ -45,6 +45,7 @@ class ArgParser():
         print(f"Output directory: {parser.output}")
         print(f"Labels path: {parser.labels_path}")
         print(f"Phenotype(s): {parser.phenotype}")
+        print(f"Train/test split strategy: {parser.train_split_method}")
         print("#############################################")
 
     def default_arguments(self, parser):
@@ -65,12 +66,12 @@ class ArgParser():
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
-        parser.add_argument("--train_split_method", default = "GroupShuffleSplit", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
+        parser.add_argument("--train_split_method", default = "GroupKFold", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
         return parser
     
     def train_model_arguments(self):
         parser = argparse.ArgumentParser(
-                                        prog='train_models.py',
+                                        prog='train_models_v2.py',
                                         description='Toolbox of different ml models for downsampled genomes',
                                         epilog='Made by Torbjørn Regueira',
                                         )
@@ -83,7 +84,6 @@ class ArgParser():
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
         parser.add_argument("--model_pooling", default = "mean", help = "Pooling method for model, choose between mean, last and attn")
         parser.add_argument("--model_norm", default = "layer", help = "Normalization method for model, choose between layer and batch")
-        parser.add_argument("--embed_only", action = "store_true", help = "Flag to tell whether to only embed, not train")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
         parser.add_argument("--dropout", default = 0.2, type = float, help = "fraction to dropout for each layer")
