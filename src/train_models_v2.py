@@ -839,7 +839,7 @@ def get_model_performance(phenotype = None,
 					i = 0 
 					for train_idx, val_idx in split.split(X_train_val, y_train_val, groups = groups_train_val):				
 						
-						print(f'Training models with {prefix=}, {suffix_size=}, {lr=},  {compress_vocab_space=}')
+						print(f'Training models with {prefix=}, {suffix_size=}, {lr=},  {compress_embeddings=}')
 					
 						X_train, y_train = X_train_val[train_idx], y_train_val[train_idx]
 						X_val,   y_val   = X_train_val[val_idx],   y_train_val[val_idx]
@@ -1045,7 +1045,7 @@ def get_model_performance(phenotype = None,
 								"auc_weighted": auc_weighted,
 								"auc_macro": auc_macro,
 								"n_classes": len(np.unique(y_train)),
-								"vocab_compression": compress_vocab_space,
+								"vocab_compression": compress_embeddings,
 								"confusion_matrix" : conf_matrix,
 								"grouped" : group_clusters,
 								"groups" : len(set(groups)),
@@ -1057,9 +1057,9 @@ def get_model_performance(phenotype = None,
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_vocab_space else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
 						path = f'{output_directory}/{dataset_name}.csv'
-						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_vocab_space=}')
+						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_embeddings=}')
 						results.to_csv(path)
 						print(f'Saved tmp result to {path=}')
 						print(f'{results=}')
