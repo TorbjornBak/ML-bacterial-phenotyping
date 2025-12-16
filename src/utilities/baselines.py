@@ -491,7 +491,7 @@ class model_context:
 	int2label: dict
 	k_folds: int
 	embedding_class: str	
-	train_split_method: str = "GroupShuffleSplit"  # or GroupKFold
+	train_split_method: str = "GroupKFold"  # or GroupShuffleSplit
 
 def create_classification_report(y_train,
 								 y_test, 
@@ -564,11 +564,12 @@ if __name__ == "__main__":
 		# On CPU server
 		device = torch.device("cpu")
 
+	reembed = parser.reembed
 	for phenotype in phenotypes:
 		if not parser.extract_feature_importance and not parser.classify and not parser.plot_pca:
 			raise ValueError("No action specified - at least one of --classify, --plot_pca or --extract_feature_importance must be set. Aborting...")
 
-		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
+		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", subset_ratio=parser.subset_ratio)
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 
 		kmer_prefix = parser.kmer_prefix
@@ -584,7 +585,7 @@ if __name__ == "__main__":
 					sequence_column = parser.dna_sequence_column,
 					cores = parser.cores, 
 					embedding_class = parser.embedding,
-					reembed=parser.reembed,
+					reembed=reembed,
 					file_type=parser.file_type,
 					esmc_model=parser.esmc_model,
 					esmc_pooling=parser.esmc_pooling,
@@ -609,7 +610,8 @@ if __name__ == "__main__":
 							int2label=int2label,
 							k_folds=parser.k_folds,
 							embedding_class=parser.embedding,
-							train_split_method=parser.train_split_method)
+							train_split_method=parser.train_split_method
+							)
 		
 		
 		# # Plotting pca and umap
