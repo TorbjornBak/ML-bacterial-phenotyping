@@ -1,6 +1,6 @@
-
 import numpy as np
 import os
+from itertools import product
 
 #os.environ.setdefault("JOBLIB_TEMP_FOLDER", "/tmp")
 
@@ -129,27 +129,35 @@ class IntegerEmbeddings():
 class OneHotEmbeddings():
 	
 	def __init__(self, 
-				kmer_prefix,
-			  	kmer_suffix_size,
-			  	kmer_offset = 0,
-			  	data_directory = ".",
-				grouped = False,
+				kmer_prefix: int,
+			  	kmer_suffix_size: int,
+			  	kmer_offset: int = 0,
+			  	data_directory: str = ".",
+				grouped: bool = False,
+				xhot: int | None = None,
 			  ):
 		
 		self.kmer_prefix = kmer_prefix
 		self.kmer_suffix_size = kmer_suffix_size
 		self.kmer_offset = kmer_offset
-		self.embedding_class = "onehot"
+		if xhot is None:
+			self.embedding_class = "onehot"
+		else:
+			self.embedding_class = "xhot"
 		self.grouped = grouped
-
+		self.xhot = xhot
 	
 		self.data_directory = data_directory
-			
+		
 
 	def run_embedder(self, token_collection):
 		
-		print(f'Running one-hot embedder')
-		embedding_results = [self.one_hot_embedding(id, tokens) for id, tokens in token_collection.items()]
+		if self.xhot is not None:
+			print(f'Running {self.xhot}-hot embedder')
+			embedding_results = [self.x_hot_embedding(id, tokens, x = self.xhot) for id, tokens in token_collection.items()]
+		else:	
+			print(f'Running one-hot embedder')
+			embedding_results = [self.one_hot_embedding(id, tokens) for id, tokens in token_collection.items()]
 		
 		embeddings = dict()
 
@@ -205,6 +213,7 @@ class OneHotEmbeddings():
 		dataset_name = f'{self.embedding_class}_embedding_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}'
 		dataset_name += "_grouped" if self.grouped else "" 
 		dataset_name += f'_offset_{self.kmer_offset}' if self.kmer_offset != 0 else ''
+		dataset_name += f'_xhot_{self.xhot}' if self.xhot is not None else ''
 		
 		file_path = f'{self.data_directory.rstrip("/")}/{dataset_name}'
 
@@ -214,14 +223,33 @@ class OneHotEmbeddings():
 	def one_hot_embedding(self, id, token_dict):
 		# {genome_id : {"forward" : forward_tokens, "reverse" : reverse_tokens}}
 		
-		integer_embeddings = {id : {strand:
-							np.stack([self.kmer_to_one_hot(kmer) for kmer in kmers], axis=0) 
+		embeddings = {id : {strand:
+							np.stack([self.kmer_to_k_hot(kmer) for kmer in kmers], axis=0) 
 							for strand, kmers in token_dict.items()}}
 
-		return integer_embeddings
-
+		return embeddings
 	
-	def kmer_to_one_hot(self, kmer):
+	def x_combinations(self, alphabet = "ACGTN", x = 2) -> dict[str, int]:
+		if not hasattr(self, '_x_combinations'):
+			self._x_combinations = {"".join(t) : i for i, t in enumerate(list(product(alphabet, repeat = x)))} # eg. {"AAA" : 0, "AAC" : 1, "AAT" : 2...}
+		self.combinations = self._x_combinations
+		return self.combinations
+	
+	def x_hot_embedding(self, id, token_dict, x):
+
+		encoding_size = len(self.x_combinations(alphabet = "ACGTN", x = x))
+
+		embeddings = {id : {strand:
+							np.stack([self.kmer_to_x_base_hot(kmer[i:i+x], encoding_size) 
+				 			for kmer in kmers 
+				 				for i in range(0, len(kmer), x)], axis=0) 
+							for strand, kmers in token_dict.items()}
+							}
+		self.channel_size = encoding_size
+		return embeddings
+			
+	
+	def kmer_to_k_hot(self, kmer):
 		m = {'A':0, 'C':1, 'G':2, 'T':3, 'n':4}
 		  # A, C, G, T, N
 		one_hot = np.zeros((len(kmer) * len(m)), dtype=np.float32)
@@ -229,7 +257,27 @@ class OneHotEmbeddings():
 			one_hot[i*len(m)+m[ch]] = 1.0
 
 		self.channel_size = len(m) * len(kmer)
+		assert len(one_hot) == len(m) * len(kmer), "Length of one hot should be the length of m * length of kmer"
 		return one_hot
+	
+	def kmer_to_x_base_hot(self, token, encoding_size):
+		# Encode the token as onehotvectors encoding x bases as one vector
+		# A generalization of kmer_to_k_hot, sligthly different as we put each encoding next to eachother. 
+		
+		encoding_vector = np.zeros(encoding_size, dtype=np.float32)
+
+		encoding_vector[self.combinations[token]] = 1.0
+		
+		return encoding_vector
+
+
+
+
+		
+		
+
+	
+
 	
 
 class KmerCountsEmbeddings():

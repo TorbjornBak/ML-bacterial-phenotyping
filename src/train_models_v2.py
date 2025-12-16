@@ -46,7 +46,8 @@ def embed_data(kmer_prefix = None,
 			   esmc_pooling = None,
 			   device = "cpu",
 			   kmer_offset = 0,
-			   group_clusters = False):
+			   group_clusters = False, 
+			   xhot = None):
 	# Should return X and y
 	
 	if embedding_class == "integer":
@@ -77,6 +78,16 @@ def embed_data(kmer_prefix = None,
 					kmer_offset=kmer_offset,
 					data_directory=output_directory,
 					grouped=group_clusters,)
+	
+	elif embedding_class == "xhot":
+		assert xhot is not None, "when using xhot embeddings, 'xhot' cannot be None"
+		embedder = OneHotEmbeddings(
+					kmer_prefix=kmer_prefix,
+					kmer_suffix_size=kmer_suffix_size,
+					kmer_offset=kmer_offset,
+					data_directory=output_directory,
+					grouped=group_clusters,
+					xhot = xhot)
 
 		
 	else:
@@ -178,7 +189,8 @@ def embed_data(kmer_prefix = None,
 							esmc_model = esmc_model,
 							device = device,
 			   				kmer_offset = kmer_offset,
- 						    group_clusters=group_clusters
+ 						    group_clusters=group_clusters,
+							xhot = xhot,
 						)
 	elif is_embedding_file(embedder.file_path, embedding_class=embedder.embedding_class):
 		# Don't reembed kmers
@@ -234,6 +246,8 @@ def is_embedding_file(dataset_file_path, embedding_class = "integer"):
 		file_types = [".npz", ".pt"]
 	elif embedding_class == "onehot":
 		file_types = [".npz"]
+	elif embedding_class == "xhot":
+		file_types = [".npz"]
 	else:
 		raise ValueError(f"Embedding class {embedding_class} not recognized. Aborting...")
 	
@@ -246,28 +260,6 @@ def is_embedding_file(dataset_file_path, embedding_class = "integer"):
 	print(f'Embedding files found.')
 	return True
 
-# def load_stored_embeddings(dataset_file_path, torch_device = None):
-# 	if torch_device is None:
-# 		print(f"Loading embeddings from: {dataset_file_path=}")
-# 		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
-
-# 		X = list(z["X"])  # object array → list of arrays 
-# 		ids = list(z["ids"])  # map labels from current dict
-# 		groups = list(z["groups"])
-
-# 		vocab_size = int(z["vocab_size"]) if "vocab_size" in z else None
-		
-# 		return X, ids, groups, vocab_size
-# 	else:
-# 		print(f"Loading embeddings from: {dataset_file_path=}")
-# 		z = np.load(f'{dataset_file_path}.npz', allow_pickle=True)
-
-# 		ids = list(z["ids"])  # map labels from current dict
-# 		groups = list(z["groups"])
-
-# 		X = torch.load(f'{dataset_file_path}.pt', map_location=torch_device)
-		
-# 		return X, ids, groups
 
 class SequenceDataset(Dataset):
 	"""Dataset that returns variable-length token sequences and labels.
@@ -342,14 +334,6 @@ class OneHotSequenceDataset(Dataset):
 
 	def __getitem__(self, idx: int):
 		x = self.X[idx]
-		# if isinstance(item, (list, tuple)):
-		# 	segs = [np.asarray(seg, dtype=np.float32, order="C") for seg in item]
-		# 	seq = np.concatenate(segs, axis=0)  # [T, V]
-		# else:
-		# 	seq = np.asarray(item, dtype=np.float32, order="C")  # [T, V]
-		# # Ensure contiguous memory before torch.from_numpy
-		# seq = np.ascontiguousarray(seq, dtype=np.float32)
-		# print(f'{seq.shape=}')
 		
 		x = torch.as_tensor(x, dtype=torch.float32)
 		y = torch.as_tensor(self.y[idx], dtype=torch.long)
@@ -405,21 +389,6 @@ class PadCollate:
 		else:
 			raise ValueError(f"Collate fn {self.collate_fn} not recognized")
 
-
-# def pad_embed_collate(batch):
-# 	seqs, labels = zip(*batch)
-# 	lengths = torch.tensor([s.size(0) for s in seqs], dtype=torch.long)
-# 	padded = pad_sequence(seqs, batch_first=True)
-# 	mask = torch.arange(padded.size(1)).unsqueeze(0) < lengths.unsqueeze(1)
-# 	labels = torch.stack(labels)
-# 	return padded, lengths, mask, labels
-
-
-# class PadEmbedCollate:
-# 	"""Top-level callable wrapper to make pad_embed_collate_fn picklable for multiprocessing workers."""
-# 	def __call__(self, batch):
-# 		return pad_embed_collate(batch)
-	
 
 
 def fit_model(
@@ -767,6 +736,7 @@ def get_model_performance(phenotype = None,
 						  reverse_complement = True,
 						  group_clusters=False,
 						  train_split_method = "GroupShuffleSplit",
+						  xhot = None,
 						  ):
 	
 	num_epochs = epochs
@@ -792,6 +762,7 @@ def get_model_performance(phenotype = None,
 											device=device,
 											kmer_offset=kmer_offset,
 											group_clusters=group_clusters,
+											xhot = xhot,
 											)
 			pad_id = 0
 			num_classes = len(np.unique(y))
@@ -896,7 +867,7 @@ def get_model_performance(phenotype = None,
 								collate_fn=pad_onehot_collate,
 							)
 
-						elif embedding_class == "onehot":
+						elif embedding_class in ["onehot", "xhot"]:
 							print(f'Using OneHotSequenceDataset for {model_type=}')
 							train_ds = OneHotSequenceDataset(X_train, y_train)
 							val_ds   = OneHotSequenceDataset(X_val, y_val)
@@ -1052,12 +1023,13 @@ def get_model_performance(phenotype = None,
 								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
 								"train_split_method" : train_split_method,
+								"xhot" : xhot,
 
 							}
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}{ f'_xhot_{xhot}' if xhot else ''}"
 						path = f'{output_directory}/{dataset_name}.csv'
 						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_embeddings=}')
 						results.to_csv(path)
@@ -1067,9 +1039,6 @@ def get_model_performance(phenotype = None,
 						i += 1
 
 	return
-
-
-
 
 
 
@@ -1096,26 +1065,22 @@ if __name__ == "__main__":
 	print(f'kmer_prefixes: {parser.kmer_prefixes}')
 	print(f'kmer_suffix_sizes: {parser.kmer_suffix_sizes}')
 
-
-
 	
 	print(f'Input directory = {parser.input}')
 	print(f'Labels path = {parser.labels_path}')
 	print(f'Output directory = {parser.output}')
 
 
-
 	print(f'Trace memory: {parser.trace_memory}')
 	print(f"Learning rates: {parser.lr}")
 	print(f'Test val split: {parser.test_val_split}')
+	print(f'Embedding class: {parser.embedding}')
 
 	if parser.embedding == "esmc":
 		print(f'{parser.esmc_model=}, {parser.esmc_pooling=}')
 
 	check_id_and_labels_exist(file_path=parser.labels_path, id = parser.id_column, labels = parser.phenotype, sep = ",")
 
-	
-	
 	for phenotype in parser.phenotype:
 		print(f'{phenotype=}')
 		labels = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", subset_ratio=parser.subset_ratio)
@@ -1149,5 +1114,6 @@ if __name__ == "__main__":
 								kmer_offset = parser.kmer_offset,
 								reverse_complement=parser.reverse_complement,
 								group_clusters=parser.group_clusters,
-								train_split_method=parser.train_split_method
+								train_split_method=parser.train_split_method,
+								xhot = parser.xhot,
 								)

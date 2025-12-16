@@ -90,7 +90,8 @@ class ArgParser():
         parser.add_argument("--dropout", default = 0.2, type = float, help = "fraction to dropout for each layer")
         parser.add_argument("--patience", default = 15, type = int, help = "Parameter to determine how long to wait before early stopping")
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
-        parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, esmc or integer")
+        parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, xhot, esmc or integer")
+        parser.add_argument("--xhot", default = None, type = int, help = "value for x in x-hot encoding, only used if embedding is set to xhot (fx 3 for 3-hot encoding)")
         return parser
         
     def baseline_arguments(self):

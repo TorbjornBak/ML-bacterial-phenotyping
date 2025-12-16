@@ -9,6 +9,7 @@ def read_parquet(parquet_path):
 	# Read in as parquet one at a time, kmerize, convert to npy (or parquet?) Then we can stream and potentially use much bigger datasets?
 	print(f"Loading parquet dataset: {parquet_path}")
 	df = pd.read_parquet(parquet_path, engine = "fastparquet")
+	print(f"Finished loading parquet dataset: {parquet_path} with {df.shape[0]} rows and {df.shape[1]} columns")
 	return df
 
 def read_fasta(fasta_path):
@@ -67,6 +68,7 @@ def deprecated_load_labels(file_path, id = "genome_id", label = "class", sep = "
 	return return_dict
 
 def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset_ratio = None):
+
 	df = pd.read_csv(file_path, sep = sep)
 	print(f'{id=}, {label=}')
 	df = df.dropna(subset = [id, label])
@@ -76,6 +78,7 @@ def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset
 	unique_labels = np.unique(df[label])
 
 	if subset_ratio is not None:
+		assert subset_ratio != 0.0, "Subset ratio should be larger than 0.0, otherwise no data will get loaded."
 		# Downsampling the dataset for specific analysis (if needed)
 					
 		# Downsample as a % of the full dataset
@@ -89,6 +92,7 @@ def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset
 
 		print(f'After downsampling: {len(unique_ids)=}')
 		print(f'After downsampling class distribution: {np.unique(list(label_dict.values()), return_counts=True)}')
+		assert len(unique_ids) != 0, "No ids left after subsetting, choose bigger subset of the data"
 					
 
 	# Creating label mappings
@@ -160,8 +164,8 @@ class KmerTokenizer():
 	
 		dir_list = [f'{self.input_path}/{file}' for file in dir_list if self.file_type == file.split(".")[-1]]
 		
-		print(f'Found {len(dir_list)} files with type {self.file_type} in {self.input_path}')
-		assert len(dir_list) > 0, f'No files with type {self.file_type} found in {self.input_path}'
+		print(f'Found {len(dir_list)} files with type {self.file_type} in "{self.input_path}"')
+		assert len(dir_list) > 0, f'No files with type {self.file_type} found in "{self.input_path}"'
 		
 		return dir_list
 
