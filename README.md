@@ -12,12 +12,13 @@ pip install -e .
 ```
 
 ### Training CNN
+Trains a CNN classifier using 5-fold CV. 
 ```
 python src/train_models_v2.py \
   --phenotype resistant_phenotype \
   --input genomes/ \
   --output results/CNN/
-  --labels genomes/metadata.csv
+  --labels genomes/metadata.csv \
   --kmer_prefixes ACATG\
   --kmer_suffix_sizes 6 \
   --model_arch CNN_ONEHOT_SMALL \
@@ -28,5 +29,25 @@ python src/train_models_v2.py \
   --k_folds 5 \
   --group_clusters \
   --test_val_split 0.2 0.25 \
-  --file_type fasta
+  --file_type fasta \
+  --cores 4
+```
+
+### Training baseline
+Trains a HGBM (HistGradientBoosting) classifier, calculates SHAP values and creates feature importance plots from these.
+```
+python src/utilities/baselines.py  \
+  --phenotype  resistant_phenotype \
+  --input genomes/ \
+  --output results/CNN/
+  --labels genomes/metadata.csv \
+  --kmer_prefix ACATG \
+  --kmer_suffix_size 6 \
+  --id_column genome_id \
+  --dna_sequence_column dna_sequence \
+  --file_type fasta \
+  --embedding counts \
+  --extract_feature_importance \
+  --group_clusters
+
 ```
