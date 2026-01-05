@@ -492,6 +492,7 @@ class model_context:
 	k_folds: int
 	embedding_class: str	
 	train_split_method: str = "GroupKFold"  # or GroupShuffleSplit
+	subset_ratio: float = 1.0
 
 def create_classification_report(y_train,
 								 y_test, 
@@ -532,11 +533,12 @@ def create_classification_report(y_train,
 			"groups" : len(set(ctx.groups)),
 			"embedding_class": ctx.embedding_class,
 			"train_split_method" : ctx.train_split_method,
+			"subset_ratio": ctx.subset_ratio,
 		}
 		)
 	
 
-	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.train_split_method}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}"
+	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.train_split_method}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}_{f'subset_{ctx.subset_ratio}' if ctx.subset_ratio<1.0 else ''}"
 	path = f'{ctx.output_directory}/{dataset_name}.csv'
 	results.to_csv(path)
 	print(f'Saved tmp result to {path=}')
@@ -610,7 +612,8 @@ if __name__ == "__main__":
 							int2label=int2label,
 							k_folds=parser.k_folds,
 							embedding_class=parser.embedding,
-							train_split_method=parser.train_split_method
+							train_split_method=parser.train_split_method,
+							subset_ratio=parser.subset_ratio,
 							)
 		
 		

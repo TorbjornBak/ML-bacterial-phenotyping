@@ -411,12 +411,12 @@ def fit_model(
 	embedding_class = "integer"):
 	
 	
-	kernel_size = 7
 
 	memory_usage = {"peak_allocated_gib": 0, "peak_reserved_gib" : 0}
 	print(f'{vocab_size=}')
 	#Initialize model, optimizer, loss function
 	if model_type == "CNN":
+		kernel_size = 7
 		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = CNNKmerClassifier(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
@@ -430,6 +430,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNN_v2":
+		kernel_size = 7
 		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = CNNKmerClassifier_v2(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
@@ -443,6 +444,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNN_LARGE":
+		kernel_size = 7
 		emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = CNNKmerClassifierLarge(vocab_size=vocab_size, 
 							emb_dim=emb_dim, 
@@ -456,6 +458,7 @@ def fit_model(
 		optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay = weight_decay)
 
 	elif model_type == "CNNKmerClassifier_w_embeddings":
+		kernel_size = 7
 		# For ESM-c embeddings - TODO: does this work still?
 		sample_batch = next(iter(train_loader))[0]  # [B,T,D]
 		emb_dim = sample_batch.size(-1)
@@ -737,6 +740,7 @@ def get_model_performance(phenotype = None,
 						  group_clusters=False,
 						  train_split_method = "GroupShuffleSplit",
 						  xhot = None,
+						  subset_ratio = None,
 						  ):
 	
 	num_epochs = epochs
@@ -1024,12 +1028,13 @@ def get_model_performance(phenotype = None,
 								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
 								"train_split_method" : train_split_method,
 								"xhot" : xhot,
+								"subset_ratio" : subset_ratio if subset_ratio else 1.0,
 
 							}
 						)
 						run.log(results.to_dict())
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}{ f'_xhot_{xhot}' if xhot else ''}"
+						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}{ f'_xhot_{xhot}' if xhot else ''}{f'_subset_{subset_ratio}' if subset_ratio else ''}"
 						path = f'{output_directory}/{dataset_name}.csv'
 						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_embeddings=}')
 						results.to_csv(path)
@@ -1116,4 +1121,5 @@ if __name__ == "__main__":
 								group_clusters=parser.group_clusters,
 								train_split_method=parser.train_split_method,
 								xhot = parser.xhot,
+								subset_ratio = parser.subset_ratio,
 								)
