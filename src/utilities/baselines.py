@@ -538,7 +538,7 @@ def create_classification_report(y_train,
 		)
 	
 
-	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.train_split_method}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}_{f'subset_{ctx.subset_ratio}' if ctx.subset_ratio<1.0 else ''}"
+	dataset_name = f"tmp_result_{ctx.embedding_class}_{ctx.model_type}_{ctx.phenotype}_{"grouped" if ctx.grouped else 'ungrouped'}_{ctx.train_split_method}_{ctx.kmer_prefix}_{ctx.kmer_suffix_size}_{seed}_{f'subset_{ctx.subset_ratio}' if ctx.subset_ratio else ''}"
 	path = f'{ctx.output_directory}/{dataset_name}.csv'
 	results.to_csv(path)
 	print(f'Saved tmp result to {path=}')
