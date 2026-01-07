@@ -229,7 +229,7 @@ class OneHotEmbeddings():
 
 		return embeddings
 	
-	def x_combinations(self, alphabet = "ACGTN", x = 2) -> dict[str, int]:
+	def x_combinations(self, alphabet = "ACGT", x = 2) -> dict[str, int]:
 		if not hasattr(self, '_x_combinations'):
 			self._x_combinations = {"".join(t) : i for i, t in enumerate(list(product(alphabet, repeat = x)))} # eg. {"AAA" : 0, "AAC" : 1, "AAT" : 2...}
 		self.combinations = self._x_combinations
@@ -237,7 +237,7 @@ class OneHotEmbeddings():
 	
 	def x_hot_embedding(self, id, token_dict, x):
 
-		encoding_size = len(self.x_combinations(alphabet = "ACGTN", x = x))
+		encoding_size = len(self.x_combinations(alphabet = "ACGT", x = x))
 
 		embeddings = {id : {strand:
 							np.stack([self.kmer_to_x_base_hot(kmer[i:i+x], encoding_size) 
@@ -250,7 +250,7 @@ class OneHotEmbeddings():
 			
 	
 	def kmer_to_k_hot(self, kmer):
-		m = {'A':0, 'C':1, 'G':2, 'T':3, 'n':4}
+		m = {'A':0, 'C':1, 'G':2, 'T':3}
 		  # A, C, G, T, N
 		one_hot = np.zeros((len(kmer) * len(m)), dtype=np.float32)
 		for i, ch in enumerate(kmer):

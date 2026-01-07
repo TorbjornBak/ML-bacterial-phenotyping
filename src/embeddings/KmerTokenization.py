@@ -15,8 +15,6 @@ def read_parquet(parquet_path):
 def read_fasta(fasta_path):
 	# Assuming standard fasta format and that fasta file contains only one species
 	# and that the fasta file name is the genome id
-	
-	
 	sequence = []
 
 	with open(fasta_path, mode = "r") as file:
