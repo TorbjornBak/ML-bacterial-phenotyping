@@ -225,7 +225,11 @@ if __name__ == "__main__":
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
 
 
-		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, target_labels=label_dict_literal, n = parser.n_minhashes)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
+								 target_labels=label_dict_literal, 
+								 n = parser.n_minhashes,
+								 id_column=parser.id_column,
+								 dna_sequence_column=parser.dna_sequence_column,)
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
