@@ -13,7 +13,9 @@ class SourMashClustering():
 	def __init__(self,
 				 kmer_suffix_size,
 				 target_labels: dict,
-				 n = 1000):
+				 n = 1000,
+				 id_column = None,
+				 dna_sequence_column = None,):
 		#self.phenotype = phenotype
 		self.kmer_suffix_size = kmer_suffix_size
 		self.target_labels = target_labels
@@ -48,11 +50,11 @@ class SourMashClustering():
 			
 				mh = sourmash.MinHash(n=self.n, ksize=self.kmer_suffix_size)
 
-				for record in row['dna_sequence'].split(" "):
+				for record in row[self.dna_sequence_column].split(" "):
 
 					mh.add_sequence(record, True)
 
-				minhashes[row['genome_id']] = mh
+				minhashes[row[self.id_column]] = mh
 			
 		self.minhashes = minhashes
 		return minhashes
@@ -113,6 +115,7 @@ class SourMashClustering():
 				# if unique clusters is too big, increase threshold by increasing the floor.
 				elif unique_clusters > nr_of_clusters:
 					floor = threshold
+				print(f'{threshold=}, {unique_clusters=}, {ceiling=}, {floor=}')
 				#break
 			print(f'Final nr of {unique_clusters=}, {threshold=}')
 		# Check cluster quality
