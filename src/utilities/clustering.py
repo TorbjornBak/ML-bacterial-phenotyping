@@ -200,14 +200,20 @@ if __name__ == "__main__":
 
 	label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = parser.phenotype[0], sep = ",")
 	label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-	
+
+	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
+								 target_labels=label_dict_literal, 
+								 n = parser.n_minhashes,
+								 id_column=parser.id_column,
+								 dna_sequence_column=parser.dna_sequence_column,)
+
 	if parser.hash_full_sequence:
 		list_dir = list_files(input_path=parser.input, file_type=parser.file_type)
 		
 		sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
 		sequence_df = pd.concat(sequence_df, ignore_index=True)
 		print(sequence_df)
-		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, target_labels=label_dict_literal, n = parser.n_minhashes)
+		
 		minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
 		
 	else:
@@ -223,13 +229,7 @@ if __name__ == "__main__":
 									)
 		
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
-
-
-		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
-								 target_labels=label_dict_literal, 
-								 n = parser.n_minhashes,
-								 id_column=parser.id_column,
-								 dna_sequence_column=parser.dna_sequence_column,)
+		
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
