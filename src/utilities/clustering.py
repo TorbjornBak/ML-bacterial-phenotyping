@@ -20,8 +20,8 @@ class SourMashClustering():
 		self.kmer_suffix_size = kmer_suffix_size
 		self.target_labels = target_labels
 		self.n = n
-		
-
+		self.id_column = id_column
+		self.dna_sequence_column = dna_sequence_column
 
 	def hash_tokens(self, token_dict : dict[dict]):
 		
