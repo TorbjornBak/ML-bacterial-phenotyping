@@ -199,7 +199,7 @@ if __name__ == "__main__":
 
 	label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = parser.phenotype[0], sep = ",")
 	label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-	print(label_dict_literal)
+	
 	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
 								 target_labels=label_dict_literal, 
 								 n = parser.n_minhashes,
