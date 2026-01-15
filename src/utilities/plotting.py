@@ -1,12 +1,14 @@
 import os
 import pandas as pd
 import seaborn as sns
+# Helper functions for plotting results from training runs
 
 def get_files(path = "../results/training_CNN_v2_lr3/"):
 
     file_suffix = ".csv"
     dir_list = os.listdir(path)
     dir_list = [f'{path}/{file}' for file in dir_list if file_suffix in file]
+    print(dir_list)
     print(f'{len(dir_list)=}')
 
     return dir_list
@@ -19,7 +21,7 @@ def read_series_csv(path):
     if df.shape[1] == 2:
         df = df.set_index(0).T                       # index to columns, values to a single row [web:63]
         df.columns.name = None
-
+    
     return df
 
 
@@ -85,13 +87,7 @@ def confusion_plot(path):
    
     conf = df.confusion_matrix.to_list()[0].split("\n ")
     conf = [[int(i) for i in i.replace("[","]").replace("]","").split()]  for i in conf]
-    #conf_dict = {d.split(": ")[1]: d.split(": ")[0] for d in df["int2label"].iloc[0].replace("{","").replace("}","").replace("'","").split(", ")}
-    #print(conf_dict)
     
-
-    #conf_df = pd.DataFrame.from_dict(conf_dict)
-    #conf_df = pd.DataFrame(conf, columns = conf_dict.labels, index = conf_dict.labels)
-    #print(conf_df)
     ax = sns.heatmap(conf, annot = True, cmap="crest",fmt='g')
     df["phenotype"] = reformat_x_labels(df["phenotype"])
     ax.set(title = f"Confusion matrix for {df['model_name'].iloc[0]} - task: {df['phenotype'].iloc[0]}")
