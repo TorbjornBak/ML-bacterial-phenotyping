@@ -86,9 +86,7 @@ class SourMashClustering():
 		
 		else:
 			print(f'Searching for optimal clustering threshold to get {nr_of_clusters} clusters.')
-			cluster_count = 0
 			# binary search starting threshold
-			#threshold = 1
 			ceiling = 1
 			floor = 0
 
@@ -103,13 +101,14 @@ class SourMashClustering():
 
 				unique_clusters = len(np.unique(cluster_groups))
 
-				# if unique is within 5 % of desired we say it's good enough overlap
+				# if unique is within 10 % of desired we say it's good enough overlap
 				if unique_clusters * 1.05 >= nr_of_clusters and unique_clusters * 0.95 <= nr_of_clusters:
 					break
 				
-				elif threshold >= 0.99999:
+				elif threshold >= 0.99 or threshold <= 0.01:
 					break
 				
+				# if unique clusters is too small, decrease threshold by decreasing the ceiling.
 				elif unique_clusters < nr_of_clusters:
 					ceiling = threshold
 				# if unique clusters is too big, increase threshold by increasing the floor.
@@ -127,8 +126,8 @@ class SourMashClustering():
 	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
 		f, reordered_labels, reordered_matrix = fig.plot_composite_matrix(distance_matrix, labels, labels)
 
-
-		y = pd.Series([self.target_labels[label.split("_")[0]] for label in labels], index=labels)
+		# removes "forward" and "reverse" suffixes from labels
+		y = pd.Series([self.target_labels["_".join(label.split("_")[:-1])] for label in labels if "_".join(label.split("_")[:-1]) in self.target_labels], index=labels)
 
 		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
 
@@ -200,7 +199,7 @@ if __name__ == "__main__":
 
 	label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = parser.phenotype[0], sep = ",")
 	label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-
+	print(label_dict_literal)
 	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
 								 target_labels=label_dict_literal, 
 								 n = parser.n_minhashes,
@@ -213,6 +212,8 @@ if __name__ == "__main__":
 		sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
 		sequence_df = pd.concat(sequence_df, ignore_index=True)
 		print(sequence_df)
+
+		sequence_df = sequence_df[sequence_df[parser.id_column].isin(label_dict.keys())]
 		
 		minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
 		
@@ -229,7 +230,9 @@ if __name__ == "__main__":
 									)
 		
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
-		
+		# filter token collection to only include genomes with labels
+		token_collection = {k: v for k, v in token_collection.items() if k in label_dict.keys()}
+
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
