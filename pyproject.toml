@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,7 +10,6 @@ readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Torbjorn Regueira", email = "s203555@dtu.dk" }]
 dependencies = ["torch>=2.5.1", 
-                "numpy>=2.3.5", 
                 "scikit-learn>=1.7.2", 
                 "matplotlib>=3.10.7", 
                 "seaborn>=0.13.2",
