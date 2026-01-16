@@ -196,62 +196,64 @@ if __name__ == "__main__":
 	parser = ArgParser(module = "baseline")
 	parser = parser.parser
 
-	label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = parser.phenotype[0], sep = ",")
-	label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
-	
-	clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
-								 target_labels=label_dict_literal, 
-								 n = parser.n_minhashes,
-								 id_column=parser.id_column,
-								 dna_sequence_column=parser.dna_sequence_column,)
+	for phenotype in parser.phenotype:
 
-	if parser.hash_full_sequence:
-		list_dir = list_files(input_path=parser.input, file_type=parser.file_type)
+		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
+		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 		
-		sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
-		sequence_df = pd.concat(sequence_df, ignore_index=True)
-		print(sequence_df)
+		clusterer = SourMashClustering(kmer_suffix_size=parser.kmer_suffix_size, 
+									target_labels=label_dict_literal, 
+									n = parser.n_minhashes,
+									id_column=parser.id_column,
+									dna_sequence_column=parser.dna_sequence_column,)
 
-		sequence_df = sequence_df[sequence_df[parser.id_column].isin(label_dict.keys())]
+		if parser.hash_full_sequence:
+			list_dir = list_files(input_path=parser.input, file_type=parser.file_type)
+			
+			sequence_df = [read_sequence_file(file_path=file_path, file_type=parser.file_type) for file_path in list_dir]
+			sequence_df = pd.concat(sequence_df, ignore_index=True)
+			print(sequence_df)
+
+			sequence_df = sequence_df[sequence_df[parser.id_column].isin(label_dict.keys())]
+			
+			minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
+			
+		else:
+			assert parser.kmer_prefix is not None, "kmer_prefix argument is required when hashing tokenized sequences"
+			assert parser.kmer_suffix_size is not None, "kmer_suffix_size argument is required when hashing tokenized sequences"
+			tokenizer = KmerTokenizer(input_path=parser.input, 
+										genome_col=parser.id_column,
+										dna_sequence_col=parser.dna_sequence_column,
+										kmer_prefix=parser.kmer_prefix,
+										kmer_suffix_size=parser.kmer_suffix_size,
+										file_type=parser.file_type,
+										reverse_complement=parser.reverse_complement
+										)
+			
+			token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
+			# filter token collection to only include genomes with labels
+			print(f'Filtering tokenized genomes to only include those with labels. Original size: {len(token_collection)}')
+			token_collection = {k: v for k, v in token_collection.items() if k in label_dict.keys()}
+			print(f'Filtered tokenized genomes to only include those with labels. New size: {len(token_collection)}')
+			minhashes = clusterer.hash_tokens(token_dict=token_collection)
+
+		print(f'Number of minhashes created: {len(minhashes)}')
+		distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
+
+		cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=None, nr_of_clusters=30)
 		
-		minhashes = clusterer.hash_sequences(sequence_df=sequence_df)
-		
-	else:
-		assert parser.kmer_prefix is not None, "kmer_prefix argument is required when hashing tokenized sequences"
-		assert parser.kmer_suffix_size is not None, "kmer_suffix_size argument is required when hashing tokenized sequences"
-		tokenizer = KmerTokenizer(input_path=parser.input, 
-									genome_col=parser.id_column,
-									dna_sequence_col=parser.dna_sequence_column,
-									kmer_prefix=parser.kmer_prefix,
-									kmer_suffix_size=parser.kmer_suffix_size,
-									file_type=parser.file_type,
-									reverse_complement=parser.reverse_complement
-									)
-		
-		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
-		# filter token collection to only include genomes with labels
-		print(f'Filtering tokenized genomes to only include those with labels. Original size: {len(token_collection)}')
-		token_collection = {k: v for k, v in token_collection.items() if k in label_dict.keys()}
-		print(f'Filtered tokenized genomes to only include those with labels. New size: {len(token_collection)}')
-		minhashes = clusterer.hash_tokens(token_dict=token_collection)
+		print(f'{cluster_groups=}')
+		print(f'Number of clusters formed: {len(set(cluster_groups))}')
+		print(f'Length of cluster groups: {len(cluster_groups)}')
 
-	print(f'Number of minhashes created: {len(minhashes)}')
-	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
+		smash_plot, sns_plot = clusterer.plot_composite_matrix(distance_matrix=distance_matrix, 
+															labels=labels, 
+															title = parser.clustermap_title,
+															subtitle = parser.clustermap_subtitle)
 
-	cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=None, nr_of_clusters=30)
-	
-	print(f'{cluster_groups=}')
-	print(f'Number of clusters formed: {len(set(cluster_groups))}')
-	print(f'Length of cluster groups: {len(cluster_groups)}')
+		if parser.output:
+				smash_plot.savefig(f'{parser.output.rstrip("/")}/smash_sourmash_{parser.n_minhashes}_distance_matrix_{phenotype}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
 
-	smash_plot, sns_plot = clusterer.plot_composite_matrix(distance_matrix=distance_matrix, 
-														labels=labels, 
-														title = parser.clustermap_title,
-														subtitle = parser.clustermap_subtitle)
-
-	if parser.output:
-			smash_plot.savefig(f'{parser.output.rstrip("/")}/smash_sourmash_{parser.n_minhashes}_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
-
-	if parser.output:
-			sns_plot.savefig(f'{parser.output.rstrip("/")}/sns_sourmash_{parser.n_minhashes}_distance_matrix_{parser.phenotype[0]}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
-			#f.savefig()
+		if parser.output:
+				sns_plot.savefig(f'{parser.output.rstrip("/")}/sns_sourmash_{parser.n_minhashes}_distance_matrix_{phenotype}_{parser.kmer_prefix}_{parser.kmer_suffix_size}.png')
+				#f.savefig()
