@@ -27,7 +27,8 @@ dependencies = ["torch>=2.5.1",
                 "shap>=0.50.0",
                 "tf-keras>=2.20.1",
                 "click>=8.1",
-                "fastparquet>=1.3.0"]
+                "fastcluster>=1.3.0",
+                "scipy>=1.13.1"]
 
 [project.scripts]
 bacml = "bacml:cli"
