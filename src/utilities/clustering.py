@@ -72,10 +72,10 @@ class SourMashClustering():
 
 		return distance_matrix, labels
 	
-	def group_clusters(self, distance_matrix, labels, threshold = None, method = "ward", nr_of_clusters = None):
+	def group_clusters(self, distance_matrix, labels, threshold = None, method = "average", nr_of_clusters = None):
 		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
 		# Perform hierarchical clustering
-		linkage_matrix = sch.linkage(df, method=method)
+		linkage_matrix = sch.linkage(df, method=method, metric='euclidean')
 
 		if nr_of_clusters is None:
 			# Form flat clusters based on the threshold
@@ -92,7 +92,7 @@ class SourMashClustering():
 
 			assert nr_of_clusters < distance_matrix.shape[0]
 
-			# Desired result = unique_clusters < nr_of_clusters
+			# Desired result = unique_clusters ~ nr_of_clusters
 
 			while True:
 				threshold = (ceiling + floor) / 2
@@ -123,7 +123,7 @@ class SourMashClustering():
 
 
 
-	def plot_composite_matrix(self, distance_matrix, labels, title = None, subtitle = None):
+	def plot_composite_matrix(self, distance_matrix, labels, method = "average", title = None, subtitle = None):
 		f, reordered_labels, reordered_matrix = fig.plot_composite_matrix(distance_matrix, labels, labels)
 
 		# removes "forward" and "reverse" suffixes from labels
@@ -138,12 +138,11 @@ class SourMashClustering():
 		lut = dict(zip(unique_labels, "rbg"))
 		col_colors = y.map(lut)
 		# see https://seaborn.pydata.org/generated/seaborn.clustermap.html
-		linkage = sch.linkage(df, method='single')  # precompute linkage for consistent clustering
-		
+		linkage = sch.linkage(df, method=method, metric='euclidean')  # precompute linkage
 
 		plot = sns.clustermap(
 			df,
-			method='single',
+			method=method,
 			metric='euclidean',
 
 			col_colors=col_colors,
@@ -231,10 +230,12 @@ if __name__ == "__main__":
 		
 		token_collection = tokenizer.run_tokenizer(nr_of_cores=parser.cores)
 		# filter token collection to only include genomes with labels
+		print(f'Filtering tokenized genomes to only include those with labels. Original size: {len(token_collection)}')
 		token_collection = {k: v for k, v in token_collection.items() if k in label_dict.keys()}
-
+		print(f'Filtered tokenized genomes to only include those with labels. New size: {len(token_collection)}')
 		minhashes = clusterer.hash_tokens(token_dict=token_collection)
 
+	print(f'Number of minhashes created: {len(minhashes)}')
 	distance_matrix, labels = clusterer.jaccard_distance_matrix(minhashes=minhashes)
 
 	cluster_groups = clusterer.group_clusters(distance_matrix=distance_matrix, labels=labels, threshold=None, nr_of_clusters=30)
