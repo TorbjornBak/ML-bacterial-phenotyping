@@ -37,17 +37,25 @@ def format_df(df,
 
     df["kmer_suffix_size"] = df["kmer_suffix_size"].apply(pd.to_numeric)
 
+
+    df["model_name"] = df["model_name"].astype(str).str.replace("_ONEHOT",""
+                        ).str.replace("HistGradientBoosting","HGB"
+                        ).str.replace("_MLP",""
+                        ).str.replace("_ESMC",""
+                        ).str.replace("_"," ")
+    
+        
     if "embedding_class" in df.columns:
         
         df["Parameters"] = (
-        df["model_name"].astype(str).str.replace("_ONEHOT","").str.replace("HistGradientBoosting","HGB").str.replace("_"," ") + ", " +
+        df["model_name"].astype(str) + ", " +
         df["embedding_class"].astype(str) + ", " +
         df["kmer_prefix"].astype(str) + ", " +
         df["kmer_suffix_size"].astype(str)
         )
     else:
         df["Parameters"] = (
-        df["model_name"].astype(str).str.replace("_ONEHOT","").str.replace("HistGradientBoosting","HGB").str.replace("_"," ") + ", " +
+        df["model_name"].astype(str) + ", " +
         df["kmer_prefix"].astype(str) + ", " +
         df["kmer_suffix_size"].astype(str)
         )
@@ -74,7 +82,8 @@ def get_avg(path, id_cols = ["phenotype","model_name","kmer_prefix","kmer_suffix
     return avg_by_config
 
 def reformat_x_labels(df_column):
-    df_column = df_column.str.replace("_"," ").str.replace("madin","").str.replace("gideon","").str.replace("categorical","").str.strip().str.title()
+    df_column = df_column.str.replace("_"," ").str.replace("madin","").str.replace("gideon","").str.replace("categorical","").str.replace("Carbsubs","Utilization of").str.strip().str.title()
+    
     return df_column
 
 
