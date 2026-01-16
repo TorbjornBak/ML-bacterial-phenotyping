@@ -197,7 +197,7 @@ if __name__ == "__main__":
 	parser = parser.parser
 
 	for phenotype in parser.phenotype:
-
+		print(f'Clustering for phenotype: {phenotype}')
 		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",")
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 		
