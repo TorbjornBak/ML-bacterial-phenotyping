@@ -9,25 +9,25 @@ description = "Bact pheno package"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Torbjorn Regueira", email = "s203555@dtu.dk" }]
-dependencies = ["torch>=2.5.1", 
-                "scikit-learn>=1.7.2", 
-                "matplotlib>=3.10.7", 
-                "seaborn>=0.13.2",
-                "pandas>=2.0",
-                "argparse>=1.4.0",
-                "tqdm>=4.67.1",
-                "wandb>=0.23.0",
-                "esm>=3.2.1.post1",
-                "biopython>=1.86",
-                "joblib>=1.5.2",
-                "httpx>=0.28.1",
-                "fastparquet>=2024.11.0",
-                "sourmash>=4.9.4",
-                "shap>=0.50.0",
-                "tf-keras>=2.20.1",
-                "click>=8.1",
-                "fastcluster>=1.3.0",
-                "scipy>=1.13.1"]
+dependencies = ["torch",
+                "scikit-learn",
+                "matplotlib",
+                "seaborn",
+                "pandas",
+                "argparse",
+                "tqdm",
+                "wandb",
+                "esm",
+                "biopython",
+                "joblib",
+                "httpx",
+                "fastparquet",
+                "sourmash",
+                "shap",
+                "tf-keras",
+                "click",
+                "fastcluster",
+                "scipy"]
 
 [project.scripts]
 bacml = "bacml:cli"
