@@ -76,7 +76,7 @@ def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset
 	unique_labels = np.unique(df[label])
 
 	if subset_ratio is not None:
-		assert subset_ratio != 0.0, "Subset ratio should be larger than 0.0, otherwise no data will get loaded."
+		assert subset_ratio > 0.0 and subset_ratio <= 1.0, "Subset ratio should be larger than 0.0, otherwise no data will get loaded."
 		# Downsampling the dataset for specific analysis (if needed)
 					
 		# Downsample as a % of the full dataset
