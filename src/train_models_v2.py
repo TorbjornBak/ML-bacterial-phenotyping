@@ -13,7 +13,6 @@ from sklearn.metrics import balanced_accuracy_score, classification_report, roc_
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import LabelEncoder
 
-import wandb
 
 from embeddings.tokenization import check_id_and_labels_exist
 from embeddings.KmerTokenization import KmerTokenizer, load_labels
@@ -406,7 +405,6 @@ def fit_model(
 	pad_id=0, 
 	trace_memory_usage = False,
 	dropout = 0.2,
-	wandb_run = None,
 	patience = 15,
 	embedding_class = "integer"):
 	
@@ -654,8 +652,7 @@ def fit_model(
 					
 			val_loss = torch.tensor(val_running / max(len(val_loader), 1))
 			train_acc = correct / total if total > 0 else 0.0
-			if wandb_run is not None:
-				wandb_run.log({"train_loss": loss, "val_loss": val_loss, "train_acc":train_acc})
+			# Early stopping check
 			if epoch == 0:
 				best_val_loss = val_loss
 				best_model_state = model.state_dict()
@@ -709,6 +706,40 @@ def fit_model(
 	fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
 		
 	return fit_model_results
+
+def bacformer_splits(X, y, groups, seed, test_val_split):
+	gss_test =  GroupShuffleSplit(n_splits = 1, test_size = test_val_split[0], random_state = seed)
+	train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+	print(f'{train_val_idx=}, {test_idx=}')
+	
+	X_trainval, y_trainval = X[train_val_idx], np.array(y)[train_val_idx]
+	groups_trainval = groups[train_val_idx]
+	
+	# Split train into train and val
+	gss_val = GroupShuffleSplit(n_splits=1, test_size=test_val_split[1], random_state=42)
+	train_idx, val_idx = next(gss_val.split(X_trainval, y_trainval, groups=groups_trainval))
+
+	return train_idx, val_idx, test_idx, X_trainval, y_trainval, groups_trainval, train_val_idx, test_idx
+
+def cross_validation_splits(X, y, groups, seed, test_val_split, train_split_method):
+	# Split into train test once using LeavePGroupsOut
+	gss_test = LeavePGroupsOut(n_groups = int(test_val_split[0] * len(np.unique(groups))))
+	train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+	
+	X_train_val, y_train_val = X[train_val_idx], np.array(y)[train_val_idx]
+	groups_train_val = groups[train_val_idx]
+	
+	# Then split train into train val n_folds times
+	if train_split_method == "GroupShuffleSplit":
+		split = GroupShuffleSplit(n_splits = 1, test_size = test_val_split[1], random_state = seed)
+	elif train_split_method == "GroupKFold":
+		split = GroupKFold(n_splits = 5)
+	else:
+		raise ValueError(f"train_split_method {train_split_method} not recognized. Aborting...")
+	
+	train_idx, val_idx = next(split.split(X_train_val, y_train_val, groups = groups_train_val))
+
+	return train_idx, val_idx, test_idx, X_train_val, y_train_val, groups_train_val, train_val_idx, test_idx
 
 
 def get_model_performance(phenotype = None,
@@ -773,275 +804,250 @@ def get_model_performance(phenotype = None,
 
 			
 			for lr in learning_rates:
-				with wandb.init(project="Phenotyping bacteria",
-					entity="torbjornbak-technical-university-of-denmark",
-					config={
-					"learning_rate": lr,
-					"architecture": model_type,
-					"dataset": phenotype,
-					"epochs": epochs,
-					"kmer_prefix": prefix,
-					"kmer_suffix_size": suffix_size,
-					"dropout": dropout,
-					"embedding_class": embedding_class,
-					"compress_embeddings": compress_embeddings,
-					"patience": patience,
-					"test_val_split": test_val_split,
-					},
-					) as run:
-					#print(f'{groups=}')
+				# Split into train test once using LeavePGroupsOut
+				gss_test = LeavePGroupsOut(n_groups = int(test_val_split[0] * len(np.unique(groups))))
+				train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
+				# Then split train into train val n_folds times
+				if train_split_method == "GroupShuffleSplit":
+					split = GroupShuffleSplit(n_splits = n_seeds, test_size = test_val_split[1], random_state = 42)
+				elif train_split_method == "GroupKFold":
+					split = GroupKFold(n_splits = n_seeds)
+				else:
+					raise ValueError(f"train_split_method {train_split_method} not recognized. Aborting...")
+			
+			
+			# Split into train val n_folds times
+				X_train_val, y_train_val, groups_train_val = X[train_val_idx], np.array(y)[train_val_idx], groups[train_val_idx]
+				i = 0 
+				for train_idx, val_idx in split.split(X_train_val, y_train_val, groups = groups_train_val):				
+					
+					print(f'Training models with {prefix=}, {suffix_size=}, {lr=},  {compress_embeddings=}')
+				
+					X_train, y_train = X_train_val[train_idx], y_train_val[train_idx]
+					X_val,   y_val   = X_train_val[val_idx],   y_train_val[val_idx]
+					X_test,  y_test  = X[test_idx],           np.array(y)[test_idx]
 
+					label_encoder = LabelEncoder()
+
+					# Fit on all labels (instead of only on y_train labels), prevents the problem that occasionally occur with small datasets, 
+					# where y contains a previously unseen label
+					label_encoder.fit(y)
+
+					y_train = label_encoder.transform(y_train)
+					y_test = label_encoder.transform(y_test)
+					y_val = label_encoder.transform(y_val)
 
 					
-
-					# Split into train test once using LeavePGroupsOut
-					
-					gss_test = LeavePGroupsOut(n_groups = int(test_val_split[0] * len(np.unique(groups))))
-					train_val_idx, test_idx = next(gss_test.split(X, y, groups=groups))
-
-					# Then split train into train val n_folds times
-
-					if train_split_method == "GroupShuffleSplit":
-						split = GroupShuffleSplit(n_splits = n_seeds, test_size = test_val_split[1], random_state = 42)
-					elif train_split_method == "GroupKFold":
-						split = GroupKFold(n_splits = n_seeds)
-					else:
-						raise ValueError(f"train_split_method {train_split_method} not recognized. Aborting...")
-					
-					
-					
-					X_train_val, y_train_val, groups_train_val = X[train_val_idx], np.array(y)[train_val_idx], groups[train_val_idx]
-					i = 0 
-					for train_idx, val_idx in split.split(X_train_val, y_train_val, groups = groups_train_val):				
-						
-						print(f'Training models with {prefix=}, {suffix_size=}, {lr=},  {compress_embeddings=}')
-					
-						X_train, y_train = X_train_val[train_idx], y_train_val[train_idx]
-						X_val,   y_val   = X_train_val[val_idx],   y_train_val[val_idx]
-						X_test,  y_test  = X[test_idx],           np.array(y)[test_idx]
-
-						label_encoder = LabelEncoder()
-
-						# Fit on all labels (instead of only on y_train labels), prevents the problem that occasionally occur with small datasets, 
-						# where y contains a previously unseen label
-						label_encoder.fit(y)
-
-						y_train = label_encoder.transform(y_train)
-						y_test = label_encoder.transform(y_test)
-						y_val = label_encoder.transform(y_val)
-
-						
-						binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
-						# Avoid div by zero if a class is missing in train
-						binc[binc == 0] = 1.0
-						class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
+					binc = np.bincount(y_train, minlength=num_classes).astype(np.float32)
+					# Avoid div by zero if a class is missing in train
+					binc[binc == 0] = 1.0
+					class_weight = (len(y_train) / (num_classes * binc)).astype(np.float32)
 
 
-						learning_rate = lr
-						# Build DataLoaders
-						bs = 50 if model_type == "CNN" else 25
-						num_workers = nr_of_cores
+					learning_rate = lr
+					# Build DataLoaders
+					bs = 50 if model_type == "CNN" else 25
+					num_workers = nr_of_cores
 
-						if embedding_class == "esmc":
-							print(f'Using EmbeddingSequenceDataset for {model_type=}')
-							train_ds = EmbeddingSequenceDataset(X_train, y_train)
-							val_ds = EmbeddingSequenceDataset(X_val, y_val)
-							test_ds = EmbeddingSequenceDataset(X_test, y_test)
-							train_loader = DataLoader(
+					if embedding_class == "esmc":
+						print(f'Using EmbeddingSequenceDataset for {model_type=}')
+						train_ds = EmbeddingSequenceDataset(X_train, y_train)
+						val_ds = EmbeddingSequenceDataset(X_val, y_val)
+						test_ds = EmbeddingSequenceDataset(X_test, y_test)
+						train_loader = DataLoader(
+						train_ds,
+						batch_size=bs,
+						shuffle=True,
+						num_workers=num_workers,
+						pin_memory=False,
+						collate_fn=pad_onehot_collate,
+						persistent_workers=(num_workers > 0),
+						)
+						val_loader = DataLoader(
+							val_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+							collate_fn=pad_onehot_collate,
+						)
+						test_loader = DataLoader(
+							test_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+							collate_fn=pad_onehot_collate,
+						)
+
+					elif embedding_class in ["onehot", "xhot"]:
+						print(f'Using OneHotSequenceDataset for {model_type=}')
+						train_ds = OneHotSequenceDataset(X_train, y_train)
+						val_ds   = OneHotSequenceDataset(X_val, y_val)
+						test_ds  = OneHotSequenceDataset(X_test, y_test)
+						pin = (device.type == "cuda")
+						train_loader = DataLoader(
 							train_ds,
 							batch_size=bs,
 							shuffle=True,
 							num_workers=num_workers,
-							pin_memory=False,
+							pin_memory=pin,
 							collate_fn=pad_onehot_collate,
 							persistent_workers=(num_workers > 0),
-							)
-							val_loader = DataLoader(
-								val_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-								collate_fn=pad_onehot_collate,
-							)
-							test_loader = DataLoader(
-								test_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-								collate_fn=pad_onehot_collate,
-							)
-
-						elif embedding_class in ["onehot", "xhot"]:
-							print(f'Using OneHotSequenceDataset for {model_type=}')
-							train_ds = OneHotSequenceDataset(X_train, y_train)
-							val_ds   = OneHotSequenceDataset(X_val, y_val)
-							test_ds  = OneHotSequenceDataset(X_test, y_test)
-							pin = (device.type == "cuda")
-							train_loader = DataLoader(
-								train_ds,
-								batch_size=bs,
-								shuffle=True,
-								num_workers=num_workers,
-								pin_memory=pin,
-								collate_fn=pad_onehot_collate,
-								persistent_workers=(num_workers > 0),
-							)
-							val_loader = DataLoader(
-								val_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-								pin_memory=pin,
-								collate_fn=pad_onehot_collate,
-							)
-							test_loader = DataLoader(
-								test_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-								pin_memory=pin,
-								collate_fn=pad_onehot_collate,
-							)
-
-						elif embedding_class == "integer":
-							print(f'Using SequenceDataset for {model_type=}')
-							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-							val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-							test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-							pad_collate_fn = "pad_collate"
-
-							train_loader = DataLoader(
-							train_ds,
-							batch_size=bs,
-							shuffle=True,
-							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-							num_workers=num_workers,
-							pin_memory=False,
-							persistent_workers=(num_workers > 0),
-							)
-							val_loader = DataLoader(
-								val_ds,
-								batch_size=bs,
-								shuffle=False,
-								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-								num_workers=0,
-							)
-							test_loader = DataLoader(
-								test_ds,
-								batch_size=bs,
-								shuffle=False,
-								collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
-								num_workers=0,
-							)
-						else:
-							print(f'Using SequenceDataset for {model_type=}')
-							train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-							val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-							test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
-							
-
-							train_loader = DataLoader(
-							train_ds,
-							batch_size=bs,
-							shuffle=True,
-							num_workers=num_workers,
-							pin_memory=False,
-							persistent_workers=(num_workers > 0),
-							)
-							val_loader = DataLoader(
-								val_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-							)
-							test_loader = DataLoader(
-								test_ds,
-								batch_size=bs,
-								shuffle=False,
-								num_workers=0,
-							)
-
-						#num_workers = min(8, os.cpu_count() or 2)
-						if model_type == "TRANSFORMER":
-							num_workers = 0
-						else:
-							num_workers = 2
-
-						
-						training_result = fit_model(train_loader, val_loader, test_loader,
-												device=device,
-												num_epochs=num_epochs,
-												learning_rate=learning_rate, 
-												class_weight=class_weight,
-												num_classes=num_classes,
-												model_type=model_type,
-												vocab_size=vocab_size,
-												pad_id=pad_id, 
-												trace_memory_usage=trace_memory_usage,
-												dropout = dropout,
-												wandb_run = run,
-												patience = patience, 
-												embedding_class=embedding_class,)
-						
-						y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
-						
-						#print(f'{y_test=}')
-						#print(f'{y_test_pred=}')
-						report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
-						conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
-
-						
-						y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
-						auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
-						auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
-
-						# Calculate balanced accuracy
-						balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
-
-						# Store results
-						results = pd.Series(
-							{
-								"phenotype": phenotype,
-								"model_name": model_type,
-								"kmer_prefix": prefix,
-								"kmer_suffix_size": suffix_size,
-								"kmer_offset": kmer_offset,
-								"embedding_class": embedding_class,
-								"learning_rate" : lr,
-								"seed": i,
-								"f1_score_weighted": report["weighted avg"]["f1-score"],
-								"f1_score_macro": report["macro avg"]["f1-score"],
-								"precision_weighted": report["weighted avg"]["precision"],
-								"precision_macro": report["macro avg"]["precision"],
-								"recall_weighted": report["weighted avg"]["recall"],
-								"recall_macro": report["macro avg"]["recall"],
-								"accuracy": report["accuracy"],
-								"balanced_accuracy": balanced_accuracy,
-								"auc_weighted": auc_weighted,
-								"auc_macro": auc_macro,
-								"n_classes": len(np.unique(y_train)),
-								"vocab_compression": compress_embeddings,
-								"confusion_matrix" : conf_matrix,
-								"grouped" : group_clusters,
-								"groups" : len(set(groups)),
-								"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
-								"peak_reserved_gib": memory_usage["peak_reserved_gib"],
-								"train_split_method" : train_split_method,
-								"xhot" : xhot,
-								"subset_ratio" : subset_ratio if subset_ratio else 1.0,
-
-							}
 						)
-						run.log(results.to_dict())
+						val_loader = DataLoader(
+							val_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+							pin_memory=pin,
+							collate_fn=pad_onehot_collate,
+						)
+						test_loader = DataLoader(
+							test_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+							pin_memory=pin,
+							collate_fn=pad_onehot_collate,
+						)
 
-						dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}{ f'_xhot_{xhot}' if xhot else ''}{f'_subset_{subset_ratio}' if subset_ratio else ''}"
-						path = f'{output_directory}/{dataset_name}.csv'
-						print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_embeddings=}')
-						results.to_csv(path)
-						print(f'Saved tmp result to {path=}')
-						print(f'{results=}')
+					elif embedding_class == "integer":
+						print(f'Using SequenceDataset for {model_type=}')
+						train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+						val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+						test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+						pad_collate_fn = "pad_collate"
 
-						i += 1
+						train_loader = DataLoader(
+						train_ds,
+						batch_size=bs,
+						shuffle=True,
+						collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+						num_workers=num_workers,
+						pin_memory=False,
+						persistent_workers=(num_workers > 0),
+						)
+						val_loader = DataLoader(
+							val_ds,
+							batch_size=bs,
+							shuffle=False,
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+							num_workers=0,
+						)
+						test_loader = DataLoader(
+							test_ds,
+							batch_size=bs,
+							shuffle=False,
+							collate_fn=PadCollate(pad_collate_fn, pad_id=pad_id),
+							num_workers=0,
+						)
+					else:
+						print(f'Using SequenceDataset for {model_type=}')
+						train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
+						val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
+						test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+						
+
+						train_loader = DataLoader(
+						train_ds,
+						batch_size=bs,
+						shuffle=True,
+						num_workers=num_workers,
+						pin_memory=False,
+						persistent_workers=(num_workers > 0),
+						)
+						val_loader = DataLoader(
+							val_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+						)
+						test_loader = DataLoader(
+							test_ds,
+							batch_size=bs,
+							shuffle=False,
+							num_workers=0,
+						)
+
+					#num_workers = min(8, os.cpu_count() or 2)
+					if model_type == "TRANSFORMER":
+						num_workers = 0
+					else:
+						num_workers = 2
+
+					
+					training_result = fit_model(train_loader, val_loader, test_loader,
+											device=device,
+											num_epochs=num_epochs,
+											learning_rate=learning_rate, 
+											class_weight=class_weight,
+											num_classes=num_classes,
+											model_type=model_type,
+											vocab_size=vocab_size,
+											pad_id=pad_id, 
+											trace_memory_usage=trace_memory_usage,
+											dropout = dropout,
+											patience = patience, 
+											embedding_class=embedding_class,)
+					
+					y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
+					
+					#print(f'{y_test=}')
+					#print(f'{y_test_pred=}')
+					report = classification_report(y_test, np.argmax(y_test_pred, axis=1), output_dict=True, zero_division="warn")
+					conf_matrix = confusion_matrix(y_test, np.argmax(y_test_pred, axis=1), labels = [i for i in int2label.keys()])
+
+					
+					y_test_oh = np.eye(len(np.unique(y_train)))[y_test]
+					auc_weighted = roc_auc_score(y_test_oh, y_test_pred, average="weighted", multi_class="ovr")
+					auc_macro = roc_auc_score(y_test_oh, y_test_pred, average="macro", multi_class="ovr")
+
+					# Calculate balanced accuracy
+					balanced_accuracy = balanced_accuracy_score(y_test, np.argmax(y_test_pred, axis=1))
+
+					# Store results
+					results = pd.Series(
+						{
+							"phenotype": phenotype,
+							"model_name": model_type,
+							"kmer_prefix": prefix,
+							"kmer_suffix_size": suffix_size,
+							"kmer_offset": kmer_offset,
+							"embedding_class": embedding_class,
+							"learning_rate" : lr,
+							"seed": i,
+							"f1_score_weighted": report["weighted avg"]["f1-score"],
+							"f1_score_macro": report["macro avg"]["f1-score"],
+							"precision_weighted": report["weighted avg"]["precision"],
+							"precision_macro": report["macro avg"]["precision"],
+							"recall_weighted": report["weighted avg"]["recall"],
+							"recall_macro": report["macro avg"]["recall"],
+							"accuracy": report["accuracy"],
+							"balanced_accuracy": balanced_accuracy,
+							"auc_weighted": auc_weighted,
+							"auc_macro": auc_macro,
+							"n_classes": len(np.unique(y_train)),
+							"vocab_compression": compress_embeddings,
+							"confusion_matrix" : conf_matrix,
+							"grouped" : group_clusters,
+							"groups" : len(set(groups)),
+							"peak_allocated_gib" : memory_usage["peak_allocated_gib"],
+							"peak_reserved_gib": memory_usage["peak_reserved_gib"],
+							"train_split_method" : train_split_method,
+							"xhot" : xhot,
+							"subset_ratio" : subset_ratio if subset_ratio else 1.0,
+
+						}
+					)
+					
+
+					dataset_name = f"tmp_result_{model_type}_{phenotype}_{"grouped" if group_clusters else 'ungrouped'}_{train_split_method}_{"COMPRESSED" if compress_embeddings else "UNCOMPRESSED"}_{prefix}_{suffix_size}_{i}_{lr}_{embedding_class}{ f'_xhot_{xhot}' if xhot else ''}{f'_subset_{subset_ratio}' if subset_ratio else ''}"
+					path = f'{output_directory}/{dataset_name}.csv'
+					print(f'Finished training model with params: {prefix=}, {suffix_size=}, {group_clusters=}, {lr=}, fold={i}, {train_split_method=}, {compress_embeddings=}')
+					results.to_csv(path)
+					print(f'Saved tmp result to {path=}')
+					print(f'{results=}')
+
+					i += 1
 
 	return
 
@@ -1051,7 +1057,6 @@ if __name__ == "__main__":
 
 	parser = ArgParser(module = "train_models")
 	parser = parser.parser
-	wandb.login()
 
 	if torch.cuda.is_available(): 
 		device = torch.device("cuda")
