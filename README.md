@@ -12,9 +12,10 @@ cd ML-bacterial-phenotyping/
 pip install -e .
 ```
 
-To run an analysis, a dataset genomes in either fasta files or in a parquet format is needed.
+To run an analysis, a set of genomes in either fasta files or in a parquet format is needed.
 Additionally, a metadata file in a csv format is needed.
 The metadata should contain genome identifiers identical to the fasta file names or identical to identifiers in an id column in the parquet dataframe.
+
 As an example, download a few of the parquet files and the metadata sheet from the bacformer papers phenotype prediction tasks: https://huggingface.co/datasets/macwiatrak/bacbench-phenotypic-traits-dna
 
 
