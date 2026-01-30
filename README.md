@@ -1,5 +1,5 @@
 # ML-bacterial-phenotyping
-![Screenshot 2026-01-30 at 12 13 30](https://github.com/user-attachments/assets/dc02d343-3a48-4231-84e5-ea4d52468faa)
+![Screenshot 2026-01-30 at 12 14 36](https://github.com/user-attachments/assets/ffd4f179-8c97-49ff-b472-e09d5478c3d1)
 
 ## Getting started
 ### Installation
