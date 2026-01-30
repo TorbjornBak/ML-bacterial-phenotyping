@@ -40,7 +40,7 @@ python src/train_models_v2.py \
   --cores 4
 ```
 
-### Training baseline
+### Training HistGradientBoosting model
 Trains a HGBM (HistGradientBoosting) classifier, calculates SHAP values and creates feature importance plots from these.
 ```
 python src/utilities/baselines.py  \
