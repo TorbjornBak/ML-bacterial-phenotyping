@@ -8,8 +8,10 @@ version = "0.1.0"
 description = "Bact pheno package"
 readme = "README.md"
 requires-python = ">=3.9"
-authors = [{ name = "Torbjorn Regueira", email = "s203555@dtu.dk" }]
-dependencies = ["torch",
+authors = [{ name = "Torbjorn Regueira" }]
+dependencies = ["setuptools<82",
+                "setuptools_scm>=8",
+                "torch",
                 "scikit-learn",
                 "matplotlib",
                 "seaborn",
