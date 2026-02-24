@@ -35,7 +35,7 @@ To create a virtual environment for a project, you need to choose a base Python 
 Create the virtual environment using system site packages in the specificed directory, on an interactive node (like node07):
 ```bash
 ssh node07
-/home/ctools/opt/anaconda3_2023-3-1/bin/pip -m venv --system-site-packages /home/projects2/your_project_name/venvs/cpu/
+/home/ctools/opt/anaconda3_2023-3-1/bin/pip -m venv /home/projects2/your_project_name/venvs/cpu/
 ```
 Now press enter and wait for the environment to finishing building. 
 
