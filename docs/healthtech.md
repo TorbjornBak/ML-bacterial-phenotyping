@@ -35,7 +35,7 @@ To create a virtual environment for a project, you need to choose a base Python 
 Create the virtual environment using system site packages in the specificed directory, on an interactive node (like node07):
 ```bash
 ssh node07
-/home/ctools/opt/anaconda3_2023-3-1/bin/pip -m venv --system-site-packages /home/projects2/your_project_name/venvs/cpu/
+/home/ctools/opt/anaconda3_2023-3-1/bin/pip -m venv /home/projects2/your_project_name/venvs/cpu/
 ```
 Now press enter and wait for the environment to finishing building. 
 
@@ -75,7 +75,7 @@ cp /home/projects2/ecoli_gentamicin/metadata_ecoli_gentamicin.csv /home/projects
 
 ## Running script in an interactive node
 ```
-python src/utilities/baselines.py  \
+/home/projects2/your_project_name/venvs/cpu/bin/python3 src/utilities/baselines.py  \
   --phenotype  resistant_phenotype \
   --input /home/projects2/your_project_name/data/genomes/ \
   --output /home/projects2/your_project_name/results/
@@ -86,9 +86,7 @@ python src/utilities/baselines.py  \
   --dna_sequence_column dna_sequence \
   --file_type fasta \
   --embedding frequency \
-  --extract_feature_importance \
   --group_clusters
-
 ```
 
 ### Obs! To return to the login node, press `ctrl+d` from the terminal or write `exit` and press enter.
@@ -96,6 +94,23 @@ python src/utilities/baselines.py  \
 
 
 ## Creating and submitting SLURM script
+Not written yet. Look in the shell_scripts/ folder to see some examples.
+
+## Analysing the results
+
+### Download the results from the server to a folder on your laptop:
+
+If you don't already have a project folder on your local machine, now is a good time to create it.
+```
+cd ~/
+mkdir your_local_project/
+```
+
+In the local terminal (not on the cluster) type this to copy the results to a local folder
+```
+mkdir your_local_project/results/
+rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/* your_local_project/results/
+```
 
 
 
