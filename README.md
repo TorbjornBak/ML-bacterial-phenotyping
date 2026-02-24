@@ -54,7 +54,7 @@ python src/utilities/baselines.py  \
   --id_column genome_id \
   --dna_sequence_column dna_sequence \
   --file_type fasta \
-  --embedding counts \
+  --embedding frequency \
   --extract_feature_importance \
   --group_clusters
 
