@@ -9,25 +9,18 @@ description = "Bact pheno package"
 readme = "README.md"
 requires-python = ">=3.9"
 authors = [{ name = "Torbjorn Regueira" }]
-dependencies = ["setuptools<82",
-                "setuptools_scm>=8",
-                "torch",
+dependencies = ["torch",
                 "scikit-learn",
                 "matplotlib",
                 "seaborn",
                 "pandas",
                 "argparse",
                 "tqdm",
-                "wandb",
-                "esm",
                 "biopython",
                 "joblib",
-                "httpx",
                 "fastparquet",
                 "sourmash",
                 "shap",
-                "tf-keras",
-                "click",
                 "fastcluster",
                 "scipy"]
 
