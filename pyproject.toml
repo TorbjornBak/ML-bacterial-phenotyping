@@ -7,7 +7,7 @@ name = "bact_pheno"
 version = "0.1.0"
 description = "Bact pheno package"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Torbjorn Regueira" }]
 dependencies = ["torch",
                 "scikit-learn",
