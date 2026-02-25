@@ -41,12 +41,19 @@ Now press enter and wait for the environment to finishing building.
 
 
 
-## Installing dependencies 
-To install the necessary dependencies to run the models, simply type: 
+## Installing project and dependencies (workaround)
+Here is a workaround to create the environment and install the package needed for the project while using the Health Tech Clusters outdated python version (3.10):
 
-This is a way 
+Make sure to update the pip and setuptools in the venv, and remember that Python 3.10 (which is the current version of python on the server) only works with setuptools <=81.0
 ```bash
-/home/projects2/your_project_name/venvs/cpu/bin/pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet sourmash shap fastcluster scipy
+/home/projects2/your_project_name/venvs/cpu/bin/python -m pip install --upgrade pip 'setuptools<=81.0'
+```
+
+To install the necessary dependencies to run the models, simply type:
+
+```bash
+/home/projects2/your_project_name/venvs/cpu/bin/pip install torch scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
+/home/projects2/your_project_name/venvs/cpu/bin/pip install -e --no-deps
 ```
 
 
