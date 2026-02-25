@@ -43,8 +43,10 @@ Now press enter and wait for the environment to finishing building.
 
 ## Installing dependencies 
 To install the necessary dependencies to run the models, simply type: 
+
+This is a way 
 ```bash
-/home/projects2/your_project_name/venvs/cpu/bin/pip install -e .
+/home/projects2/your_project_name/venvs/cpu/bin/pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet sourmash shap fastcluster scipy
 ```
 
 
@@ -112,7 +114,8 @@ mkdir your_local_project/results/
 rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/* your_local_project/results/
 ```
 
-
+Locally, open this notebook to inspect the results:
+[Results notebook](../notebooks/results_analysis_notebook.ipynb)
 
 # Examples for how to use the virtual environment
 
