@@ -40,15 +40,35 @@ ssh node07
 Now press enter and wait for the environment to finishing building. 
 
 
-
-## Installing dependencies 
-To install the necessary dependencies to run the models, simply type: 
-
-This is a way 
+### Sourcing the virtual environment
+To activate / source the environment, type the following:
 ```bash
-/home/projects2/your_project_name/venvs/cpu/bin/pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet sourmash shap fastcluster scipy
+source /home/projects2/your_project_name/venvs/cpu/bin/activate
+```
+Now the environment is activated.
+
+To deactivate the environment, write `deactivate` in the shell.
+
+
+## Installing project and dependencies (workaround)
+Here is a workaround to create the environment and install the package needed for the project while using the Health Tech Clusters' outdated Python version (3.10):
+
+Make sure to update the pip and setuptools in the venv, and remember that Python 3.10 (which is the current version of Python on the server) only works with setuptools <=81.0
+```bash
+python3 -m pip install --upgrade pip 'setuptools<=81.0'
 ```
 
+To install the necessary dependencies to run the models, simply type:
+
+```bash
+pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
+pip install --no-deps .
+```
+
+If you are planning on training any of the RNN or CNN models, then you also need to install pytorch. The "baselines" (HGBM and RandomForest models) do not use pytorch. It only makes sense to install pytorch on a gpu compute node.
+```
+pip install torch
+```
 
 # Training and evaluating the models
 
@@ -76,8 +96,9 @@ cp /home/projects2/ecoli_gentamicin/metadata_ecoli_gentamicin.csv /home/projects
 ```
 
 ## Running script in an interactive node
+Make sure you have source the virtual environment first (see above)
 ```
-/home/projects2/your_project_name/venvs/cpu/bin/python3 src/utilities/baselines.py  \
+python3 src/utilities/baselines.py  \
   --phenotype  resistant_phenotype \
   --input /home/projects2/your_project_name/data/genomes/ \
   --output /home/projects2/your_project_name/results/
@@ -118,13 +139,14 @@ Locally, open this notebook to inspect the results:
 [Results notebook](../notebooks/results_analysis_notebook.ipynb)
 
 # Examples for how to use the virtual environment
+Source / activate the environment (see above), then the pip and python commands shown below will use your virtual environment.
 
 #### Installing a library in the environment using pip:
 ```bash
-/home/projects2/your_project_name/venvs/cpu/bin/pip install some_python_package
+pip install some_python_package
 ```
 
 #### Running Python with your environment
 ```bash
-/home/projects2/your_project_name/venvs/cpu/bin/python3 some_cool_python_program.py
+python3 some_cool_python_program.py
 ```

@@ -2,6 +2,7 @@
 ![Screenshot 2026-01-30 at 12 15 53](https://github.com/user-attachments/assets/c99e2c9b-b447-4162-b1be-4c7e11e68146)
 
 ## Getting started
+
 ### Local Installation
 ```
 mamba create -n bacml python
@@ -17,6 +18,11 @@ Additionally, a metadata file in a csv format is needed.
 The metadata should contain genome identifiers identical to the fasta file names or identical to identifiers in an id column in the parquet dataframe.
 
 As an example, download a few of the parquet files and the metadata sheet from the bacformer papers phenotype prediction tasks: https://huggingface.co/datasets/macwiatrak/bacbench-phenotypic-traits-dna
+
+### Installation on Healthtech Cluster
+
+See this guide to install on DTU's HealthTech Cluster
+[HealthTech Docs](https://github.com/TorbjornBak/ML-bacterial-phenotyping/blob/main/docs/healthtech.md)
 
 
 ### Training CNN
