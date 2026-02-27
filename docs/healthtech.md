@@ -61,10 +61,14 @@ python3 -m pip install --upgrade pip 'setuptools<=81.0'
 To install the necessary dependencies to run the models, simply type:
 
 ```bash
-pip install torch scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
+pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
 pip install --no-deps .
 ```
 
+If you are planning on training any of the RNN or CNN models, then you also need to install pytorch. The "baselines" (HGBM and RandomForest models) do not use pytorch. It only makes sense to install pytorch on a gpu compute node.
+```
+pip install torch
+```
 
 # Training and evaluating the models
 
