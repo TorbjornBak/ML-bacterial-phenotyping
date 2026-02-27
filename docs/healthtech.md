@@ -61,7 +61,7 @@ python3 -m pip install --upgrade pip 'setuptools<=81.0'
 To install the necessary dependencies to run the models, simply type:
 
 ```bash
-pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
+pip install scikit-learn matplotlib esm seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
 pip install --no-deps .
 ```
 
