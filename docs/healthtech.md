@@ -65,10 +65,6 @@ pip install scikit-learn matplotlib esm seaborn pandas argparse tqdm biopython 
 pip install --no-deps .
 ```
 
-If you are planning on training any of the RNN or CNN models, then you also need to install pytorch. The "baselines" (HGBM and RandomForest models) do not use pytorch. It only makes sense to install pytorch on a gpu compute node.
-```
-pip install torch
-```
 
 # Training and evaluating the models
 
