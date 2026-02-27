@@ -53,7 +53,7 @@ To install the necessary dependencies to run the models, simply type:
 
 ```bash
 /home/projects2/your_project_name/venvs/cpu/bin/pip install torch scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
-/home/projects2/your_project_name/venvs/cpu/bin/pip install -e --no-deps
+/home/projects2/your_project_name/venvs/cpu/bin/pip install --no-deps .
 ```
 
 
