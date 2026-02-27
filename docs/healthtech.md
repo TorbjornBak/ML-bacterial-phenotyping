@@ -128,7 +128,7 @@ mkdir your_local_project/
 In the local terminal (not on the cluster) type this to copy the results to a local folder
 ```
 mkdir your_local_project/results/
-rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/* your_local_project/results/
+rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/\* your_local_project/results/
 ```
 
 Locally, open this notebook to inspect the results:
