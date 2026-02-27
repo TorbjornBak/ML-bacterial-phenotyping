@@ -115,7 +115,7 @@ class ESMcEmbeddings():
 		hidden_state_str = f"_hiddenstate_{self.hidden_state}" if self.hidden_state is not None else ""
 		slice_str = f"_slice_{self.slice[0]}-{self.slice[1]}" if self.slice is not None else ""
 		grouped_str = "_grouped" if self.grouped else ""
-		file_path = f"{self.data_directory.rstrip("/")}/{self.esmc_model}_embeddings_{pooling_str}{hidden_state_str}{slice_str}_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}{grouped_str}"
+		file_path = f"{self.data_directory.rstrip('/')}/{self.esmc_model}_embeddings_{pooling_str}{hidden_state_str}{slice_str}_prefix_{self.kmer_prefix}_suffixsize_{self.kmer_suffix_size}_offset_{self.kmer_offset}{grouped_str}"
 		return file_path
 
 	def embed_tokens(self, id, token_dict, pooling = "mean"):
