@@ -4,7 +4,7 @@ import numpy as np
 from sourmash import fig
 import pandas as pd
 from embeddings.KmerTokenization import KmerTokenizer, load_labels, read_sequence_file
-from utilities.cliargparser import ArgParser
+
 import seaborn as sns
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
@@ -192,7 +192,7 @@ def list_files(input_path, file_type):
 if __name__ == "__main__":
 
 	# TODO: filter by phenotype
-
+	from utilities.cliargparser import ArgParser
 	parser = ArgParser(module = "baseline")
 	parser = parser.parser
 

@@ -13,8 +13,8 @@ from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
 
 from embeddings.KmerTokenization import KmerTokenizer, load_labels
-from embeddings.integer_embeddings import KmerCountsEmbeddings
-from embeddings.esmc_embeddings import ESMcEmbeddings
+
+
 from utilities.cliargparser import ArgParser
 from utilities.clustering import SourMashClustering
 
@@ -62,7 +62,7 @@ def embed_data(label_dict,
 			   group_clusters = False):
 
 	if embedding_class in ["frequency", "counts"]:
-
+		from embeddings.integer_embeddings import KmerCountsEmbeddings
 		embedder = KmerCountsEmbeddings(
 						kmer_prefix=kmer_prefix,
 						kmer_suffix_size=kmer_suffix_size,
@@ -72,6 +72,7 @@ def embed_data(label_dict,
 						grouped=group_clusters,
 		)
 	elif embedding_class == "esmc":
+		from embeddings.esmc_embeddings import ESMcEmbeddings
 		embedder = ESMcEmbeddings(
 						kmer_prefix=kmer_prefix,
 						kmer_suffix_size=kmer_suffix_size,

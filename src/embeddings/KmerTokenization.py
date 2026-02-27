@@ -65,8 +65,9 @@ def deprecated_load_labels(file_path, id = "genome_id", label = "class", sep = "
 	
 	return return_dict
 
-def load_labels(file_path, id = "genome_id", label = "class", sep = "\t", subset_ratio = None):
-
+def load_labels(file_path, id = "genome_id", label = "resistant_phenotype", sep = "\t", subset_ratio = None):
+	# id is the name of the genome id column
+	# label is the name of the phenotype column
 	df = pd.read_csv(file_path, sep = sep)
 	print(f'{id=}, {label=}')
 	df = df.dropna(subset = [id, label])
