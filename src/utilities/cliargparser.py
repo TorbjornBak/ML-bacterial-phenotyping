@@ -68,6 +68,7 @@ class ArgParser():
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
         parser.add_argument("--train_split_method", default = "GroupKFold", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
         parser.add_argument("--subset_ratio", default = None, type = float, help = "Fraction to subset dataset to, for analysis purposes")
+        parser.add_argument("--device", default = "cpu", help = "Device to use for training, choose between cuda, cpu or mps")
         return parser
     
     def train_model_arguments(self):

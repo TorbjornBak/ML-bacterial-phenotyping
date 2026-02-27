@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 import os
-import torch
+
 import numpy as np
 import pandas as pd
 
@@ -148,6 +148,7 @@ def embed_data(label_dict,
 		X, strand_ids, groups, genome_ids, channel_size = embedder.load_stored_embeddings()
 		
 	if embedder.embedding_class == "esmc":
+		import torch
 		if esmc_pooling == "mean":
 			X = np.array(
 				[
@@ -556,15 +557,9 @@ if __name__ == "__main__":
 	
 	phenotypes = parser.phenotype
 
-	if torch.cuda.is_available():
-		device = torch.device("cuda")
-		
-	elif torch.backends.mps.is_available(): 
-		device = torch.device("mps")
+	device = parser.device
 
-	else: 
-		# On CPU server
-		device = torch.device("cpu")
+	
 
 	reembed = parser.reembed
 	for phenotype in phenotypes:
