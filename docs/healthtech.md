@@ -61,14 +61,10 @@ python3 -m pip install --upgrade pip 'setuptools<=81.0'
 To install the necessary dependencies to run the models, simply type:
 
 ```bash
-pip install scikit-learn matplotlib seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
+pip install scikit-learn matplotlib esm seaborn pandas argparse tqdm biopython joblib httpx fastparquet 'sourmash<=4.3' shap fastcluster scipy 'screed<=1.1.2'
 pip install --no-deps .
 ```
 
-If you are planning on training any of the RNN or CNN models, then you also need to install pytorch. The "baselines" (HGBM and RandomForest models) do not use pytorch. It only makes sense to install pytorch on a gpu compute node.
-```
-pip install torch
-```
 
 # Training and evaluating the models
 
@@ -132,7 +128,7 @@ mkdir your_local_project/
 In the local terminal (not on the cluster) type this to copy the results to a local folder
 ```
 mkdir your_local_project/results/
-rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/* your_local_project/results/
+rsync s123456@login.healthtech.dtu.dk:/home/projects2/your_project_name/results/\* your_local_project/results/
 ```
 
 Locally, open this notebook to inspect the results:
