@@ -14,7 +14,7 @@ class PositionalEncoding(nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)  # odd
         self.register_buffer("pe", pe)                # not a parameter
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, lengths: torch.Tensor = None, mask: torch.Tensor = None) -> torch.Tensor:
         # x: [B, T, D]
         T = x.size(1)
         x = x + self.pe[:T].unsqueeze(0)              # [1,T,D] + [B,T,D]
@@ -48,26 +48,33 @@ class TransformerKmerClassifier(nn.Module):
             dim_feedforward=ff_dim,
             dropout=dropout,
             batch_first=True,  # inputs as [B, T, D]
+            norm_first=True,   # LayerNorm before attention (more stable)
         )
         self.enc = nn.TransformerEncoder(enc_layer, num_layers=num_layers)
 
         self.fc = nn.Linear(emb_dim, num_classes)
 
-    def forward(self, token_ids: torch.Tensor, mask: torch.Tensor | None = None):
+    def forward(self, token_ids: torch.Tensor, lengths: torch.Tensor = None, mask: torch.Tensor | None = None):
         # token_ids: [B, T] Long; mask: [B, T] Bool (True=valid) or 0/1
         x = self.emb(token_ids)                 # [B, T, D]
         x = self.pos(x)                         # [B, T, D]
 
         # Transformer expects src_key_padding_mask with True for PAD positions
+        # MPS doesn't support nested tensors; avoid passing mask for long sequences
         key_padding_mask = None
-        if self.use_mask and mask is not None:
-            # mask is True for valid; invert for padding
-            key_padding_mask = (~mask.bool())   # [B, T], True where pad [web:60][web:67]
-        elif self.pad_id is not None:
+        if self.pad_id is not None:
             # Derive from pad_id if mask not provided
-            key_padding_mask = (token_ids == self.pad_id)  # [B, T] [web:67][web:60]
+            key_padding_mask = (token_ids == self.pad_id)  # [B, T]
+            
+            # For MPS compatibility: only use mask if not all-False
+            if key_padding_mask.any():
+                # Convert bool mask to float for better MPS support in some versions
+                key_padding_mask = key_padding_mask.float()
+            else:
+                key_padding_mask = None
 
-        out = self.enc(x, src_key_padding_mask=key_padding_mask)  # [B, T, D] [web:60][web:66]
+        # Use masked attention with explicit attention mask instead of padding mask if issues persist
+        out = self.enc(x, src_key_padding_mask=key_padding_mask)  # [B, T, D]
 
         # Masked mean pooling over time
         if mask is not None:
