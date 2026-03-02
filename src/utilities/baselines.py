@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
-from sklearn.model_selection import GroupKFold, train_test_split, GroupShuffleSplit
+from sklearn.model_selection import GroupKFold, ShuffleSplit, train_test_split, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
@@ -184,6 +184,8 @@ def random_forest_classification(context):
 		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
 	elif context.train_split_method == "GroupKFold":
 		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	elif context.train_split_method == "ShuffleSplit":
+		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
 	else:
 		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
 	i = 0
@@ -209,26 +211,7 @@ def random_forest_classification(context):
 	print(f'Finished RandomForest classification over {context.k_folds} folds.')
 	return
 
-	for seed in range(context.k_folds):
 	
-		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
-		clf = RandomForestClassifier(max_depth=10, 
-							   		random_state=0)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
-		
-		print(f'{y_test[:100]=}')
-		print(f'{y_pred[:100]=}')
-		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=seed, 
-							   ctx=context)
-		
-	print(f'Finished RandomForest classification over {context.k_folds} folds.')
-	return clf
 
 	
 def hist_gradient_boosting_classifier(context):
@@ -240,6 +223,8 @@ def hist_gradient_boosting_classifier(context):
 		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
 	elif context.train_split_method == "GroupKFold":
 		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	elif context.train_split_method == "ShuffleSplit":
+		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
 	else:
 		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
 	i=0
@@ -269,32 +254,6 @@ def hist_gradient_boosting_classifier(context):
 		i+=1
 	print(f'Finished HistGradientBoosting classification over {context.k_folds} splits.')
 	return 
-	for seed in range(context.k_folds):
-		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
-		clf = HistGradientBoostingClassifier(
-										loss = 'log_loss', 
-										learning_rate=0.01, 
-										l2_regularization = 1e-3,
-										max_features=0.9,
-										class_weight="balanced"
-										)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
-
-
-		# print(f'{y_test[:100]=}')
-		# print(f'{y_pred[:100]=}')
-		print(f'Accuracy of HistGradientBoost: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=seed, 
-							   ctx=context)
-	
-	
-	return clf
-
 
 
 
@@ -345,45 +304,7 @@ def feature_importance_extraction(context):
 	
 	print(f'Finished HistGradientBoosting classification over {context.k_folds} folds.')
 	
-	return clf
-
-	for seed in range(context.k_folds):
-		X_train, X_test, y_train, y_test = train_test_split(context.X, context.y, random_state = seed, test_size= 0.2)
-		clf = HistGradientBoostingClassifier(
-										loss = 'log_loss', 
-										learning_rate=0.01, 
-										l2_regularization = 1e-3,
-										max_features=0.9,
-										class_weight="balanced"
-										)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
-
-		
-		# print(f'{y_test[:100]=}')
-		# print(f'{y_pred[:100]=}')
-		print(f'Accuracy of GradientBoosting: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=seed, 
-							   ctx=context)
-		
-		feature_names = [f'{context.kmer_prefix}{integer_to_kmer(i, context.kmer_suffix_size)}' for i in range(len(context.X[0]))]
-		# result = permutation_importance(
-		# 	clf, X_test, y_test, n_repeats=10, random_state=42, n_jobs=2
-		# )
-		# 
-		# forest_importances = pd.Series(result.importances_mean, index=feature_names)
-		# print(f'{forest_importances.nlargest(10)=}')
-		# forest_importances.to_csv(f'{context.output_directory}/feature_importances_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.csv')
-		#models.append(clf)
-		shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
-		plot_shap_summary(shap_values, context, seed)
-
-	print(f'Finished GradientBoosting classification over {context.k_folds} folds.')
-	#return models
+	return
 
 
 def get_shap_values(model, X):
@@ -427,8 +348,6 @@ def plot_shap_summary(shap_values, context, seed):
 	# path = f'{context.output_directory}/shap_heatmap_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}_seed_{seed}.png'
 	# plt.savefig(path)
 	# print(f'Saved SHAP heatmap plot to: {path}')
-
-
 
 
 def integer_to_kmer(x: int, k: int) -> str:
