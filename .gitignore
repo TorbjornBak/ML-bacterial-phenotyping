@@ -221,3 +221,4 @@ wandb
 *.png
 *.jpg
 *.fasta
+notebooks/GradientBoostingPlot/*
