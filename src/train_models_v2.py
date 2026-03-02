@@ -561,12 +561,13 @@ def fit_model(
 	
 
 	elif model_type == "TRANSFORMER":
-		emb_dim = 8
+		emb_dim = 4
+		#emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
 		model = TransformerKmerClassifier(
 			vocab_size=vocab_size,
 			emb_dim=emb_dim,
-			nhead=4,
-			ff_dim=128,
+			nhead=2,
+			ff_dim=16,
 			num_layers=2,
 			num_classes=num_classes,
 			pad_id=pad_id,
