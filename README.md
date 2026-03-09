@@ -61,7 +61,7 @@ python src/utilities/baselines.py  \
   --dna_sequence_column dna_sequence \
   --file_type fasta \
   --embedding frequency \
-  --extract_feature_importance \
+  --submodule feature_importance \
   --group_clusters
 
 ```
