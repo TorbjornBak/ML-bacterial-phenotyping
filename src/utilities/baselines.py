@@ -1,3 +1,5 @@
+import pickle
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -176,135 +178,91 @@ def embed_data(label_dict,
 
 	return X, y, groups
 
-def random_forest_classification(context):
-	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.RandomForestClassifier.html
-	context.model_type = "RandomForest"
 
-	if context.train_split_method == "GroupShuffleSplit":
-		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
-	elif context.train_split_method == "GroupKFold":
-		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
-	elif context.train_split_method == "ShuffleSplit":
-		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
-	else:
-		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
-	i = 0
-	for train, test in splitter.split(context.X, context.y, groups = context.groups):
-		X_train, y_train = context.X[train], context.y[train]
-		X_test, y_test = context.X[test], context.y[test]
+# Modules for saving and loading trained models
+def pickle_model(model, path):
+	from pickle import dump
+	with open(path, "wb") as f:
+		dump(model, f)
+	print(f'Model saved to: {path}')
 
-		clf = RandomForestClassifier(max_depth=None, 
-							   		random_state=0)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
+def load_pickled_model(path):
+	from pickle import load
+	with open(path, "rb") as f:
+		model = load(f)
+	print(f'Model loaded from: {path}')
+	return model
 
-		print(f'{y_test[:100]=}')
-		print(f'{y_pred[:100]=}')
-		print(f'Accuracy of RandomForest: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=i, 
-							   ctx=context)
-		i+= 1
-	print(f'Finished RandomForest classification over {context.k_folds} folds.')
-	return
+
+
+def maybe_save_best_model(clf, results, context):
+	if context.save_best_model and context.classification_metric in results:
+		if float(results[context.classification_metric]) > context.best_metric_score:
+			previous_best_metric_score = context.best_metric_score
+			context.best_metric_score = float(results[context.classification_metric])
+			model_save_path = get_model_save_path(context)
+			pickle_model(clf, model_save_path)
+			print(f'New best model saved with {context.classification_metric} of {results[context.classification_metric]:.4f} at: {model_save_path}')
+			print(f'Previous best {context.classification_metric}: {previous_best_metric_score:.4f}')
 
 	
+def get_model_save_path(context):
+	return f'{context.output_directory}/best_model_{context.model_type}_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.pkl'
 
-	
-def hist_gradient_boosting_classifier(context):
-	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingClassifier.html
-	clf = None
-	context.model_type = "HistGradientBoosting"
-	print(f'Running HistGradientBoostingClassifier for classification...')
-	if context.train_split_method == "GroupShuffleSplit":
-		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
-	elif context.train_split_method == "GroupKFold":
-		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
-	elif context.train_split_method == "ShuffleSplit":
-		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
-	else:
-		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
-	i=0
-	for train, test in splitter.split(context.X, context.y, groups = context.groups):
-		X_train, y_train = context.X[train], context.y[train]
-		X_test, y_test = context.X[test], context.y[test]
-
-		clf = HistGradientBoostingClassifier(
-										loss = 'log_loss', 
-										learning_rate=0.01, 
-										l2_regularization = 1e-3,
-										max_features=0.9,
-										class_weight="balanced"
-										)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
-
-		print(f'{y_test[:100]=}')
-		print(f'{y_pred[:100]=}')
-		print(f'Accuracy: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=i, 
-							   ctx=context)
-		i+=1
-	print(f'Finished HistGradientBoosting classification over {context.k_folds} splits.')
-	return 
-
-
-
-def feature_importance_extraction(context):
-	# Used for feature importance extraction
-	# https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.GradientBoostingClassifier.html
-	#models = []
-	
-	context.model_type = "HistGradientBoosting"
-
+def train_classifier(context):
 	print(f'Running HistGradientBoostingClassifier for feature importance extraction...')
 	if context.train_split_method == "GroupShuffleSplit":
 		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
 	elif context.train_split_method == "GroupKFold":
 		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
+	elif context.train_split_method == "ShuffleSplit":
+		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
 	else:
 		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
-	
-	i = 0
-	for train, test in splitter.split(context.X, context.y, groups = context.groups):
+
+	for i, (train, test) in enumerate(splitter.split(context.X, context.y, groups = context.groups)):
 		X_train, y_train = context.X[train], context.y[train]
 		X_test, y_test = context.X[test], context.y[test]
 
-		clf = HistGradientBoostingClassifier(
+		if context.model == "RandomForest":
+			clf, y_pred = train_random_forest_classifier(X_train, y_train, X_test)
+		elif context.model == "HistGradientBoosting":
+			clf, y_pred = train_hist_gradient_boosting_classifier(X_train, y_train, X_test)
+
+		results = create_classification_report(y_test=y_test, 
+							   y_pred=y_pred, 
+							   seed=i, 
+							   ctx=context)
+		
+		if context.save_best_model and context.classification_metric in results:
+			maybe_save_best_model(clf, results, context)
+
+		if context.submodule == "feature_importance":
+			feature_names = [f'{context.kmer_prefix}{integer_to_kmer(j, context.kmer_suffix_size)}' for j in range(len(context.X[0]))]
+			shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
+			plot_shap_summary(shap_values, context, i)
+		
+	print(f'Finished HistGradientBoosting classification over {context.k_folds} splits.')
+	return 
+
+def train_hist_gradient_boosting_classifier(X_train, y_train, X_test):
+	clf = HistGradientBoostingClassifier(
 										loss = 'log_loss', 
 										learning_rate=0.01, 
 										l2_regularization = 1e-3,
 										max_features=0.9,
 										class_weight="balanced"
 										)
-		clf.fit(X_train, y_train)
-		y_pred = clf.predict(X_test)
+	clf.fit(X_train, y_train)
+	y_pred = clf.predict(X_test)
+	return clf, y_pred
 
-		print(f'{y_test[:100]=}')
-		print(f'{y_pred[:100]=}')
-		print(f'Accuracy: {clf.score(X_test, y_test)}')
-		
-		create_classification_report(y_train=y_train, 
-							   y_test=y_test, 
-							   y_pred=y_pred, 
-							   seed=i, 
-							   ctx=context)
-		feature_names = [f'{context.kmer_prefix}{integer_to_kmer(j, context.kmer_suffix_size)}' for j in range(len(context.X[0]))]
-		shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
-		plot_shap_summary(shap_values, context, i)
-		i+=1
-	
-	
-	print(f'Finished HistGradientBoosting classification over {context.k_folds} folds.')
-	
-	return
+def train_random_forest_classifier(X_train, y_train, X_test):
+	clf = RandomForestClassifier(max_depth=None, 
+							   		random_state=0)
+	clf.fit(X_train, y_train)
+	y_pred = clf.predict(X_test)
+	return clf, y_pred
 
 
 def get_shap_values(model, X):
@@ -398,28 +356,12 @@ def pca_plot(context, save = True):
 
 
 
-@dataclass
-class model_context:
-	X: np.array
-	y: np.array
-	groups: np.array
-	grouped: bool
-	output_directory: str
-	phenotype: str
-	kmer_prefix: str
-	kmer_suffix_size: int
-	model_type: str
-	int2label: dict
-	k_folds: int
-	embedding_class: str	
-	train_split_method: str = "GroupKFold"  # or GroupShuffleSplit
-	subset_ratio: float = 1.0
 
-def create_classification_report(y_train,
-								 y_test, 
-								 y_pred, 
-								 seed,
-								 ctx):
+def create_classification_report(y_test, 
+								y_pred, 
+								seed,
+								ctx):
+								
 
 	report = classification_report(y_test, y_pred, output_dict=True, zero_division="warn")
 	conf_matrix = confusion_matrix(y_test, y_pred, labels = list(ctx.int2label))
@@ -447,7 +389,7 @@ def create_classification_report(y_train,
 			"recall_macro": report["macro avg"]["recall"],
 			"accuracy": report["accuracy"],
 			"balanced_accuracy": balanced_accuracy,
-			"n_classes": len(np.unique(y_train)),
+			"n_classes": len(ctx.int2label),
 			"confusion_matrix" : conf_matrix,
 			"int2label" : ctx.int2label,
 			"grouped": ctx.grouped,
@@ -468,6 +410,28 @@ def create_classification_report(y_train,
 
 
 
+@dataclass
+class model_context:
+	X: np.array
+	y: np.array
+	groups: np.array
+	grouped: bool
+	output_directory: str
+	phenotype: str
+	kmer_prefix: str
+	kmer_suffix_size: int
+	model_type: str
+	int2label: dict
+	k_folds: int
+	embedding_class: str	
+	train_split_method: str = "GroupKFold"  # or GroupShuffleSplit
+	subset_ratio: float = 1.0
+	save_best_model: bool = False
+	classification_metric: str = "balanced_accuracy"
+	best_metric_score: float = 0.0
+	submodule: str | None = None
+	model: str | None = None
+
 if __name__ == "__main__":
 
 	
@@ -483,9 +447,9 @@ if __name__ == "__main__":
 
 	reembed = parser.reembed
 	for phenotype in phenotypes:
-		if not parser.extract_feature_importance and not parser.classify and not parser.plot_pca:
-			raise ValueError("No action specified - at least one of --classify, --plot_pca or --extract_feature_importance must be set. Aborting...")
-
+		if not parser.submodule in ["pca", "plot_pca", "train", "feature_importance", "inference"]:
+			raise ValueError(f"Submodule {parser.submodule} not recognized. Aborting...")
+		
 		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", subset_ratio=parser.subset_ratio)
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 
@@ -513,6 +477,7 @@ if __name__ == "__main__":
 
 		reembed = False  # only reembed once per dataset
 		
+	
 
 		ctx = model_context(
 							X,
@@ -523,30 +488,53 @@ if __name__ == "__main__":
 							phenotype, 
 							kmer_prefix, 
 							kmer_suffix_size,
-							model_type=None,
+							model_type=parser.model if parser.model else "N/A",
 							int2label=int2label,
 							k_folds=parser.k_folds,
 							embedding_class=parser.embedding,
 							train_split_method=parser.train_split_method,
 							subset_ratio=parser.subset_ratio,
+							save_best_model=parser.save_best_model,
+							classification_metric=parser.classification_metric,
+							submodule=parser.submodule,
+							model=parser.model if parser.model else None
 							)
 		
 		
 		# # Plotting pca and umap
-		if parser.plot_pca:
+		if parser.submodule == "pca" or parser.submodule == "plot_pca":
 			pca_plot(ctx)
 		# # umap_plot(ctx)
 
-		if parser.classify:
-			random_forest_classification(ctx)
+		if parser.model.upper() in ["RandomForest", "RF"]:
+			ctx.model = "RandomForest"
+		elif parser.model.upper() in ["HistGradientBoosting", "HGB"]:
+			ctx.model = "HistGradientBoosting"
 
-			hist_gradient_boosting_classifier(ctx)
+		if parser.submodule == "train" or parser.submodule == "feature_importance":
+			train_classifier(ctx)
 
-		if parser.extract_feature_importance:
+		if parser.submodule == "inference":
+			# Validates a provided model on a provided dataset
+			# Loads the model and runs inference on a complete validation dataset
+			if parser.model_pkl is not None:
+				best_model_path = parser.model_pkl
+			else:
+				maybe_best_model_path = get_model_save_path(ctx)
+				if maybe_best_model_path is not None and os.path.isfile(maybe_best_model_path):
+					best_model_path = maybe_best_model_path
+				else:
+					raise ValueError(f"No model provided for inference using --model_pkl and no pickle model found at: {maybe_best_model_path}. Aborting...")
+			
 
-			feature_importance_extraction(ctx) # Feature extraction
-
-
+			if os.path.isfile(best_model_path):
+				print(f'Loading best model from: {best_model_path}')
+				best_model = load_pickled_model(best_model_path)
+				y_pred = best_model.predict(X)
+				results = create_classification_report(y_test=y,
+							   y_pred=y_pred,
+							   seed = "inference",
+							   ctx=ctx)
 		
 		
 

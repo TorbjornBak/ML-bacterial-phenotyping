@@ -92,25 +92,60 @@ cp /home/projects2/ecoli_gentamicin/metadata_ecoli_gentamicin.csv /home/projects
 ```
 
 ## Running script in an interactive node
-Make sure you have source the virtual environment first (see above)
+Make sure you have sourced the virtual environment first (see above). If you do not want to save the best model, remove the --save_best_model parameter.
 ```
 python3 src/utilities/baselines.py  \
   --phenotype  resistant_phenotype \
   --input /home/projects2/your_project_name/data/genomes/ \
-  --output /home/projects2/your_project_name/results/
   --labels /home/projects2/your_project_name/data/metadata_ecoli_gentamicin.csv \
-  --kmer_prefix ACATG \
-  --kmer_suffix_size 6 \
+  --output /home/projects2/your_project_name/results/
+  --kmer_prefix ATG \
+  --kmer_suffix_size 8 \
   --id_column genome_id \
-  --dna_sequence_column dna_sequence \
   --file_type fasta \
   --embedding frequency \
-  --group_clusters
+  --group_clusters \
+  --submodule feature_importance \
+  --model HistGradientBoosting \
+  --save_best_model
 ```
+
+If you want to only train model (not run feature importance extraction), change --submodule to ´train´.
+
 
 ### Obs! To return to the login node, press `ctrl+d` from the terminal or write `exit` and press enter.
 
 
+## Inference
+When you have trained a model and you want to test the model on an external validation set, use the "inference" submodule. 
+You can provide a pickled model path, using ´-mpkl /some/pickle/path.pkl´ or just run this command from the same directory as you ran the training. 
+
+- Change the --input to point to the folder containing the validation genome files.
+- Change the --labels to point to the validation csv.
+- Change the --id_column to match column name of the column containing the genome ids (should be the same in the labels files and in the headers of the fasta files).
+
+
+```
+python3 src/utilities/baselines.py  \
+  --phenotype  resistant_phenotype \
+  --input /home/projects2/your_project_name/validation/genomes/ \
+  --labels /home/projects2/your_project_name/validation/validation.csv \
+  --output /home/projects2/your_project_name/results/
+  --kmer_prefix ATG \
+  --kmer_suffix_size 8 \
+  --id_column genome_id \
+  --file_type fasta \
+  --embedding frequency \
+  --group_clusters \
+  --submodule inference \
+  --model HistGradientBoosting
+```
+
+## Available options
+To see all available options for the "baselines.py" write:
+```
+python3 src/utilities/baselines.py --help
+```
 
 ## Creating and submitting SLURM script
 Not written yet. Look in the shell_scripts/ folder to see some examples.
@@ -146,3 +181,4 @@ pip install some_python_package
 ```bash
 python3 some_cool_python_program.py
 ```
+

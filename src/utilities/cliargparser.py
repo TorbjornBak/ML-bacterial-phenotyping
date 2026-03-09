@@ -23,6 +23,7 @@ class ArgParser():
     def check_inputs(self):
         parser = self.parser
         labels_path = parser.labels_path
+        parser.labels = labels_path
         parser.input = parser.input.rstrip("/")
         parser.output = parser.output.rstrip("/")
         input_data_directory = parser.input
@@ -49,14 +50,14 @@ class ArgParser():
         print("#############################################")
 
     def default_arguments(self, parser):
-        parser.add_argument("-ph", "--phenotype", type = str, nargs = "+", help = "Phenotype - target from file", required = True)
+        parser.add_argument("-ph", "--phenotype", type = str, nargs = "+", help = "Name of column of the target label in the label file", required = True)
         parser.add_argument("-c", "--cores", default=2, type = int, help="nr of cores to use for embedding")
         parser.add_argument("-i", "--input", required = True, help = "Path to input directory containing files for training")
-        parser.add_argument("--labels_path", required = True, help = "Path to file containing labels for training")
+        parser.add_argument("-l","--labels","--labels_path", dest="labels_path", required = True, help = "Path to file containing labels for training")
         parser.add_argument("--id_column", default = "genome_name", type = str, help = "Name of column containing ids for labels")
-        parser.add_argument("--dna_sequence_column", required = True, help = "Name of column containing dna sequences in parquet files")
+        parser.add_argument("--dna","--dna_sequence_column", dest = "dna_sequence_column", help = "Name of column containing dna sequences in parquet files")
         parser.add_argument("-o", "--output", required = True, help = "Path to output directory for training results")
-        parser.add_argument("--file_type", default = "parquet", help = "fx parquet / fasta, the file ending to look for in input folder")
+        parser.add_argument("--file_type", default = "parquet", choices=["parquet", "fasta"], help = "fx parquet / fasta, the file ending to look for in input folder")
         parser.add_argument("--freq_others", default = None, help = "Bottom frequency of label counts that should be discarded. Useful if some labels only occur a few times.")
         parser.add_argument("--reembed", default = False, action="store_true", help = "Flag determining whether to run tokenization and embedding again")
         parser.add_argument("-rc", "--reverse_complement", action="store_true", help = "Flag to indicate whether to include reverse complement sequences during embedding")
@@ -66,7 +67,6 @@ class ArgParser():
         parser.add_argument("--esmc_model", default = "esmc_300m", help = "Which ESM-c model to use for embedding, fx esmc_300m or esmc_1b")
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
-        parser.add_argument("--train_split_method", default = "GroupKFold", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
         parser.add_argument("--subset_ratio", default = None, type = float, help = "Fraction to subset dataset to, for analysis purposes")
         parser.add_argument("--device", default = "cpu", help = "Device to use for training, choose between cuda, cpu or mps")
         return parser
@@ -76,16 +76,18 @@ class ArgParser():
                                         prog='train_models_v2.py',
                                         description='Toolbox of different ml models for downsampled genomes',
                                         epilog='Made by Torbjørn Regueira',
+                                        suggest_on_error=True,
                                         )
         
         parser = self.default_arguments(parser)
-        parser.add_argument("--model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
-        parser.add_argument("--lr", "--learning_rates", default = -1.0, type = float, nargs = '+', help = "List of learning rates for given model")
+        parser.add_argument("-m","--model","--model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
+        parser.add_argument("-lr", "--learning_rates", default = -1.0, type = float, nargs = '+', help = "List of learning rates for given model")
         parser.add_argument("--kmer_prefixes", required = True, type = str, nargs = '+', help = "Comma separated list of kmer prefixes")
+        parser.add_argument("--train_split_method", default = "GroupKFold", help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit and GroupKFold")
         parser.add_argument("--kmer_suffix_sizes", required = True, type = int, nargs = '+', help = "Comma seaparated list of kmer suffix sizes")
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
-        parser.add_argument("--model_pooling", default = "mean", help = "Pooling method for model, choose between mean, last and attn")
-        parser.add_argument("--model_norm", default = "layer", help = "Normalization method for model, choose between layer and batch")
+        parser.add_argument("--model_pooling", default = "mean", choices=["mean", "last", "attn"], help = "Pooling method for model, choose between mean, last and attn")
+        parser.add_argument("--model_norm", default = "layer", choices=["layer", "batch"], help = "Normalization method for model, choose between layer and batch")
         parser.add_argument("--trace_memory", action = "store_true", help = "Flag to tell whether to trace memory usage")
         parser.add_argument("--epochs", default = 150, type = int, help = "Nr of epochs to train for, for each model")
         parser.add_argument("--dropout", default = 0.2, type = float, help = "fraction to dropout for each layer")
@@ -102,16 +104,22 @@ class ArgParser():
                                         epilog='Made by Torbjørn Regueira',
                                         )
         parser = self.default_arguments(parser)
+        parser.add_argument("-submodule", "--submodule", default = "train", choices=["train", "pca", "feature_importance", "inference"], help = "Mode to run the script in, choose between train, pca, feature_importance, and inference.")
+        parser.add_argument("-m", "--model", "--model_arch", dest = "model", default = "HistGradientBoosting", choices=["RandomForest", "HistGradientBoosting", "rf", "hgb"], help = "Indicate what model to train, choose between RandomForest (RF) and HistGradientBoosting (HGB). If not set, no models will be trained. ")
         parser.add_argument("--kmer_prefix", required = False, help = "Kmer prefix to use for pca and umap")
         parser.add_argument("--kmer_suffix_size", required = True, type = int, help = "Kmer suffix size to use for pca and umap")
-        parser.add_argument("--embedding", default = "frequency", help = "Type of embedding, choose between frequency and counts")
+        parser.add_argument("--embedding", default = "frequency", choices=["frequency", "counts"], help = "Type of embedding, choose between frequency and counts")
+        parser.add_argument("--train_split_method", default = "GroupKFold", choices=["GroupShuffleSplit", "GroupKFold", "ShuffleSplit"], help = "Sklearn method to use for train test splitting, choose between GroupShuffleSplit, GroupKFold and ShuffleSplit")
         parser.add_argument("--clustermap_title", default = None, type = str, help = "Title to use for clustermap plot")
         parser.add_argument("--clustermap_subtitle", default = None, type = str, help = "Subtitle to use for clustermap plot")
         parser.add_argument("--n_minhashes", default = 1000, type = int, help = "Number of minhashes to use for sourmash sketching")
-        parser.add_argument("--classify", action="store_true", help = "Flag to indicate whether to run classification or not")
-        parser.add_argument("--plot_pca", action="store_true", help = "Flag to indicate whether to plot pca or not")
-        parser.add_argument("--extract_feature_importance", action="store_true", help = "Flag to indicate whether to extract feature importance or not (using standard GradientBoosting)")
-        parser.add_argument("--hash_full_sequence", action="store_true", help = "Flag to indicate whether to hash full sequences instead of tokenized sequences")
+        #parser.add_argument(["-tm","--train_model"], default = None, help = "Indicate what model to train, choose between RandomForest (RF) and HistGradientBoosting (HGB). If not set, no models will be trained. ")
+        #parser.add_argument(["-pca","--plot_pca"], action="store_true", help = "Flag to indicate whether to plot pca or not")
+        #parser.add_argument(["-feat","--extract_feature_importance"], action="store_true", help = "Flag to indicate whether to extract feature importance or not (using standard GradientBoosting)")
+        parser.add_argument("-hfs","--hash_full_sequence", action="store_true", help = "Flag to indicate whether to hash full sequences instead of tokenized sequences")
+        parser.add_argument("-sbm","--save_best_model", default = False, action="store_true", help = "Flag to indicate whether to save the best model during training")
+        parser.add_argument("-mpkl","--model_pkl", default = None, help = "Path to model pickle file")
+        parser.add_argument("--classification_metric", default = "balanced_accuracy", help = "Metric to use for model evaluation during training and inference, choose between balanced_accuracy, accuracy, f1, precision and recall")
         return parser
 
 
