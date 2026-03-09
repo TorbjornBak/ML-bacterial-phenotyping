@@ -170,6 +170,8 @@ class KmerTokenizer():
 
 	def fetch_sequences(self, file_path):
 		df = read_sequence_file(file_path=file_path, file_type = self.file_type)
+		self.dna_sequence_col = self.dna_sequence_col if self.dna_sequence_col in df.columns else "dna_sequence"
+
 		sequence_dict = {genome_id : dna_sequences.split(" ") for genome_id, dna_sequences in zip(df[self.genome_col], df[self.dna_sequence_col])}
 
 		return sequence_dict
