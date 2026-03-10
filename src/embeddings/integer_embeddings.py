@@ -361,7 +361,7 @@ class KmerCountsEmbeddings():
 
 	def run_embedder(self, token_collection: dict):
 		
-		print(f'Running counts embedder')
+		print(f'Running {self.embedding_class} embedder')
 		embedding_results = [self.counts_embedding(id, tokens) for id, tokens in token_collection.items()]
 		
 		embeddings = dict()
