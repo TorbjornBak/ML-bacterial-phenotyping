@@ -116,14 +116,13 @@ If you want to only train model (not run feature importance extraction), change 
 ### Obs! To return to the login node, press `ctrl+d` from the terminal or write `exit` and press enter.
 
 
-## Inference
-When you have trained a model and you want to test the model on an external validation set, use the "inference" submodule. 
-You can provide a pickled model path, using ´-mpkl /some/pickle/path.pkl´ or just run this command from the same directory as you ran the training. 
+## Validation
+When you have trained a model and you want to test the model on an external validation set, use the "validation" submodule. 
+You should provide an existing model directory, using ´--model_directory´.
 
 - Change the --input to point to the folder containing the validation genome files.
 - Change the --labels to point to the validation csv.
 - Change the --id_column to match column name of the column containing the genome ids (should be the same in the labels files and in the headers of the fasta files).
-
 
 ```
 python3 src/utilities/baselines.py  \
@@ -137,7 +136,7 @@ python3 src/utilities/baselines.py  \
   --file_type fasta \
   --embedding frequency \
   --group_clusters \
-  --submodule inference \
+  --submodule validation \
   --model HistGradientBoosting
 ```
 
