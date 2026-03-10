@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
-from sklearn.model_selection import GroupKFold, ShuffleSplit, train_test_split, GroupShuffleSplit
+from sklearn.model_selection import GroupKFold, ShuffleSplit, StratifiedGroupKFold, StratifiedShuffleSplit, train_test_split, GroupShuffleSplit
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.metrics import confusion_matrix
 from sklearn.decomposition import PCA
@@ -193,30 +193,39 @@ def load_pickled_model(path):
 	print(f'Model loaded from: {path}')
 	return model
 
+def load_models(ctx, directory):
+	models = []
+	for filename in os.listdir(directory):
+		if filename.endswith(".pkl") and filename.startswith(f'{model_base_file_name(ctx)}'):
+			model_path = os.path.join(directory, filename)
+			model = load_pickled_model(model_path)
+			models.append(model)
+	print(f'Loaded {len(models)} models from directory: {directory}')
+	return models
 
+def save_model(clf, context, model_directory = None, seed=None):
+	model_save_path = get_model_file_name(context, seed=seed)
+	pickle_model(clf, os.path.join(model_directory, model_save_path))
 
-def maybe_save_best_model(clf, results, context):
-	if context.save_best_model and context.classification_metric in results:
-		if float(results[context.classification_metric]) > context.best_metric_score:
-			previous_best_metric_score = context.best_metric_score
-			context.best_metric_score = float(results[context.classification_metric])
-			model_save_path = get_model_save_path(context)
-			pickle_model(clf, model_save_path)
-			print(f'New best model saved with {context.classification_metric} of {results[context.classification_metric]:.4f} at: {model_save_path}')
-			print(f'Previous best {context.classification_metric}: {previous_best_metric_score:.4f}')
+def model_base_file_name(context):
+	return f'model_{context.model_type}_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}'
 
-	
-def get_model_save_path(context):
-	return f'{context.output_directory}/best_model_{context.model_type}_{context.embedding_class}_{context.phenotype}_prefix_{context.kmer_prefix}_suffix_size_{context.kmer_suffix_size}.pkl'
+def get_model_file_name(context, seed=None):
+	if seed is not None:
+		return f'{model_base_file_name(context)}_{seed}.pkl'
+	return f'{model_base_file_name(context)}.pkl'
 
 def train_classifier(context):
-	print(f'Running HistGradientBoostingClassifier for feature importance extraction...')
 	if context.train_split_method == "GroupShuffleSplit":
 		splitter = GroupShuffleSplit(n_splits = context.k_folds, test_size = 0.2, random_state=42)
 	elif context.train_split_method == "GroupKFold":
 		splitter = GroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
 	elif context.train_split_method == "ShuffleSplit":
 		splitter = ShuffleSplit(n_splits = context.k_folds, random_state = 42)
+	elif context.train_split_method == "StratifiedShuffleSplit":
+		splitter = StratifiedShuffleSplit(n_splits = context.k_folds, random_state = 42)
+	elif context.train_split_method == "StratifiedGroupKFold":
+		splitter = StratifiedGroupKFold(n_splits = context.k_folds, random_state = 42, shuffle = True)
 	else:
 		raise ValueError(f"Train split method {context.train_split_method} not recognized.")
 
@@ -229,23 +238,25 @@ def train_classifier(context):
 		elif context.model == "HistGradientBoosting":
 			clf, y_pred = train_hist_gradient_boosting_classifier(X_train, y_train, X_test)
 
-		results = create_classification_report(y_test=y_test, 
+		create_classification_report(y_test=y_test, 
 							   y_pred=y_pred, 
 							   seed=i, 
 							   ctx=context)
 		
-		if context.save_best_model and context.classification_metric in results:
-			maybe_save_best_model(clf, results, context)
+		if context.save_model:
+			save_model(clf, context, model_directory=context.model_directory, seed=i)
 
 		if context.submodule == "feature_importance":
 			feature_names = [f'{context.kmer_prefix}{integer_to_kmer(j, context.kmer_suffix_size)}' for j in range(len(context.X[0]))]
 			shap_values = get_shap_values(clf, pd.DataFrame(X_test, columns = feature_names)) # Convert to dataframe for feature names on the plots
 			plot_shap_summary(shap_values, context, i)
 		
-	print(f'Finished HistGradientBoosting classification over {context.k_folds} splits.')
-	return 
+	print(f'Finished {context.model} classification over {context.k_folds} splits.')
+	
+	return
 
 def train_hist_gradient_boosting_classifier(X_train, y_train, X_test):
+	print(f'Running HistGradientBoostingClassifier...')
 	clf = HistGradientBoostingClassifier(
 										loss = 'log_loss', 
 										learning_rate=0.01, 
@@ -258,6 +269,7 @@ def train_hist_gradient_boosting_classifier(X_train, y_train, X_test):
 	return clf, y_pred
 
 def train_random_forest_classifier(X_train, y_train, X_test):
+	print(f'Running RandomForestClassifier...')
 	clf = RandomForestClassifier(max_depth=None, 
 							   		random_state=0)
 	clf.fit(X_train, y_train)
@@ -410,6 +422,27 @@ def create_classification_report(y_test,
 
 
 
+def majority_voting_classifier(ctx, model_directory, X, y):
+	if not os.path.isdir(model_directory):
+		raise ValueError(f"Model directory provided for validation doesn't exist: {model_directory}. Aborting...")
+	# Majority voting over the 5 models trained with different seeds
+	print(f'Loading models from: {model_directory}')
+	
+	models = load_models(ctx = ctx, directory=model_directory)
+
+	# Get model predictions
+	predictions = np.array([model.predict(X) for model in models])
+	# Transpose to have shape (n_samples, n_models)
+	predictions = predictions.T
+	# Perform majority voting
+	y_pred_majority = np.array([np.bincount(pred).argmax() for pred in predictions])
+	results = create_classification_report(y_test=y,
+					y_pred=y_pred_majority,
+					seed = "validation",
+					ctx=ctx)
+	return results
+
+
 @dataclass
 class model_context:
 	X: np.array
@@ -426,11 +459,12 @@ class model_context:
 	embedding_class: str	
 	train_split_method: str = "GroupKFold"  # or GroupShuffleSplit
 	subset_ratio: float = 1.0
-	save_best_model: bool = False
+	save_model: bool = False
 	classification_metric: str = "balanced_accuracy"
 	best_metric_score: float = 0.0
 	submodule: str | None = None
 	model: str | None = None
+	model_directory: str | None = None
 
 if __name__ == "__main__":
 
@@ -447,9 +481,6 @@ if __name__ == "__main__":
 
 	reembed = parser.reembed
 	for phenotype in phenotypes:
-		if not parser.submodule in ["pca", "plot_pca", "train", "feature_importance", "inference"]:
-			raise ValueError(f"Submodule {parser.submodule} not recognized. Aborting...")
-		
 		label_return = load_labels(file_path=parser.labels_path, id = parser.id_column, label = phenotype, sep = ",", subset_ratio=parser.subset_ratio)
 		label_dict_literal, label_dict, int2label = label_return["label_dict"], label_return["label_dict_int"], label_return["int2label"] 
 
@@ -494,17 +525,18 @@ if __name__ == "__main__":
 							embedding_class=parser.embedding,
 							train_split_method=parser.train_split_method,
 							subset_ratio=parser.subset_ratio,
-							save_best_model=parser.save_best_model,
+							save_model=parser.save_model,
 							classification_metric=parser.classification_metric,
 							submodule=parser.submodule,
-							model=parser.model if parser.model else None
+							model=parser.model if parser.model else None,
+							model_directory=parser.model_directory if parser.model_directory else None
 							)
 		
 		
-		# # Plotting pca and umap
+		# # Plotting pca
 		if parser.submodule == "pca" or parser.submodule == "plot_pca":
 			pca_plot(ctx)
-		# # umap_plot(ctx)
+			
 
 		if parser.model.upper() in ["RandomForest", "RF"]:
 			ctx.model = "RandomForest"
@@ -514,28 +546,12 @@ if __name__ == "__main__":
 		if parser.submodule == "train" or parser.submodule == "feature_importance":
 			train_classifier(ctx)
 
-		if parser.submodule == "inference":
+		if parser.submodule == "validation":
 			# Validates a provided model on a provided dataset
-			# Loads the model and runs inference on a complete validation dataset
-			if parser.model_pkl is not None:
-				best_model_path = parser.model_pkl
-			else:
-				maybe_best_model_path = get_model_save_path(ctx)
-				if maybe_best_model_path is not None and os.path.isfile(maybe_best_model_path):
-					best_model_path = maybe_best_model_path
-				else:
-					raise ValueError(f"No model provided for inference using --model_pkl and no pickle model found at: {maybe_best_model_path}. Aborting...")
-			
+			# Loads the 5 models and runs validation on a complete validation dataset
 
-			if os.path.isfile(best_model_path):
-				print(f'Loading best model from: {best_model_path}')
-				best_model = load_pickled_model(best_model_path)
-				y_pred = best_model.predict(X)
-				results = create_classification_report(y_test=y,
-							   y_pred=y_pred,
-							   seed = "inference",
-							   ctx=ctx)
-		
+			majority_voting_classifier(ctx, model_directory=parser.model_directory, X=ctx.X, y=ctx.y)
+	
 		
 
 		
