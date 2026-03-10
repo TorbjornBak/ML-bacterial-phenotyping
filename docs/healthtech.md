@@ -99,6 +99,7 @@ python3 src/utilities/baselines.py  \
   --input /home/projects2/your_project_name/data/genomes/ \
   --labels /home/projects2/your_project_name/data/metadata_ecoli_gentamicin.csv \
   --output /home/projects2/your_project_name/results/
+  --model_directory /home/projects2/your_project_name/models/
   --kmer_prefix ATG \
   --kmer_suffix_size 8 \
   --id_column genome_id \
@@ -107,7 +108,8 @@ python3 src/utilities/baselines.py  \
   --group_clusters \
   --submodule feature_importance \
   --model HistGradientBoosting \
-  --save_best_model
+  --save_model \
+  
 ```
 
 If you want to only train model (not run feature importance extraction), change --submodule to ´train´.
@@ -137,7 +139,8 @@ python3 src/utilities/baselines.py  \
   --embedding frequency \
   --group_clusters \
   --submodule validation \
-  --model HistGradientBoosting
+  --model HistGradientBoosting \
+  --model_directory /home/projects2/your_project_name/models/
 ```
 
 ## Sklearn Parallel (OpenMP)
