@@ -141,6 +141,13 @@ python3 src/utilities/baselines.py  \
   --model HistGradientBoosting
 ```
 
+## Sklearn Parallel (OpenMP)
+As the HistGradientBoosting and RandomForest models use sklearns implementations, multicore can be enables using: 
+```
+OMP_NUM_THREADS=4 python3 src/utilities/baselines.py ...
+```
+See sklearns documentation: [\[Parallel\](https://scikit-learn.org/stable/computing/parallelism.html#parallel-numpy-and-scipy-routines-from-numerical-libraries)](https://scikit-learn.org/stable/computing/parallelism.html#lower-level-parallelism-with-openmp)
+
 ## Available options
 To see all available options for the "baselines.py" write:
 ```
