@@ -1,0 +1,69 @@
+{
+  "datasets": {
+    "gentamicin": {
+      "input": "data/AMR_gentamicin/genomes",
+      "labels": "data/AMR_gentamicin/metadata.csv",
+      "file_type": "fasta",
+      "id_column": "genome_id",
+      "sequence_column": "dna_sequence",
+      "label_separator": ","
+    },
+    "bacformer": {
+      "input": "data/bacformer/genomes",
+      "labels": "data/bacformer/labels.csv",
+      "file_type": "parquet",
+      "id_column": "genome_name",
+      "sequence_column": "dna_sequence",
+      "label_separator": ","
+    }
+  },
+  "phenotypes": [
+    {
+      "name": "gentamicin_resistance",
+      "dataset": "gentamicin",
+      "label_column": "resistant_phenotype",
+      "positive_class": "REPLACE_WITH_RESISTANT_LABEL"
+    },
+    {
+      "name": "motility",
+      "dataset": "bacformer",
+      "label_column": "madin_categorical_motility_binary",
+      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+    },
+    {
+      "name": "beta_hemolysis",
+      "dataset": "bacformer",
+      "label_column": "gideon_Beta hemolysis",
+      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+    },
+    {
+      "name": "nitrate_to_nitrite",
+      "dataset": "bacformer",
+      "label_column": "gideon_Nitrate to nitrite",
+      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+    },
+    {
+      "name": "glucose_utilization",
+      "dataset": "bacformer",
+      "label_column": "madin_carbsubs_glucose",
+      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+    }
+  ],
+  "total_k": [8, 10, 12],
+  "prefix_lengths": [2, 4, 5],
+  "prefix_seed": 20260901,
+  "n_prefixes": 10,
+  "historical_prefix": "ACATG",
+  "n_folds": 5,
+  "split_seed": 20260901,
+  "normalization": "frequency",
+  "reverse_complement": false,
+  "model": {
+    "solver": "liblinear",
+    "class_weight": "balanced",
+    "C": 1.0,
+    "max_iter": 2000,
+    "random_state": 20260901
+  },
+  "output_dir": "results/reviewer_benchmark"
+}

@@ -1,0 +1,379 @@
+"""Sparse full and prefix-filtered DNA k-mer count representations.
+
+The public entry point is :func:`build_sparse_kmer_counts`.  It indexes a
+complete k-mer (or, for a prefix condition, its suffix) directly with a
+base-four integer, so the feature space does not need to be enumerated.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
+import json
+from pathlib import Path
+import re
+from typing import Any
+
+import numpy as np
+from scipy import sparse
+
+
+_DNA_ALPHABET = "ACGT"
+_DNA_TO_DIGIT = {base: digit for digit, base in enumerate(_DNA_ALPHABET)}
+_COMPLEMENT = str.maketrans(_DNA_ALPHABET, "TGCA")
+
+
+def encode_kmer(kmer: str) -> int:
+    """Return the deterministic base-four index for an uppercase DNA k-mer.
+
+    ``A``, ``C``, ``G`` and ``T`` map to 0, 1, 2 and 3 respectively.  Input
+    is accepted case-insensitively, but ambiguous bases are rejected rather
+    than silently assigned a feature index.
+    """
+
+    if not isinstance(kmer, str) or not kmer:
+        raise ValueError("kmer must be a non-empty DNA string")
+    index = 0
+    for base in kmer.upper():
+        try:
+            index = index * 4 + _DNA_TO_DIGIT[base]
+        except KeyError as exc:
+            raise ValueError(f"kmer contains non-DNA base {base!r}") from exc
+    return index
+
+
+def decode_kmer(index: int, length: int) -> str:
+    """Decode a base-four feature index into a DNA k-mer of ``length``."""
+
+    if not isinstance(index, (int, np.integer)) or index < 0:
+        raise ValueError("index must be a non-negative integer")
+    if not isinstance(length, (int, np.integer)) or length <= 0:
+        raise ValueError("length must be a positive integer")
+    if index >= 4**length:
+        raise ValueError("index does not fit in the requested k-mer length")
+    chars = ["A"] * length
+    for position in range(length - 1, -1, -1):
+        chars[position] = _DNA_ALPHABET[index % 4]
+        index //= 4
+    return "".join(chars)
+
+
+def _normalise_normalization(normalization: str | bool | None) -> str:
+    if normalization is True or normalization is None:
+        return "frequency" if normalization is not False else "raw"
+    if normalization is False:
+        return "raw"
+    if not isinstance(normalization, str):
+        raise ValueError("normalization must be 'frequency', 'raw', or a bool")
+    value = normalization.lower().strip()
+    if value in {"frequency", "frequencies", "freq"}:
+        return "frequency"
+    if value in {"raw", "count", "counts", "none"}:
+        return "raw"
+    raise ValueError("normalization must be 'frequency' or 'raw'")
+
+
+def _as_contigs(genome: Any) -> list[str]:
+    """Convert one genome value to independent, uppercase contig strings."""
+
+    if genome is None:
+        return []
+    if isinstance(genome, bytes):
+        genome = genome.decode()
+    if isinstance(genome, str):
+        # Whitespace-delimited input is common in the repository's parquet
+        # files.  Splitting it also makes accidental cross-contig windows
+        # impossible; callers with a single contig need not add whitespace.
+        return [part.upper() for part in genome.split() if part]
+    if not isinstance(genome, Iterable):
+        raise TypeError("each genome must be a sequence string or an iterable of contigs")
+    contigs: list[str] = []
+    for contig in genome:
+        if contig is None:
+            continue
+        if isinstance(contig, bytes):
+            contig = contig.decode()
+        if not isinstance(contig, str):
+            raise TypeError("contigs must be strings")
+        contigs.extend(part.upper() for part in contig.split() if part)
+    return contigs
+
+
+def _reverse_complement(sequence: str) -> str:
+    return sequence.translate(_COMPLEMENT)[::-1]
+
+
+@dataclass
+class SparseKmerCounts:
+    """A CSR count matrix and the metadata needed to interpret its columns."""
+
+    matrix: sparse.csr_matrix
+    metadata: dict[str, Any]
+
+    @property
+    def feature_space_size(self) -> int:
+        return int(self.metadata["feature_space_size"])
+
+    @property
+    def total_k(self) -> int:
+        return int(self.metadata["total_k"])
+
+    @property
+    def prefix(self) -> str | None:
+        return self.metadata["prefix"]
+
+    @property
+    def suffix_length(self) -> int:
+        return int(self.metadata["suffix_length"])
+
+    @property
+    def genome_ids(self) -> list[str]:
+        return list(self.metadata["genome_ids"])
+
+    @property
+    def raw_token_counts(self) -> np.ndarray:
+        """Number of retained valid tokens per genome, before normalization."""
+
+        return np.asarray(self.metadata["raw_token_counts"], dtype=np.int64)
+
+    @property
+    def retained_token_counts(self) -> np.ndarray:
+        return self.raw_token_counts
+
+    @property
+    def raw_counts(self) -> np.ndarray:
+        """Backward-compatible short name for retained raw token counts."""
+
+        return self.raw_token_counts
+
+    @property
+    def valid_window_counts(self) -> np.ndarray:
+        return np.asarray(self.metadata["valid_window_counts"], dtype=np.int64)
+
+    @property
+    def counts(self) -> sparse.csr_matrix:
+        """Alias for callers that use ``counts`` for the feature matrix."""
+
+        return self.matrix
+
+    def save(self, path: str | Path, dataset: str | None = None) -> Path:
+        """Save the CSR matrix and JSON metadata, returning the NPZ path.
+
+        Passing a directory creates a descriptive filename containing the
+        dataset, total k, prefix condition and normalization.  A path ending
+        in ``.npz`` may be supplied when a caller needs an explicit location;
+        its adjacent JSON file remains part of the save format.
+        """
+
+        destination = Path(path)
+        dataset_name = dataset or str(self.metadata.get("dataset", "dataset"))
+        if destination.suffix.lower() != ".npz":
+            destination.mkdir(parents=True, exist_ok=True)
+            prefix_name = self.prefix if self.prefix is not None else "full"
+            destination = destination / (
+                f"{_safe_component(dataset_name)}_sparse_kmers_"
+                f"total_k_{self.total_k}_prefix_{_safe_component(prefix_name)}_"
+                f"normalization_{self.metadata['normalization']}.npz"
+            )
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+
+        metadata = dict(self.metadata)
+        metadata["dataset"] = dataset_name
+        sparse.save_npz(destination, self.matrix, compressed=True)
+        destination.with_suffix(".json").write_text(
+            json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8"
+        )
+        return destination
+
+    @classmethod
+    def load(cls, path: str | Path) -> "SparseKmerCounts":
+        return load_sparse_kmer_counts(path)
+
+
+def _safe_component(value: Any) -> str:
+    value = str(value)
+    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value) or "none"
+
+
+def build_sparse_kmer_counts(
+    genomes: Mapping[Any, Any] | Sequence[Any] | Iterable[Any],
+    total_k: int,
+    prefix: str | None = None,
+    *,
+    normalization: str | bool | None = "frequency",
+    reverse_complement: bool = False,
+    genome_ids: Sequence[Any] | None = None,
+    dataset: str = "dataset",
+) -> SparseKmerCounts:
+    """Build full or prefix-filtered sparse k-mer counts.
+
+    ``genomes`` is either an ID-to-sequences mapping or an ordered iterable of
+    genome values.  A genome value can be one string or an iterable of contig
+    strings.  Contigs are never concatenated.  A prefix condition stores only
+    the suffix of each matching complete k-mer, making its feature space
+    ``4 ** (total_k - len(prefix))``.  With ``reverse_complement=True``,
+    forward and reverse-complement strand windows are both counted.
+    """
+
+    if not isinstance(total_k, (int, np.integer)) or isinstance(total_k, bool) or total_k <= 0:
+        raise ValueError("total_k must be a positive integer")
+    total_k = int(total_k)
+    if prefix is not None:
+        if not isinstance(prefix, str):
+            raise TypeError("prefix must be a DNA string or None")
+        prefix = prefix.upper()
+        if not prefix:
+            prefix = None
+        elif len(prefix) >= total_k:
+            raise ValueError("prefix length must be smaller than total_k")
+        elif any(base not in _DNA_TO_DIGIT for base in prefix):
+            raise ValueError("prefix must contain only A, C, G, and T")
+
+    mode = _normalise_normalization(normalization)
+    if isinstance(genomes, Mapping):
+        if genome_ids is not None:
+            raise ValueError("genome_ids cannot be supplied when genomes is a mapping")
+        ids = [str(genome_id) for genome_id in genomes.keys()]
+        genome_values = list(genomes.values())
+    elif isinstance(genomes, (str, bytes)):
+        # Treat one sequence string as one genome rather than iterating over
+        # its individual bases.
+        genome_values = [genomes]
+        if genome_ids is None:
+            ids = ["0"]
+        else:
+            if len(genome_ids) != 1:
+                raise ValueError("genome_ids must have one entry per genome")
+            ids = [str(genome_ids[0])]
+    else:
+        genome_values = list(genomes)
+        if genome_ids is None:
+            ids = [str(index) for index in range(len(genome_values))]
+        else:
+            if len(genome_ids) != len(genome_values):
+                raise ValueError("genome_ids must have one entry per genome")
+            ids = [str(genome_id) for genome_id in genome_ids]
+
+    suffix_length = total_k if prefix is None else total_k - len(prefix)
+    feature_space_size = 4**suffix_length
+    row_indices: list[int] = []
+    column_indices: list[int] = []
+    values: list[int] = []
+    raw_token_counts: list[int] = []
+    valid_window_counts: list[int] = []
+    candidate_window_counts: list[int] = []
+
+    for row, genome in enumerate(genome_values):
+        contigs = _as_contigs(genome)
+        row_counts: dict[int, int] = {}
+        raw_count = valid_count = candidate_count = 0
+        strands = list(contigs)
+        if reverse_complement:
+            strands.extend(_reverse_complement(contig) for contig in contigs)
+        for sequence in strands:
+            for start in range(max(0, len(sequence) - total_k + 1)):
+                candidate_count += 1
+                kmer = sequence[start : start + total_k]
+                if any(base not in _DNA_TO_DIGIT for base in kmer):
+                    continue
+                valid_count += 1
+                if prefix is not None and not kmer.startswith(prefix):
+                    continue
+                raw_count += 1
+                feature = kmer if prefix is None else kmer[len(prefix) :]
+                column = encode_kmer(feature)
+                row_counts[column] = row_counts.get(column, 0) + 1
+        for column, count in row_counts.items():
+            row_indices.append(row)
+            column_indices.append(column)
+            values.append(count)
+        raw_token_counts.append(raw_count)
+        valid_window_counts.append(valid_count)
+        candidate_window_counts.append(candidate_count)
+
+    data_type = np.float32 if mode == "frequency" else np.int64
+    matrix = sparse.coo_matrix(
+        (np.asarray(values, dtype=data_type), (row_indices, column_indices)),
+        shape=(len(genome_values), feature_space_size),
+        dtype=data_type,
+    ).tocsr()
+    if mode == "frequency" and matrix.nnz:
+        # Use every valid candidate window as the common denominator.  This
+        # keeps full and filtered representations directly comparable and
+        # leaves prefix retention visible in feature magnitude.
+        denominators = np.asarray(valid_window_counts, dtype=np.float32)
+        nonempty_rows = np.repeat(np.arange(matrix.shape[0]), np.diff(matrix.indptr))
+        matrix.data /= denominators[nonempty_rows]
+
+    metadata = {
+        "dataset": str(dataset),
+        "genome_ids": ids,
+        "total_k": total_k,
+        "prefix": prefix,
+        "prefix_length": 0 if prefix is None else len(prefix),
+        "suffix_length": suffix_length,
+        "feature_space_size": feature_space_size,
+        "normalization": mode,
+        "reverse_complement": bool(reverse_complement),
+        "raw_token_counts": raw_token_counts,
+        "raw_counts": raw_token_counts,
+        "retained_token_counts": raw_token_counts,
+        "valid_window_counts": valid_window_counts,
+        "candidate_window_counts": candidate_window_counts,
+        "retention_fraction": [
+            (raw / valid) if valid else 0.0
+            for raw, valid in zip(raw_token_counts, valid_window_counts)
+        ],
+        "normalization_denominator": valid_window_counts,
+        "matrix_shape": list(matrix.shape),
+        "nnz": int(matrix.nnz),
+    }
+    return SparseKmerCounts(matrix=matrix, metadata=metadata)
+
+
+def save_sparse_kmer_counts(
+    result: SparseKmerCounts, path: str | Path, dataset: str | None = None
+) -> Path:
+    """Functional counterpart to :meth:`SparseKmerCounts.save`."""
+
+    return result.save(path, dataset=dataset)
+
+
+def load_sparse_kmer_counts(path: str | Path) -> SparseKmerCounts:
+    """Load a matrix and its adjacent JSON metadata sidecar."""
+
+    matrix_path = Path(path)
+    if matrix_path.is_dir():
+        matches = sorted(matrix_path.glob("*.npz"))
+        if len(matches) != 1:
+            raise ValueError("a directory load requires exactly one sparse k-mer NPZ")
+        matrix_path = matches[0]
+    if matrix_path.suffix.lower() != ".npz":
+        matrix_path = matrix_path.with_suffix(".npz")
+    metadata_path = matrix_path.with_suffix(".json")
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"sparse k-mer metadata not found: {metadata_path}")
+    matrix = sparse.load_npz(matrix_path).tocsr()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    return SparseKmerCounts(matrix=matrix, metadata=metadata)
+
+
+# Small aliases keep the seam discoverable for code that calls the output a
+# matrix or uses the naming convention of ``integer_embeddings``.
+build_sparse_kmer_matrix = build_sparse_kmer_counts
+kmer_to_integer = encode_kmer
+integer_to_kmer = decode_kmer
+
+
+__all__ = [
+    "SparseKmerCounts",
+    "build_sparse_kmer_counts",
+    "build_sparse_kmer_matrix",
+    "decode_kmer",
+    "encode_kmer",
+    "integer_to_kmer",
+    "kmer_to_integer",
+    "load_sparse_kmer_counts",
+    "save_sparse_kmer_counts",
+]
