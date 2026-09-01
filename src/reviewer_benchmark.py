@@ -238,9 +238,23 @@ def run_condition(
         split_manifest = read_split_manifest(split_manifest_path)
         split_manifest["genome_id"] = split_manifest["genome_id"].astype(str)
         split_manifest = split_manifest[split_manifest["dataset"].astype(str) == dataset_name].copy()
+        requested_folds = int(
+            split_manifest["requested_n_folds"].iloc[0]
+            if "requested_n_folds" in split_manifest
+            else split_manifest.attrs.get("requested_n_folds", config.get("n_folds", 0))
+        )
+        if config.get("n_folds") is not None and requested_folds != int(config["n_folds"]):
+            raise ValueError(
+                f"Split manifest was requested with {requested_folds} folds, not configured {config['n_folds']}"
+            )
+        effective_folds = int(
+            split_manifest["effective_n_folds"].iloc[0]
+            if "effective_n_folds" in split_manifest
+            else split_manifest.attrs.get("n_folds", split_manifest["fold_id"].nunique())
+        )
         validate_split_manifest(
             split_manifest,
-            n_folds=int(config.get("n_folds", split_manifest["fold_id"].nunique())),
+            n_folds=effective_folds,
         )
 
         usable_ids = [

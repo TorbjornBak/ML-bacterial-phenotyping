@@ -262,11 +262,6 @@ def paired_difference_confidence_interval(
     return result
 
 
-# Names used in analysis notebooks and earlier drafts of the benchmark API.
-paired_confidence_interval = paired_difference_confidence_interval
-compute_metrics = prediction_metrics
-
-
 RESFINDER_COLUMNS = ("genome_id", "true_label", "predicted_label")
 
 
@@ -288,29 +283,3 @@ def load_resfinder_predictions(path: str | Path | None) -> pd.DataFrame | None:
     if result["genome_id"].duplicated().any():
         raise ValueError("ResFinder CSV contains duplicate genome_id values")
     return result
-
-
-read_resfinder_predictions = load_resfinder_predictions
-ingest_resfinder_csv = load_resfinder_predictions
-balanced_accuracy_chance = chance_balanced_accuracy
-compute_performance_metrics = prediction_metrics
-paired_fold_confidence_interval = paired_difference_confidence_interval
-
-
-def confidence_interval(
-    values: Sequence[float] | pd.DataFrame,
-    *,
-    value_column: str | None = None,
-    confidence: float = 0.95,
-    seed: int = 0,
-    n_bootstrap: int = 10_000,
-) -> dict[str, Any]:
-    """Generic alias for the fold-level bootstrap interval."""
-
-    return fold_confidence_interval(
-        values,
-        value_column=value_column,
-        confidence=confidence,
-        seed=seed,
-        n_bootstrap=n_bootstrap,
-    )

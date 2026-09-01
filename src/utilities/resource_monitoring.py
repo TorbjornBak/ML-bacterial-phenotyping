@@ -273,13 +273,3 @@ def ingest_slurm_accounting(record: Mapping[str, Any]) -> dict[str, Any]:
     max_rss = record.get("MaxRSS", record.get("maxrss", record.get("max_rss")))
     job_id = record.get("JobID", record.get("job_id", record.get("slurm_job_id")))
     return ingest_slurm_record(elapsed, max_rss, job_id=job_id)
-
-
-# Concise aliases for callers writing a post-job ingestion script.
-ingest_slurm = ingest_slurm_accounting
-
-# Compatibility spellings make the post-processing API easy to discover.
-parse_slurm_maxrss = parse_slurm_max_rss
-monitor_stage = measure_stage
-ResourceMeasurement = StageMeasurement
-StageResourceMonitor = ResourceMonitor

@@ -137,24 +137,8 @@ class SparseKmerCounts:
         return np.asarray(self.metadata["raw_token_counts"], dtype=np.int64)
 
     @property
-    def retained_token_counts(self) -> np.ndarray:
-        return self.raw_token_counts
-
-    @property
-    def raw_counts(self) -> np.ndarray:
-        """Backward-compatible short name for retained raw token counts."""
-
-        return self.raw_token_counts
-
-    @property
     def valid_window_counts(self) -> np.ndarray:
         return np.asarray(self.metadata["valid_window_counts"], dtype=np.int64)
-
-    @property
-    def counts(self) -> sparse.csr_matrix:
-        """Alias for callers that use ``counts`` for the feature matrix."""
-
-        return self.matrix
 
     def save(self, path: str | Path, dataset: str | None = None) -> Path:
         """Save the CSR matrix and JSON metadata, returning the NPZ path.
@@ -317,7 +301,6 @@ def build_sparse_kmer_counts(
         "normalization": mode,
         "reverse_complement": bool(reverse_complement),
         "raw_token_counts": raw_token_counts,
-        "raw_counts": raw_token_counts,
         "retained_token_counts": raw_token_counts,
         "valid_window_counts": valid_window_counts,
         "candidate_window_counts": candidate_window_counts,
@@ -359,21 +342,11 @@ def load_sparse_kmer_counts(path: str | Path) -> SparseKmerCounts:
     return SparseKmerCounts(matrix=matrix, metadata=metadata)
 
 
-# Small aliases keep the seam discoverable for code that calls the output a
-# matrix or uses the naming convention of ``integer_embeddings``.
-build_sparse_kmer_matrix = build_sparse_kmer_counts
-kmer_to_integer = encode_kmer
-integer_to_kmer = decode_kmer
-
-
 __all__ = [
     "SparseKmerCounts",
     "build_sparse_kmer_counts",
-    "build_sparse_kmer_matrix",
     "decode_kmer",
     "encode_kmer",
-    "integer_to_kmer",
-    "kmer_to_integer",
     "load_sparse_kmer_counts",
     "save_sparse_kmer_counts",
 ]

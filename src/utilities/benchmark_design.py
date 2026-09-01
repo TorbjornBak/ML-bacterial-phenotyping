@@ -523,14 +523,3 @@ def assert_split_manifest_identity(left: pd.DataFrame | str | Path, right: pd.Da
     right_key = right_frame[columns].sort_values(columns).reset_index(drop=True)
     if not left_key.equals(right_key):
         raise AssertionError("split manifests do not have identical genome/cluster/fold assignments")
-
-
-# Descriptive aliases make the seam convenient for callers that use manifest
-# terminology rather than the verb used by the implementation.
-generate_prefix_manifest = create_prefix_manifest
-build_prefix_manifest = create_prefix_manifest
-load_prefix_manifest = read_prefix_manifest
-generate_split_manifest = create_split_manifest
-build_split_manifest = create_split_manifest
-load_split_manifest = read_split_manifest
-assert_same_split_manifest = assert_split_manifest_identity

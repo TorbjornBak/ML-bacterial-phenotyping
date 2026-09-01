@@ -96,6 +96,9 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
                 "dataset": "toy",
                 "cluster_id": f"c{index}",
                 "fold_id": index // 4,
+                "requested_n_folds": 5,
+                "effective_n_folds": 2,
+                "fold_reduction_rule": "fold_reduction: requested 5, used 2",
             }
         )
     label_path = tmp_path / "labels.csv"
@@ -119,7 +122,7 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
         "prefix_lengths": [1],
         "prefix_seed": 7,
         "n_prefixes": 1,
-        "n_folds": 2,
+        "n_folds": 5,
         "normalization": "frequency",
         "model": {
             "solver": "liblinear",
