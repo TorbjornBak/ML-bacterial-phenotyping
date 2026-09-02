@@ -45,6 +45,165 @@ DEFAULT_PHENOTYPE_METADATA: dict[str, dict[str, Any]] = {
 }
 
 
+def _genome_contigs(value: Any) -> list[str]:
+    """Normalize one genome to independent, whitespace-free contigs.
+
+    Whitespace-delimited strings are treated as separate contigs, matching
+    the sequence convention used by the sparse counter and avoiding windows
+    across boundaries in tabular sequence inputs.
+    """
+
+    if value is None:
+        return []
+    if isinstance(value, bytes):
+        value = value.decode()
+    if isinstance(value, str):
+        return [part.upper() for part in value.split() if part]
+    if not isinstance(value, Iterable):
+        raise TypeError("genome sequences must be strings or iterables of contigs")
+    contigs: list[str] = []
+    for contig in value:
+        if contig is None:
+            continue
+        if isinstance(contig, bytes):
+            contig = contig.decode()
+        if not isinstance(contig, str):
+            raise TypeError("contigs must be strings")
+        contigs.extend(part.upper() for part in contig.split() if part)
+    return contigs
+
+
+def create_cluster_manifest(
+    genomes: Mapping[Any, Any],
+    *,
+    dataset: str | Mapping[Any, Any] | Sequence[Any] = "default",
+    ksize: int = 31,
+    n_hashes: int = 1000,
+    threshold: float | None = None,
+    n_clusters: int | None = None,
+    output_path: str | Path | None = None,
+) -> pd.DataFrame:
+    """Sketch complete genomes and assign deterministic sequence clusters.
+
+    Each mapping value is one sequence or an iterable of independent contigs;
+    contigs are added separately to Sourmash so no k-mer crosses a boundary.
+    Sourmash Jaccard similarities are explicitly converted to distances before
+    hierarchical clustering.  Supply exactly one of ``threshold`` (distance
+    cutoff) or ``n_clusters`` (requested flat-cluster count).  Cluster names
+    are canonicalized by their lexicographically smallest genome ID, making
+    manifests stable when the input mapping order changes.
+    """
+
+    if not isinstance(genomes, Mapping):
+        raise TypeError("genomes must be a genome_id-to-sequences mapping")
+    if not genomes:
+        raise ValueError("genomes must not be empty")
+    if (
+        isinstance(ksize, bool)
+        or not isinstance(ksize, (int, np.integer))
+        or int(ksize) <= 0
+    ):
+        raise ValueError("ksize must be a positive integer")
+    if (
+        isinstance(n_hashes, bool)
+        or not isinstance(n_hashes, (int, np.integer))
+        or int(n_hashes) <= 0
+    ):
+        raise ValueError("n_hashes must be a positive integer")
+    if (threshold is None) == (n_clusters is None):
+        raise ValueError("supply exactly one of threshold or n_clusters")
+    if threshold is not None:
+        if isinstance(threshold, bool) or not isinstance(threshold, (int, float, np.number)):
+            raise ValueError("threshold must be a finite non-negative number")
+        threshold = float(threshold)
+        if not np.isfinite(threshold) or threshold < 0:
+            raise ValueError("threshold must be a finite non-negative number")
+    if n_clusters is not None:
+        if (
+            isinstance(n_clusters, bool)
+            or not isinstance(n_clusters, (int, np.integer))
+            or int(n_clusters) < 1
+            or int(n_clusters) > len(genomes)
+        ):
+            raise ValueError("n_clusters must be between 1 and the number of genomes")
+        n_clusters = int(n_clusters)
+
+    raw_genome_ids = [str(genome_id) for genome_id in genomes]
+    if len(set(raw_genome_ids)) != len(raw_genome_ids):
+        raise ValueError("genome IDs must be unique")
+    genome_values = {
+        str(genome_id): value for genome_id, value in genomes.items()
+    }
+    genome_ids = list(genome_values)
+    genome_ids.sort()
+    if isinstance(dataset, Mapping):
+        dataset_values = {str(genome_id): value for genome_id, value in dataset.items()}
+        missing = set(genome_ids).difference(dataset_values)
+        if missing:
+            raise ValueError(f"dataset mapping is missing genome IDs: {sorted(missing)}")
+        datasets = [dataset_values[genome_id] for genome_id in genome_ids]
+    elif isinstance(dataset, str):
+        datasets = [dataset] * len(genome_ids)
+    else:
+        input_datasets = list(dataset)
+        if len(input_datasets) != len(genome_ids):
+            raise ValueError("dataset must have one value per genome")
+        dataset_values = dict(zip(raw_genome_ids, input_datasets))
+        datasets = [dataset_values[genome_id] for genome_id in genome_ids]
+    datasets = [str(value) for value in datasets]
+
+    try:
+        import sourmash
+        from scipy.cluster.hierarchy import fcluster, linkage
+        from scipy.spatial.distance import squareform
+    except ImportError as exc:
+        raise ImportError("create_cluster_manifest requires sourmash and scipy") from exc
+
+    sketches = []
+    for genome_id in genome_ids:
+        sketch = sourmash.MinHash(n=int(n_hashes), ksize=int(ksize))
+        for contig in _genome_contigs(genome_values[genome_id]):
+            sketch.add_sequence(contig, True)
+        sketches.append(sketch)
+
+    distance_matrix = np.zeros((len(sketches), len(sketches)), dtype=float)
+    for left in range(len(sketches)):
+        for right in range(left):
+            similarity = float(sketches[left].jaccard(sketches[right]))
+            distance = 1.0 - similarity
+            distance_matrix[left, right] = distance
+            distance_matrix[right, left] = distance
+
+    if len(sketches) == 1:
+        flat_clusters = np.ones(1, dtype=int)
+    else:
+        linkage_matrix = linkage(squareform(distance_matrix, checks=False), method="average")
+        if threshold is not None:
+            flat_clusters = fcluster(linkage_matrix, t=threshold, criterion="distance")
+        else:
+            flat_clusters = fcluster(linkage_matrix, t=n_clusters, criterion="maxclust")
+
+    members: dict[int, list[str]] = {}
+    for genome_id, flat_cluster in zip(genome_ids, flat_clusters):
+        members.setdefault(int(flat_cluster), []).append(genome_id)
+    canonical_ids = {
+        flat_cluster: f"cluster_{rank:04d}"
+        for rank, (flat_cluster, _) in enumerate(
+            sorted(members.items(), key=lambda item: min(item[1]))
+        )
+    }
+    manifest = pd.DataFrame(
+        {
+            "genome_id": genome_ids,
+            "dataset": datasets,
+            "cluster_id": [canonical_ids[int(cluster)] for cluster in flat_clusters],
+        }
+    )
+    if output_path is not None:
+        _write_table(manifest, output_path)
+    return manifest
+
+
 def _write_table(table: pd.DataFrame, path: str | Path) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -244,6 +403,11 @@ def read_prefix_manifest(path: str | Path) -> pd.DataFrame:
     )
     if bad_prefix.any():
         raise ValueError("prefix length does not match prefix_length")
+    invalid_prefixes = manifest.loc[manifest["prefix"] != "", "prefix"].map(
+        lambda prefix: any(base not in DNA_ALPHABET for base in str(prefix).upper())
+    )
+    if invalid_prefixes.any():
+        raise ValueError("prefix contains a non-DNA base")
     validate_experiment_matrix(
         sorted(manifest["total_k"].dropna().astype(int).unique()),
         sorted(manifest["prefix_length"].astype(int).unique()),
@@ -276,12 +440,19 @@ def get_phenotype_metadata(
     if not classes:
         n_classes = int(source_definition.get("n_classes", 0))
         classes = list(range(n_classes))
+    if not classes:
+        raise ValueError(f"phenotype {phenotype!r} has no classes")
     n_classes = int(source_definition.get("n_classes", len(classes)))
     if n_classes != len(classes):
         n_classes = len(classes)
+    positive_class = source_definition.get("positive_class", classes[-1])
+    if positive_class not in classes:
+        raise ValueError(
+            f"positive_class {positive_class!r} is not present in classes for phenotype {phenotype!r}"
+        )
     result = {
         "name": phenotype,
-        "positive_class": source_definition.get("positive_class", classes[-1]),
+        "positive_class": positive_class,
         "classes": classes,
         "n_classes": n_classes,
     }
@@ -303,7 +474,18 @@ def _normalise_labels(frame: pd.DataFrame, labels: Any, id_column: str, phenotyp
         label_frame = labels.rename(phenotype if isinstance(phenotype, str) else "label").reset_index()
         label_frame = label_frame.rename(columns={"index": id_column})
     elif isinstance(labels, Mapping):
-        label_frame = pd.DataFrame({id_column: list(labels), phenotype or "label": list(labels.values())})
+        if isinstance(phenotype, Sequence) and not isinstance(phenotype, str):
+            # A mapping of genome ID to a mapping of phenotype names is a
+            # convenient input for callers constructing several shared folds.
+            if not all(isinstance(value, Mapping) for value in labels.values()):
+                raise ValueError("mapping labels with multiple phenotypes must map IDs to mappings")
+            label_frame = pd.DataFrame.from_dict(labels, orient="index")
+            label_frame.index.name = id_column
+            label_frame = label_frame.reset_index()
+        else:
+            label_frame = pd.DataFrame(
+                {id_column: list(labels), phenotype or "label": list(labels.values())}
+            )
     else:
         label_frame = pd.DataFrame(labels).copy()
     if id_column not in label_frame.columns:
@@ -324,7 +506,15 @@ def _assignment_for_groups(groups: pd.DataFrame, classes: list[Any], n_folds: in
     keys = list(groups.index)
     random_order = {key: int(value) for key, value in zip(keys, rng.permutation(len(keys)))}
     rarity = {cls: int(sum(cls in values for values in groups["_classes"])) for cls in classes}
-    keys.sort(key=lambda key: (min(rarity[c] for c in value(key, "_classes")), random_order[key], str(key)))
+    keys.sort(
+        key=lambda key: (
+            min(rarity[c] for c in value(key, "_classes"))
+            if value(key, "_classes")
+            else 0,
+            random_order[key],
+            str(key),
+        )
+    )
     fold_classes = [set() for _ in range(n_folds)]
     fold_sizes = np.zeros(n_folds, dtype=int)
     assignment: dict[tuple[Any, Any], int] = {}
@@ -341,9 +531,10 @@ def _assignment_for_groups(groups: pd.DataFrame, classes: list[Any], n_folds: in
         fold_classes[fold].update(values)
         fold_sizes[fold] += int(value(key, "_size"))
 
-    # Repair a missing class where moving a group will not remove it from the
-    # source fold.  Under the class-group bound this is sufficient for the
-    # ordinary one-label-per-genome benchmark and is deterministic for ties.
+    # Repair a missing class where moving a group will not remove any class
+    # from its source fold.  This matters for multi-phenotype manifests: a
+    # group can carry several (phenotype, class) requirements at once, and a
+    # move that repairs one requirement must not break another one.
     for cls in classes:
         for target in range(n_folds):
             if any(cls in value(key, "_classes") and assignment[key] == target for key in keys):
@@ -356,16 +547,35 @@ def _assignment_for_groups(groups: pd.DataFrame, classes: list[Any], n_folds: in
             moved = False
             for key in candidates:
                 source = assignment[key]
-                source_has_other = any(
-                    other != key and assignment[other] == source and cls in value(other, "_classes")
-                    for other in keys
+                values = set(value(key, "_classes"))
+                # Preserve every requirement currently covered only by this
+                # group in the source fold.
+                source_would_lose = any(
+                    requirement in values
+                    and not any(
+                        other != key
+                        and assignment[other] == source
+                        and requirement in value(other, "_classes")
+                        for other in keys
+                    )
+                    for requirement in value(key, "_classes")
                 )
-                if source_has_other:
-                    assignment[key] = target
-                    moved = True
-                    break
+                if source_would_lose:
+                    continue
+                assignment[key] = target
+                moved = True
+                break
             if not moved:
                 return {}
+    if any(
+        not any(
+            assignment[key] == fold and cls in value(key, "_classes")
+            for key in keys
+        )
+        for fold in range(n_folds)
+        for cls in classes
+    ):
+        return {}
     return assignment
 
 
@@ -383,7 +593,11 @@ def create_split_manifest(
 ) -> pd.DataFrame:
     """Create deterministic grouped folds and return a genome-level manifest."""
 
-    if not isinstance(n_folds, (int, np.integer)) or n_folds < 1:
+    if (
+        isinstance(n_folds, bool)
+        or not isinstance(n_folds, (int, np.integer))
+        or n_folds < 1
+    ):
         raise ValueError("n_folds must be a positive integer")
     frame = _as_dataframe(genomes, id_column)
     if id_column not in frame.columns:
@@ -415,16 +629,26 @@ def create_split_manifest(
     for column in label_columns:
         if column not in frame.columns:
             raise ValueError(f"phenotype column {column!r} not found")
-        if frame[column].isna().any():
-            raise ValueError(f"phenotype column {column!r} contains missing labels")
+
+    if frame[dataset_column].isna().any():
+        raise ValueError("every genome must have a dataset")
 
     grouped = frame.groupby([dataset_column, cluster_column], sort=True, dropna=False)
     group_rows = []
     for key, group in grouped:
+        # Keep phenotype identity in the coverage requirements.  Taking the
+        # union of raw class values would incorrectly treat a class present in
+        # phenotype A as coverage for the same-valued class in phenotype B.
         values: set[Any] = set()
         for column in label_columns:
-            values.update(group[column].tolist())
+            values.update(
+                (column, label)
+                for label in group[column].tolist()
+                if not pd.isna(label)
+            )
         group_rows.append({"_key": key, "_classes": values, "_size": len(group)})
+    if not group_rows:
+        raise ValueError("cannot create folds from an empty genome set")
     group_frame = pd.DataFrame(group_rows).set_index("_key")
     classes = sorted({item for values in group_frame["_classes"] for item in values}, key=str)
     requested = int(n_folds)
@@ -483,6 +707,14 @@ def validate_split_manifest(
         raise ValueError("split manifest contains duplicate genome IDs")
     if manifest.groupby(["dataset", "cluster_id"], dropna=False)["fold_id"].nunique().gt(1).any():
         raise ValueError("a cluster crosses fold boundaries")
+    if manifest[["dataset", "cluster_id", "fold_id"]].isna().any().any():
+        raise ValueError("split manifest contains missing dataset, cluster, or fold values")
+    if n_folds is not None and (
+        isinstance(n_folds, bool)
+        or not isinstance(n_folds, (int, np.integer))
+        or int(n_folds) < 1
+    ):
+        raise ValueError("n_folds must be a positive integer")
     requested = manifest["fold_id"].nunique() if n_folds is None else int(n_folds)
     if requested != manifest["fold_id"].nunique():
         raise ValueError("manifest does not contain the requested number of folds")

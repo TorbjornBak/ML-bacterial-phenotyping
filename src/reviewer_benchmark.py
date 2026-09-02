@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import json
 import subprocess
@@ -13,6 +14,9 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _slug(value: object) -> str:
@@ -33,7 +37,7 @@ def _code_version() -> str | None:
 
 def build_condition_manifest(config: Mapping[str, Any], pilot: bool = False) -> pd.DataFrame:
     """Expand configuration into immutable, independently runnable conditions."""
-    from utilities.benchmark_design import create_prefix_manifest
+    from utilities.benchmark_design import create_prefix_manifest, get_phenotype_metadata
 
     phenotypes = list(config["phenotypes"])
     total_k_values = [int(value) for value in config["total_k"]]
@@ -58,11 +62,25 @@ def build_condition_manifest(config: Mapping[str, Any], pilot: bool = False) -> 
 
     rows: list[dict[str, Any]] = []
     for phenotype in phenotypes:
+        if "classes" not in phenotype:
+            raise ValueError(
+                f"Phenotype {phenotype['name']!r} must declare classes so class orientation is reproducible"
+            )
+        definition = {
+            "classes": phenotype["classes"],
+            "n_classes": phenotype.get("n_classes", len(phenotype["classes"])),
+            "positive_class": phenotype.get("positive_class"),
+        }
+        metadata = get_phenotype_metadata(
+            phenotype["name"], {phenotype["name"]: definition}
+        )
         common = {
             "dataset": phenotype["dataset"],
-            "phenotype": phenotype["name"],
+            "phenotype": metadata["name"],
             "label_column": phenotype.get("label_column", phenotype["name"]),
-            "positive_class": phenotype.get("positive_class"),
+            "positive_class": metadata["positive_class"],
+            "n_classes": metadata["n_classes"],
+            "classes_json": json.dumps(metadata["classes"], default=str),
         }
         for total_k in total_k_values:
             rows.append(
@@ -128,23 +146,192 @@ def write_failure_record(
     return path
 
 
+def _configured_path_base(config: Mapping[str, Any], config_path: Path) -> Path:
+    base = Path(config.get("path_base", REPOSITORY_ROOT)).expanduser()
+    if not base.is_absolute():
+        base = config_path.resolve().parent / base
+    return base.resolve()
+
+
+def _resolve_path(value: str | Path, base: Path) -> Path:
+    path = Path(value).expanduser()
+    return (path if path.is_absolute() else base / path).resolve()
+
+
+def _resolve_dataset_paths(
+    datasets: Mapping[str, Mapping[str, Any]], base: Path
+) -> dict[str, dict[str, Any]]:
+    resolved: dict[str, dict[str, Any]] = {}
+    for name, dataset in datasets.items():
+        item = dict(dataset)
+        for field in ("input", "labels"):
+            if item.get(field) is not None:
+                item[field] = str(_resolve_path(item[field], base))
+        resolved[name] = item
+    return resolved
+
+
 def prepare(config_path: str | Path, output_directory: str | Path | None, pilot: bool) -> Path:
     config_path = Path(config_path)
     config = json.loads(config_path.read_text())
-    destination = Path(output_directory or config["output_dir"])
+    # A prepared run is commonly submitted later from a different login
+    # directory.  Freeze the output location now so the resolved config and
+    # every array task agree on where artifacts belong.
+    configured_base = _configured_path_base(config, config_path)
+    destination = _resolve_path(output_directory or config["output_dir"], configured_base)
     destination.mkdir(parents=True, exist_ok=True)
 
     manifest = build_condition_manifest(config, pilot=pilot)
     manifest_path = destination / ("conditions.pilot.csv" if pilot else "conditions.csv")
     manifest.to_csv(manifest_path, index=False)
 
+    # Keep the prefix draw as a first-class input to the experiment.  The
+    # condition manifest repeats these rows once per phenotype, which is
+    # convenient for arrays but is not a useful provenance artifact by
+    # itself.  Deduplicating here gives analysts and cluster jobs one stable
+    # manifest to archive and inspect before any feature extraction starts.
+    prefix_columns = [
+        "total_k",
+        "prefix",
+        "prefix_length",
+        "suffix_length",
+        "prefix_source",
+        "seed",
+    ]
+    prefix_path = destination / ("prefix_manifest.pilot.csv" if pilot else "prefix_manifest.csv")
+    manifest.loc[manifest["representation"].eq("prefix_filtered")].reindex(columns=prefix_columns).drop_duplicates().to_csv(
+        prefix_path, index=False
+    )
+
     resolved = dict(config)
     resolved["output_dir"] = str(destination)
     resolved["pilot"] = pilot
     resolved["code_version"] = _code_version()
     resolved["condition_manifest"] = str(manifest_path)
+    resolved["prefix_manifest"] = str(prefix_path)
+    resolved["condition_manifest_sha256"] = _manifest_digest(manifest_path)
+    resolved["prefix_manifest_sha256"] = _manifest_digest(prefix_path)
+    # Likewise freeze input paths in the resolved config.  The example config
+    # uses repository-root-relative paths. ``path_base`` lets a separate
+    # deployment choose another explicit base without depending on CWD.
+    resolved["datasets"] = _resolve_dataset_paths(
+        config.get("datasets", {}), configured_base
+    )
+    resolved["prepared_from"] = str(config_path.resolve())
+    resolved["path_base"] = str(configured_base)
     (destination / "resolved_run_manifest.json").write_text(json.dumps(resolved, indent=2) + "\n")
     return manifest_path
+
+
+def prepare_split_manifest(
+    config_path: str | Path,
+    output_path: str | Path | None = None,
+) -> Path:
+    """Sketch full genomes, cluster them once, and freeze shared grouped folds.
+
+    This is deliberately separate from :func:`prepare`: full-genome Sourmash
+    sketching can be expensive, while prefix/condition manifest generation is
+    cheap and should be inspectable before compute is submitted.
+    """
+
+    from utilities.benchmark_design import create_cluster_manifest, create_split_manifest
+
+    config_path = Path(config_path)
+    config = json.loads(config_path.read_text())
+    configured_base = _configured_path_base(config, config_path)
+    config["datasets"] = _resolve_dataset_paths(config["datasets"], configured_base)
+    default_output = _resolve_path(config["output_dir"], configured_base) / "split_manifest.csv"
+    destination = _resolve_path(output_path, configured_base) if output_path else default_output
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    clustering = dict(config.get("clustering", {}))
+    threshold = clustering.get("distance_threshold")
+    n_clusters = clustering.get("n_clusters")
+    if (threshold is None) == (n_clusters is None):
+        raise ValueError(
+            "clustering must declare exactly one of distance_threshold or n_clusters"
+        )
+
+    split_frames: list[pd.DataFrame] = []
+    for dataset_name, dataset in config["datasets"].items():
+        phenotype_definitions = [
+            phenotype
+            for phenotype in config["phenotypes"]
+            if phenotype["dataset"] == dataset_name
+        ]
+        if not phenotype_definitions:
+            continue
+        sequences, _ = _load_sequences(dataset)
+        id_column = dataset["id_column"]
+        label_columns = list(
+            dict.fromkeys(
+                phenotype.get("label_column", phenotype["name"])
+                for phenotype in phenotype_definitions
+            )
+        )
+        labels = _read_table(dataset["labels"], dataset.get("label_separator", ","))
+        missing = {id_column, *label_columns}.difference(labels.columns)
+        if missing:
+            raise ValueError(
+                f"Labels for dataset {dataset_name!r} are missing columns: {sorted(missing)}"
+            )
+        labels = labels[[id_column, *label_columns]].copy()
+        labels[id_column] = labels[id_column].astype(str)
+        if labels[id_column].duplicated().any():
+            conflicts = labels.groupby(id_column, dropna=False)[label_columns].nunique(
+                dropna=True
+            )
+            if conflicts.gt(1).any().any():
+                raise ValueError(
+                    f"Labels for dataset {dataset_name!r} contain conflicting duplicate genome IDs"
+                )
+            labels = labels.groupby(id_column, as_index=False, dropna=False).first()
+        for phenotype in phenotype_definitions:
+            label_column = phenotype.get("label_column", phenotype["name"])
+            observed = list(labels[label_column].dropna().unique())
+            declared = [
+                _resolve_class(value, observed) for value in phenotype.get("classes", [])
+            ]
+            if not declared or set(declared) != set(observed):
+                raise ValueError(
+                    f"Configured classes {phenotype.get('classes')!r} do not match observed "
+                    f"classes {sorted(observed, key=str)!r} for {label_column!r}"
+                )
+
+        cluster_manifest = create_cluster_manifest(
+            sequences,
+            dataset=dataset_name,
+            ksize=int(clustering.get("ksize", 31)),
+            n_hashes=int(clustering.get("n_hashes", 1000)),
+            threshold=None if threshold is None else float(threshold),
+            n_clusters=None if n_clusters is None else int(n_clusters),
+        )
+        design = cluster_manifest.merge(
+            labels,
+            left_on="genome_id",
+            right_on=id_column,
+            how="left",
+            validate="one_to_one",
+        )
+        if id_column != "genome_id":
+            design = design.drop(columns=[id_column])
+        split_frames.append(
+            create_split_manifest(
+                design,
+                phenotype=label_columns,
+                n_folds=int(config.get("n_folds", 5)),
+                seed=int(config.get("split_seed", 0)),
+            )
+        )
+
+    if not split_frames:
+        raise ValueError("No configured dataset has a phenotype to split")
+    manifest = pd.concat(split_frames, ignore_index=True, sort=False)
+    if destination.suffix.lower() in {".parquet", ".pq"}:
+        manifest.to_parquet(destination, index=False)
+    else:
+        manifest.to_csv(destination, index=False)
+    return destination
 
 
 def _read_table(path: str | Path, separator: str = ",") -> pd.DataFrame:
@@ -155,9 +342,17 @@ def _read_table(path: str | Path, separator: str = ",") -> pd.DataFrame:
 
 
 def _load_sequences(dataset: Mapping[str, Any]) -> tuple[OrderedDict[str, list[str]], int]:
-    """Load FASTA or Parquet input without joining contigs across boundaries."""
+    """Load FASTA (including ``.gz``) or Parquet without joining contigs.
+
+    The repository's gentamicin data stores one compressed FASTA per genome,
+    with the genome ID in the filename.  Keeping the contigs as a list is
+    important: the sparse counter must never create a k-mer across a contig
+    boundary.
+    """
     input_path = Path(dataset["input"])
     file_type = str(dataset["file_type"]).lower().lstrip(".")
+    if file_type.endswith(".gz"):
+        file_type = file_type[:-3]
     id_column = dataset["id_column"]
     sequence_column = dataset.get("sequence_column", "dna_sequence")
     sequences: OrderedDict[str, list[str]] = OrderedDict()
@@ -165,17 +360,34 @@ def _load_sequences(dataset: Mapping[str, Any]) -> tuple[OrderedDict[str, list[s
     if file_type in {"fasta", "fa", "fna"}:
         from Bio import SeqIO
 
-        paths = [input_path] if input_path.is_file() else sorted(input_path.glob(f"*.{file_type}"))
-        if not paths and file_type == "fasta" and input_path.is_dir():
-            paths = sorted([*input_path.glob("*.fa"), *input_path.glob("*.fna")])
+        if input_path.is_file():
+            paths = [input_path]
+        else:
+            extensions = {file_type, "fasta", "fa", "fna"}
+            paths = sorted(
+                {
+                    path
+                    for extension in extensions
+                    for pattern in (f"*.{extension}", f"*.{extension}.gz")
+                    for path in input_path.glob(pattern)
+                }
+            )
         for path in paths:
-            sequences[path.stem] = [str(record.seq) for record in SeqIO.parse(path, "fasta")]
+            genome_id = Path(path.stem).stem if path.suffix.lower() == ".gz" else path.stem
+            handle = gzip.open(path, "rt") if path.suffix.lower() == ".gz" else open(path, "rt")
+            with handle as stream:
+                sequences[genome_id] = [str(record.seq) for record in SeqIO.parse(stream, "fasta")]
     elif file_type == "parquet":
         paths = [input_path] if input_path.is_file() else sorted(input_path.glob("*.parquet"))
         for path in paths:
             frame = pd.read_parquet(path, columns=[id_column, sequence_column])
             for genome_id, sequence in frame[[id_column, sequence_column]].itertuples(index=False):
-                contigs = str(sequence).split()
+                if sequence is None or (pd.api.types.is_scalar(sequence) and pd.isna(sequence)):
+                    contigs = []
+                elif isinstance(sequence, str):
+                    contigs = sequence.split()
+                else:
+                    contigs = [str(contig) for contig in sequence]
                 sequences.setdefault(str(genome_id), []).extend(contigs)
     else:
         raise ValueError(f"Unsupported file_type {file_type!r}; use FASTA or Parquet")
@@ -190,6 +402,20 @@ def _manifest_digest(path: str | Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
+def _sequence_digest(genomes: Mapping[str, list[str]]) -> str:
+    """Fingerprint genome order, IDs, contents, and contig boundaries."""
+
+    digest = hashlib.sha256()
+    for genome_id, contigs in genomes.items():
+        digest.update(str(genome_id).encode("utf-8"))
+        digest.update(b"\0")
+        for contig in contigs:
+            digest.update(str(contig).upper().encode("ascii"))
+            digest.update(b"\0")
+        digest.update(b"\xff")
+    return digest.hexdigest()
+
+
 def _validate_unique_labels(frame: pd.DataFrame, id_column: str, label_column: str) -> pd.DataFrame:
     duplicate_rows = frame[frame[id_column].duplicated(keep=False)]
     conflicts = duplicate_rows.groupby(id_column, dropna=False)[label_column].nunique(dropna=False)
@@ -198,12 +424,35 @@ def _validate_unique_labels(frame: pd.DataFrame, id_column: str, label_column: s
     return frame.drop_duplicates(id_column)
 
 
-def run_condition(
+def _resolve_class(value: Any, classes: Any) -> Any:
+    """Resolve a JSON-configured class against labels loaded from a table.
+
+    CSV readers commonly infer ``1`` as an integer while JSON necessarily
+    stores the same setting as ``"1"``.  Match exact values first, then use a
+    string comparison so this harmless serialization difference cannot
+    disable the explicitly configured positive-class orientation.
+    """
+
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return value
+    classes = list(classes)
+    for candidate in classes:
+        if value == candidate:
+            return candidate
+    text = str(value)
+    for candidate in classes:
+        if str(candidate) == text:
+            return candidate
+    return value
+
+
+def _run_condition(
     config: Mapping[str, Any],
     condition: Mapping[str, Any] | pd.Series,
     split_manifest_path: str | Path,
     *,
     reuse_features: bool = False,
+    overall_measurement: Any,
 ) -> Path:
     """Execute one full or prefix-filtered condition and persist tidy outputs."""
     import numpy as np
@@ -222,9 +471,6 @@ def run_condition(
     output_directory = output_root / "conditions" / condition_id
     output_directory.mkdir(parents=True, exist_ok=True)
     monitor = ResourceMonitor(condition_id=condition_id)
-    overall_measurement = measure_stage("overall", condition_id, cache_state="unknown")
-    overall_measurement.__enter__()
-
     with monitor.stage("loading"):
         sequences, total_bases = _load_sequences(dataset)
         labels = _read_table(dataset["labels"], dataset.get("label_separator", ","))
@@ -267,9 +513,22 @@ def run_condition(
         label_by_id = labels.set_index(id_column)[label_column]
         fold_by_id = split_manifest.set_index("genome_id")["fold_id"]
         genomes = OrderedDict((genome_id, sequences[genome_id]) for genome_id in usable_ids)
+        input_sha256 = _sequence_digest(genomes)
         y = label_by_id.loc[usable_ids].to_numpy()
         folds = fold_by_id.loc[usable_ids].to_numpy()
         expected_classes = set(y)
+        declared_classes = json.loads(str(condition["classes_json"]))
+        resolved_classes = [_resolve_class(value, expected_classes) for value in declared_classes]
+        if set(resolved_classes) != expected_classes or len(resolved_classes) != len(expected_classes):
+            raise ValueError(
+                f"Configured classes {declared_classes!r} do not match observed classes "
+                f"{sorted(expected_classes, key=str)!r} for {label_column!r}"
+            )
+        if int(condition["n_classes"]) != len(expected_classes):
+            raise ValueError(
+                f"Configured n_classes={condition['n_classes']!r} does not match "
+                f"{len(expected_classes)} observed classes for {label_column!r}"
+            )
         for fold_id in pd.unique(folds):
             if set(y[folds == fold_id]) != expected_classes:
                 raise ValueError(f"Fold {fold_id!r} lacks one or more classes for {label_column!r}")
@@ -287,8 +546,22 @@ def run_condition(
             features = load_sparse_kmer_counts(matrix_path)
         if features.genome_ids != usable_ids:
             raise ValueError("Cached feature genome order does not match the current benchmark inputs")
+        expected_cache_metadata = {
+            "total_k": int(condition["total_k"]),
+            "prefix": prefix,
+            "normalization": config.get("normalization", "frequency"),
+            "reverse_complement": bool(config.get("reverse_complement", False)),
+            "input_sha256": input_sha256,
+        }
+        mismatches = {
+            key: (features.metadata.get(key), expected)
+            for key, expected in expected_cache_metadata.items()
+            if features.metadata.get(key) != expected
+        }
+        if mismatches:
+            raise ValueError(f"Cached feature metadata does not match this condition: {mismatches}")
     else:
-        with monitor.stage("tokenization_and_matrix_construction", cache_state="cold"):
+        with monitor.stage("feature_extraction", cache_state="cold"):
             features = build_sparse_kmer_counts(
                 genomes,
                 total_k=int(condition["total_k"]),
@@ -296,7 +569,9 @@ def run_condition(
                 normalization=config.get("normalization", "frequency"),
                 reverse_complement=bool(config.get("reverse_complement", False)),
                 dataset=dataset_name,
+                stage_callback=lambda stage: monitor.stage(stage, cache_state="cold"),
             )
+            features.metadata["input_sha256"] = input_sha256
         with monitor.stage("matrix_serialization", cache_state="cold"):
             matrix_path = features.save(output_directory, dataset=dataset_name)
 
@@ -304,7 +579,7 @@ def run_condition(
     score_rows: list[dict[str, Any]] = []
     metric_rows: list[dict[str, Any]] = []
     model_config = dict(config.get("model", {}))
-    positive_class = condition.get("positive_class")
+    positive_class = _resolve_class(condition.get("positive_class"), expected_classes)
     for fold_id in sorted(np.unique(folds)):
         train = folds != fold_id
         test = folds == fold_id
@@ -393,6 +668,48 @@ def run_condition(
     return output_directory
 
 
+def run_condition(
+    config: Mapping[str, Any],
+    condition: Mapping[str, Any] | pd.Series,
+    split_manifest_path: str | Path,
+    *,
+    reuse_features: bool = False,
+) -> Path:
+    """Run one condition and always close the process-wide resource sampler.
+
+    Stage samplers are closed by :class:`ResourceMonitor`; the overall
+    sampler spans the whole condition and therefore needs this small wrapper
+    around the implementation.  In particular, malformed inputs and model
+    failures must not leave a daemon sampler thread alive in a long-lived
+    process or test runner.
+    """
+
+    from utilities.resource_monitoring import measure_stage
+
+    condition_id = str(condition["condition_id"])
+    overall_measurement = measure_stage("overall", condition_id, cache_state="unknown")
+    overall_measurement.__enter__()
+    try:
+        result = _run_condition(
+            config,
+            condition,
+            split_manifest_path,
+            reuse_features=reuse_features,
+            overall_measurement=overall_measurement,
+        )
+    except BaseException as error:
+        # _run_condition closes the measurement on its successful path before
+        # serializing resources.  If it fails earlier, close it with the
+        # original exception so the stage has a truthful lifecycle record.
+        if not hasattr(overall_measurement, "record"):
+            overall_measurement.__exit__(type(error), error, error.__traceback__)
+        raise
+    else:
+        if not hasattr(overall_measurement, "record"):
+            overall_measurement.__exit__(None, None, None)
+        return result
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -401,6 +718,13 @@ def _parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument("--config", required=True)
     prepare_parser.add_argument("--output-dir")
     prepare_parser.add_argument("--pilot", action="store_true")
+
+    split_parser = subparsers.add_parser(
+        "prepare-splits",
+        help="Sketch full genomes and freeze the reusable cluster/fold manifest",
+    )
+    split_parser.add_argument("--config", required=True)
+    split_parser.add_argument("--output")
 
     run_parser = subparsers.add_parser("run-condition", help="Run one SLURM-safe condition manifest row")
     run_parser.add_argument("--config", required=True)
@@ -415,6 +739,9 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "prepare":
         print(prepare(args.config, args.output_dir, args.pilot))
+        return 0
+    if args.command == "prepare-splits":
+        print(prepare_split_manifest(args.config, args.output))
         return 0
     if args.command == "run-condition":
         config = json.loads(Path(args.config).read_text())

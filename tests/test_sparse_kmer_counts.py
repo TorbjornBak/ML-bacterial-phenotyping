@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 
 import numpy as np
 from scipy import sparse
@@ -114,3 +115,27 @@ def test_save_and_load_round_trip_uses_unambiguous_filename(tmp_path):
     np.testing.assert_array_equal(loaded.matrix.toarray(), result.matrix.toarray())
     assert loaded.metadata == result.metadata
     np.testing.assert_array_equal(loaded.raw_token_counts, result.raw_token_counts)
+
+
+def test_stage_callback_separates_counting_from_matrix_construction():
+    events = []
+
+    @contextmanager
+    def stage(name):
+        events.append((name, "start"))
+        yield
+        events.append((name, "finish"))
+
+    build_sparse_kmer_counts(
+        {"g1": "ACGTAC"},
+        total_k=3,
+        normalization="raw",
+        stage_callback=stage,
+    )
+
+    assert events == [
+        ("tokenization_and_counting", "start"),
+        ("tokenization_and_counting", "finish"),
+        ("matrix_construction", "start"),
+        ("matrix_construction", "finish"),
+    ]

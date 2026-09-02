@@ -7,7 +7,8 @@ base-four integer, so the feature space does not need to be enumerated.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -189,6 +190,7 @@ def build_sparse_kmer_counts(
     reverse_complement: bool = False,
     genome_ids: Sequence[Any] | None = None,
     dataset: str = "dataset",
+    stage_callback: Callable[[str], Any] | None = None,
 ) -> SparseKmerCounts:
     """Build full or prefix-filtered sparse k-mer counts.
 
@@ -198,6 +200,11 @@ def build_sparse_kmer_counts(
     the suffix of each matching complete k-mer, making its feature space
     ``4 ** (total_k - len(prefix))``.  With ``reverse_complement=True``,
     forward and reverse-complement strand windows are both counted.
+
+    ``stage_callback``, when supplied, must be a callable accepting a stage
+    name and returning a context manager. It is entered separately for
+    ``tokenization_and_counting`` and ``matrix_construction`` so callers can
+    instrument those phases without reimplementing the counter.
     """
 
     if not isinstance(total_k, (int, np.integer)) or isinstance(total_k, bool) or total_k <= 0:
@@ -248,47 +255,59 @@ def build_sparse_kmer_counts(
     valid_window_counts: list[int] = []
     candidate_window_counts: list[int] = []
 
-    for row, genome in enumerate(genome_values):
-        contigs = _as_contigs(genome)
-        row_counts: dict[int, int] = {}
-        raw_count = valid_count = candidate_count = 0
-        strands = list(contigs)
-        if reverse_complement:
-            strands.extend(_reverse_complement(contig) for contig in contigs)
-        for sequence in strands:
-            for start in range(max(0, len(sequence) - total_k + 1)):
-                candidate_count += 1
-                kmer = sequence[start : start + total_k]
-                if any(base not in _DNA_TO_DIGIT for base in kmer):
-                    continue
-                valid_count += 1
-                if prefix is not None and not kmer.startswith(prefix):
-                    continue
-                raw_count += 1
-                feature = kmer if prefix is None else kmer[len(prefix) :]
-                column = encode_kmer(feature)
-                row_counts[column] = row_counts.get(column, 0) + 1
-        for column, count in row_counts.items():
-            row_indices.append(row)
-            column_indices.append(column)
-            values.append(count)
-        raw_token_counts.append(raw_count)
-        valid_window_counts.append(valid_count)
-        candidate_window_counts.append(candidate_count)
+    count_context = (
+        stage_callback("tokenization_and_counting")
+        if stage_callback is not None
+        else nullcontext()
+    )
+    with count_context:
+        for row, genome in enumerate(genome_values):
+            contigs = _as_contigs(genome)
+            row_counts: dict[int, int] = {}
+            raw_count = valid_count = candidate_count = 0
+            strands = list(contigs)
+            if reverse_complement:
+                strands.extend(_reverse_complement(contig) for contig in contigs)
+            for sequence in strands:
+                for start in range(max(0, len(sequence) - total_k + 1)):
+                    candidate_count += 1
+                    kmer = sequence[start : start + total_k]
+                    if any(base not in _DNA_TO_DIGIT for base in kmer):
+                        continue
+                    valid_count += 1
+                    if prefix is not None and not kmer.startswith(prefix):
+                        continue
+                    raw_count += 1
+                    feature = kmer if prefix is None else kmer[len(prefix) :]
+                    column = encode_kmer(feature)
+                    row_counts[column] = row_counts.get(column, 0) + 1
+            for column, count in row_counts.items():
+                row_indices.append(row)
+                column_indices.append(column)
+                values.append(count)
+            raw_token_counts.append(raw_count)
+            valid_window_counts.append(valid_count)
+            candidate_window_counts.append(candidate_count)
 
     data_type = np.float32 if mode == "frequency" else np.int64
-    matrix = sparse.coo_matrix(
-        (np.asarray(values, dtype=data_type), (row_indices, column_indices)),
-        shape=(len(genome_values), feature_space_size),
-        dtype=data_type,
-    ).tocsr()
-    if mode == "frequency" and matrix.nnz:
-        # Use every valid candidate window as the common denominator.  This
-        # keeps full and filtered representations directly comparable and
-        # leaves prefix retention visible in feature magnitude.
-        denominators = np.asarray(valid_window_counts, dtype=np.float32)
-        nonempty_rows = np.repeat(np.arange(matrix.shape[0]), np.diff(matrix.indptr))
-        matrix.data /= denominators[nonempty_rows]
+    matrix_context = (
+        stage_callback("matrix_construction")
+        if stage_callback is not None
+        else nullcontext()
+    )
+    with matrix_context:
+        matrix = sparse.coo_matrix(
+            (np.asarray(values, dtype=data_type), (row_indices, column_indices)),
+            shape=(len(genome_values), feature_space_size),
+            dtype=data_type,
+        ).tocsr()
+        if mode == "frequency" and matrix.nnz:
+            # Use every valid candidate window as the common denominator.  This
+            # keeps full and filtered representations directly comparable and
+            # leaves prefix retention visible in feature magnitude.
+            denominators = np.asarray(valid_window_counts, dtype=np.float32)
+            nonempty_rows = np.repeat(np.arange(matrix.shape[0]), np.diff(matrix.indptr))
+            matrix.data /= denominators[nonempty_rows]
 
     metadata = {
         "dataset": str(dataset),

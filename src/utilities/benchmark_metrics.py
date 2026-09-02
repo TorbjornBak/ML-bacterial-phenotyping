@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from collections.abc import Sequence
+from numbers import Real
 from typing import Any
 
 import numpy as np
@@ -24,7 +25,13 @@ from sklearn.metrics import (
 def chance_balanced_accuracy(n_classes: int) -> float:
     """Return the balanced-accuracy chance reference for ``n_classes``."""
 
-    if isinstance(n_classes, bool) or int(n_classes) != n_classes or n_classes < 1:
+    if (
+        isinstance(n_classes, bool)
+        or not isinstance(n_classes, Real)
+        or not np.isfinite(n_classes)
+        or n_classes < 1
+        or int(n_classes) != n_classes
+    ):
         raise ValueError("n_classes must be a positive integer")
     return 1.0 / int(n_classes)
 
@@ -39,10 +46,14 @@ def _as_array(values: Any, *, name: str) -> np.ndarray:
 
 
 def _classes(y_true: np.ndarray, y_pred: np.ndarray, labels: Sequence[Any] | None) -> list[Any]:
+    if len(y_true) == 0:
+        raise ValueError("predictions must be non-empty")
     if labels is not None:
         classes = list(labels)
-        if len(set(classes)) == 0:
+        if len(classes) == 0:
             raise ValueError("labels must not be empty")
+        if len(set(classes)) != len(classes):
+            raise ValueError("labels must be unique")
         unknown = set(np.concatenate([y_true, y_pred])) - set(classes)
         if unknown:
             raise ValueError(f"predictions contain labels not present in labels: {unknown}")
@@ -129,22 +140,43 @@ def prediction_metrics(
             if score_array.ndim == 0 or score_array.shape[0] != len(true):
                 raise ValueError("scores must have one row per prediction")
             if score_array.ndim == 2:
-                if score_array.shape[1] != 2:
+                if score_array.shape[1] == 1:
+                    score_array = score_array[:, 0]
+                elif score_array.shape[1] == 2:
+                    # sklearn's predict_proba follows ``classes``.  Respect
+                    # an explicitly supplied positive class even if labels
+                    # are not in lexical order.
+                    score_class = positive_label if positive_label is not None else classes[-1]
+                    score_array = score_array[:, classes.index(score_class)]
+                else:
                     raise ValueError("binary scores must have one or two columns")
-                # sklearn's predict_proba follows ``classes``.  Respect an
-                # explicitly supplied positive class even if labels are not
-                # in lexical order.
-                score_class = positive_label if positive_label is not None else classes[-1]
-                score_array = score_array[:, classes.index(score_class)]
+            score_class = positive_label if positive_label is not None else classes[-1]
+            if not np.issubdtype(score_array.dtype, np.number):
+                try:
+                    score_array = score_array.astype(float)
+                except (TypeError, ValueError) as error:
+                    raise ValueError("scores must be numeric") from error
+            if not np.all(np.isfinite(score_array)):
+                raise ValueError("scores must be finite")
             try:
-                result["roc_auc"] = float(roc_auc_score(true, score_array))
+                # Passing an explicit boolean target avoids sklearn silently
+                # selecting a different positive class from label ordering.
+                result["roc_auc"] = float(roc_auc_score(true == score_class, score_array))
             except ValueError:
                 result["roc_auc"] = None
     elif score_values is not None:
         score_array = np.asarray(score_values)
         if score_array.ndim == 0 or score_array.shape[0] != len(true):
             raise ValueError("scores must have one row per prediction")
+        if score_array.ndim == 2 and score_array.shape[1] != len(classes):
+            raise ValueError("multiclass scores must have one column per class")
         if score_array.ndim == 2 and score_array.shape == (len(true), len(classes)):
+            try:
+                score_array = score_array.astype(float)
+            except (TypeError, ValueError) as error:
+                raise ValueError("scores must be numeric") from error
+            if not np.all(np.isfinite(score_array)):
+                raise ValueError("scores must be finite")
             try:
                 result["roc_auc"] = float(roc_auc_score(true, score_array, labels=classes, multi_class="ovr", average="macro"))
             except ValueError:
@@ -170,8 +202,9 @@ def _values(values: Sequence[float] | pd.DataFrame, value_column: str | None) ->
 def _bootstrap_interval(values: np.ndarray, *, confidence: float, seed: int, n_bootstrap: int) -> dict[str, Any]:
     if not 0 < confidence < 1:
         raise ValueError("confidence must be between 0 and 1")
-    if n_bootstrap < 1:
+    if isinstance(n_bootstrap, bool) or int(n_bootstrap) != n_bootstrap or n_bootstrap < 1:
         raise ValueError("n_bootstrap must be positive")
+    n_bootstrap = int(n_bootstrap)
     rng = np.random.default_rng(seed)
     # Keep memory bounded for out-of-fold predictions containing many
     # genomes.  A single 10,000 x N index matrix is surprisingly expensive.
@@ -250,7 +283,9 @@ def paired_difference_confidence_interval(
         aligned = left.merge(right, on=id_column, how="inner", validate="one_to_one")
         if len(aligned) != len(left) or len(aligned) != len(right):
             raise ValueError("paired inputs must contain the same IDs")
-        differences = aligned["_full"].to_numpy(dtype=float) - aligned["_filtered"].to_numpy(dtype=float)
+        # Validate the aligned values as well as the IDs.  In particular,
+        # NaNs would otherwise produce a NaN estimate and percentile bounds.
+        differences = _values(aligned["_full"], None) - _values(aligned["_filtered"], None)
     else:
         left = _values(full, None)
         right = _values(filtered, None)

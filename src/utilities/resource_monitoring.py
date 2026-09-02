@@ -17,6 +17,7 @@ import threading
 import time
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
+from numbers import Real
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,10 @@ def _children_max_rss_bytes() -> int:
 
 def _cpu_seconds() -> float:
     usage = resource.getrusage(resource.RUSAGE_SELF)
-    return float(usage.ru_utime + usage.ru_stime)
+    children = resource.getrusage(resource.RUSAGE_CHILDREN)
+    # Include workers that have exited and been reaped.  This is cumulative
+    # OS accounting, so StageMeasurement still reports a stage delta.
+    return float(usage.ru_utime + usage.ru_stime + children.ru_utime + children.ru_stime)
 
 
 def _cuda_peaks(enabled: bool) -> tuple[int | None, int | None]:
@@ -148,6 +152,9 @@ class StageMeasurement:
             "started_at": self._started_at,
             "finished_at": _datetime.datetime.now(_datetime.timezone.utc).isoformat(),
         }
+        conflicting = set(self.extra).intersection(RESOURCE_FIELDS)
+        if conflicting:
+            raise ValueError(f"stage metadata cannot overwrite resource fields: {sorted(conflicting)}")
         record.update(self.extra)
         self.record = record
         return None
@@ -210,7 +217,24 @@ class ResourceMonitor:
         return list(self.records)
 
 
-_MEMORY_UNITS = {"B": 1, "K": 1024, "KB": 1024, "M": 1024**2, "MB": 1024**2, "G": 1024**3, "GB": 1024**3, "T": 1024**4, "TB": 1024**4}
+_MEMORY_UNITS = {
+    "B": 1,
+    "K": 1024,
+    "KB": 1024,
+    "KIB": 1024,
+    "M": 1024**2,
+    "MB": 1024**2,
+    "MIB": 1024**2,
+    "G": 1024**3,
+    "GB": 1024**3,
+    "GIB": 1024**3,
+    "T": 1024**4,
+    "TB": 1024**4,
+    "TIB": 1024**4,
+    "P": 1024**5,
+    "PB": 1024**5,
+    "PIB": 1024**5,
+}
 
 
 def parse_slurm_max_rss(value: str | int | float | None) -> int | None:
@@ -218,9 +242,14 @@ def parse_slurm_max_rss(value: str | int | float | None) -> int | None:
 
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, bool):
+        raise ValueError(f"invalid Slurm MaxRSS value: {value!r}")
+    if isinstance(value, Real):
         return int(value)
-    match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*([kmgt]?b?)?\s*", str(value), re.IGNORECASE)
+    text = str(value).strip()
+    if text.upper() in {"", "N/A", "NA", "NONE", "UNKNOWN", "UNLIMITED"}:
+        return None
+    match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)\s*([kmgtp](?:i?b)?|b)?", text, re.IGNORECASE)
     if not match:
         raise ValueError(f"invalid Slurm MaxRSS value: {value!r}")
     unit = (match.group(2) or "B").upper()
@@ -232,7 +261,9 @@ def parse_slurm_elapsed(value: str | int | float | None) -> float | None:
 
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return None
-    if isinstance(value, (int, float)):
+    if isinstance(value, bool):
+        raise ValueError(f"invalid Slurm elapsed value: {value!r}")
+    if isinstance(value, Real):
         return float(value)
     text = str(value).strip()
     if text.upper() in {"", "N/A", "NA", "NONE", "UNKNOWN", "UNLIMITED"}:
@@ -262,6 +293,9 @@ def ingest_slurm_record(
         "slurm_elapsed_seconds": parse_slurm_elapsed(elapsed),
         "slurm_max_rss_bytes": parse_slurm_max_rss(max_rss),
     }
+    conflicting = set(metadata).intersection(row)
+    if conflicting:
+        raise ValueError(f"Slurm metadata cannot overwrite normalized fields: {sorted(conflicting)}")
     row.update(metadata)
     return row
 

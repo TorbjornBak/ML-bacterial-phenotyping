@@ -1,16 +1,17 @@
 {
+  "notes": "Example paths match the checked-in metadata. Dataset 1 genome parquet files are distributed separately; place them under data/dataset_1 before running.",
   "datasets": {
     "gentamicin": {
-      "input": "data/AMR_gentamicin/genomes",
-      "labels": "data/AMR_gentamicin/metadata.csv",
+      "input": "data/dataset_2/genomes",
+      "labels": "data/dataset_2/metadata_ecoli_gentamicin.csv",
       "file_type": "fasta",
       "id_column": "genome_id",
       "sequence_column": "dna_sequence",
       "label_separator": ","
     },
     "bacformer": {
-      "input": "data/bacformer/genomes",
-      "labels": "data/bacformer/labels.csv",
+      "input": "data/dataset_1",
+      "labels": "data/dataset_1/labels.csv",
       "file_type": "parquet",
       "id_column": "genome_name",
       "sequence_column": "dna_sequence",
@@ -22,31 +23,36 @@
       "name": "gentamicin_resistance",
       "dataset": "gentamicin",
       "label_column": "resistant_phenotype",
-      "positive_class": "REPLACE_WITH_RESISTANT_LABEL"
+      "positive_class": "Resistant",
+      "classes": ["Susceptible", "Resistant"]
     },
     {
       "name": "motility",
       "dataset": "bacformer",
       "label_column": "madin_categorical_motility_binary",
-      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+      "positive_class": "yes",
+      "classes": ["no", "yes"]
     },
     {
       "name": "beta_hemolysis",
       "dataset": "bacformer",
       "label_column": "gideon_Beta hemolysis",
-      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+      "positive_class": "+",
+      "classes": ["-", "+"]
     },
     {
       "name": "nitrate_to_nitrite",
       "dataset": "bacformer",
       "label_column": "gideon_Nitrate to nitrite",
-      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+      "positive_class": "+",
+      "classes": ["-", "+"]
     },
     {
       "name": "glucose_utilization",
       "dataset": "bacformer",
       "label_column": "madin_carbsubs_glucose",
-      "positive_class": "REPLACE_WITH_POSITIVE_LABEL"
+      "positive_class": 1,
+      "classes": [0, 1]
     }
   ],
   "total_k": [8, 10, 12],
@@ -56,6 +62,11 @@
   "historical_prefix": "ACATG",
   "n_folds": 5,
   "split_seed": 20260901,
+  "clustering": {
+    "ksize": 31,
+    "n_hashes": 1000,
+    "distance_threshold": 0.1
+  },
   "normalization": "frequency",
   "reverse_complement": false,
   "model": {

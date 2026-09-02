@@ -8,6 +8,12 @@
 
 set -euo pipefail
 
+# Resolve the runner from this script, so submitting from a login directory
+# (or with an absolute config/manifest path) does not depend on Slurm's
+# working-directory policy.
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
+
 if [[ $# -lt 3 ]]; then
   echo "Usage: sbatch --array=0-N $0 CONFIG CONDITION_MANIFEST SPLIT_MANIFEST" >&2
   exit 2
@@ -18,7 +24,24 @@ condition_manifest=$2
 split_manifest=$3
 condition_index=${SLURM_ARRAY_TASK_ID:?Submit this script with --array=0-N}
 
-"${PYTHON:-python}" src/reviewer_benchmark.py run-condition \
+# Capture argument paths before changing directory.  Relative dataset and
+# output paths in the original config are intentionally resolved from the
+# repository root; prepared configs contain absolute paths.
+case "$config_path" in
+  /*) ;;
+  *) config_path="$PWD/$config_path" ;;
+esac
+case "$condition_manifest" in
+  /*) ;;
+  *) condition_manifest="$PWD/$condition_manifest" ;;
+esac
+case "$split_manifest" in
+  /*) ;;
+  *) split_manifest="$PWD/$split_manifest" ;;
+esac
+cd "$REPO_ROOT"
+
+"${PYTHON:-python}" "$REPO_ROOT/src/reviewer_benchmark.py" run-condition \
   --config "$config_path" \
   --condition-manifest "$condition_manifest" \
   --condition-index "$condition_index" \

@@ -1,9 +1,13 @@
 import time
 
+import pytest
+
 from utilities.resource_monitoring import (
     RESOURCE_FIELDS,
     ResourceMonitor,
     ingest_slurm_record,
+    parse_slurm_elapsed,
+    parse_slurm_max_rss,
     measure_stage,
 )
 
@@ -38,3 +42,19 @@ def test_slurm_ingestion_normalizes_elapsed_and_maxrss():
     assert row["slurm_job_id"] == "123"
     assert row["slurm_elapsed_seconds"] == 62
     assert row["slurm_max_rss_bytes"] == int(1.5 * 1024**3)
+
+
+def test_slurm_parsers_accept_binary_units_and_missing_accounting_values():
+    assert parse_slurm_max_rss("1.5GiB") == int(1.5 * 1024**3)
+    assert parse_slurm_max_rss("N/A") is None
+    assert parse_slurm_elapsed("1-02:03:04.5") == 93784.5
+    assert parse_slurm_elapsed("Unknown") is None
+
+
+def test_resource_monitor_records_failed_stages_before_propagating_error():
+    monitor = ResourceMonitor(condition_id="failed")
+    with pytest.raises(RuntimeError, match="boom"):
+        with monitor.stage("fitting"):
+            raise RuntimeError("boom")
+    assert len(monitor.records) == 1
+    assert monitor.records[0]["stage"] == "fitting"

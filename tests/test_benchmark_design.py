@@ -1,8 +1,12 @@
+import sys
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
 from utilities.benchmark_design import (
     assert_split_manifest_identity,
+    create_cluster_manifest,
     create_prefix_manifest,
     create_split_manifest,
     get_phenotype_metadata,
@@ -76,6 +80,126 @@ def test_phenotype_metadata_is_centralized_and_customizable():
         "classes": ["no", "yes"],
         "n_classes": 2,
     }
+
+
+def test_split_fold_reduction_considers_each_phenotype_class():
+    genomes = pd.DataFrame(
+        {
+            "genome_id": ["g0", "g1", "g2", "g3"],
+            "cluster_id": ["c0", "c1", "c2", "c3"],
+            "trait_a": [0, 1, 0, 1],
+            # The positive class occurs in one group only, so two folds
+            # cannot both contain it for this phenotype.
+            "trait_b": [0, 0, 0, 1],
+        }
+    )
+    manifest = create_split_manifest(
+        genomes,
+        phenotype=["trait_a", "trait_b"],
+        n_folds=2,
+        seed=7,
+    )
+
+    assert manifest.attrs["n_folds"] == 1
+    validate_split_manifest(manifest, phenotype=["trait_a", "trait_b"])
+
+
+def test_read_prefix_manifest_rejects_ambiguous_bases(tmp_path):
+    path = tmp_path / "prefixes.csv"
+    pd.DataFrame(
+        [
+            {
+                "total_k": 4,
+                "prefix": "AN",
+                "prefix_length": 2,
+                "suffix_length": 2,
+                "prefix_source": "seeded",
+                "seed": 0,
+            }
+        ]
+    ).to_csv(path, index=False)
+
+    with pytest.raises(ValueError, match="non-DNA"):
+        read_prefix_manifest(path)
+
+
+def test_cluster_manifest_sketches_contigs_independently_and_is_stable(
+    monkeypatch, tmp_path
+):
+    class FakeMinHash:
+        def __init__(self, n, ksize):
+            assert n == 100
+            assert ksize == 4
+            self.kmers = set()
+
+        def add_sequence(self, sequence, is_protein):
+            assert is_protein is True
+            self.kmers.update(
+                sequence[index : index + 4]
+                for index in range(len(sequence) - 4 + 1)
+            )
+
+        def jaccard(self, other):
+            union = self.kmers | other.kmers
+            return len(self.kmers & other.kmers) / len(union) if union else 0.0
+
+    monkeypatch.setitem(sys.modules, "sourmash", SimpleNamespace(MinHash=FakeMinHash))
+    genomes = {
+        "g2": ["AAAA", "CCCC"],
+        "g1": ["AAAACCCC"],
+        "g3": ["AAAA", "CCCC"],
+    }
+    manifest = create_cluster_manifest(
+        genomes,
+        dataset={"g1": "d", "g2": "d", "g3": "d"},
+        ksize=4,
+        n_hashes=100,
+        threshold=0.5,
+        output_path=tmp_path / "clusters.csv",
+    )
+    repeat = create_cluster_manifest(
+        dict(reversed(list(genomes.items()))),
+        dataset="d",
+        ksize=4,
+        n_hashes=100,
+        threshold=0.5,
+    )
+
+    pd.testing.assert_frame_equal(manifest, repeat)
+    assert manifest["genome_id"].tolist() == ["g1", "g2", "g3"]
+    assert manifest.loc[manifest["genome_id"] == "g2", "cluster_id"].iloc[0] == manifest.loc[
+        manifest["genome_id"] == "g3", "cluster_id"
+    ].iloc[0]
+    assert manifest.loc[manifest["genome_id"] == "g1", "cluster_id"].iloc[0] != manifest.loc[
+        manifest["genome_id"] == "g2", "cluster_id"
+    ].iloc[0]
+    pd.testing.assert_frame_equal(pd.read_csv(tmp_path / "clusters.csv"), manifest)
+
+
+def test_split_manifest_without_labels_is_deterministic_and_missing_labels_are_allowed():
+    genomes = pd.DataFrame(
+        {
+            "genome_id": ["g0", "g1", "g2", "g3"],
+            "cluster_id": ["c0", "c1", "c2", "c3"],
+            "trait_a": [0, 1, None, None],
+            "trait_b": [None, 0, 1, 1],
+        }
+    )
+    manifest = create_split_manifest(
+        genomes, phenotype=["trait_a", "trait_b"], n_folds=2, seed=4
+    )
+    repeat = create_split_manifest(
+        genomes.sample(frac=1, random_state=9),
+        phenotype=["trait_a", "trait_b"],
+        n_folds=2,
+        seed=4,
+    )
+    assert_split_manifest_identity(manifest, repeat)
+    validate_split_manifest(manifest, phenotype=["trait_a", "trait_b"])
+
+    unlabeled = genomes.drop(columns=["trait_a", "trait_b"])
+    no_label_manifest = create_split_manifest(unlabeled, n_folds=2, seed=4)
+    assert no_label_manifest["fold_id"].nunique() == 2
 
 
 def _labeled_genomes():

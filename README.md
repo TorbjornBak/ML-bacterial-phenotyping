@@ -19,6 +19,34 @@ The metadata should contain genome identifiers identical to the fasta file names
 
 As an example, download a few of the parquet files and the metadata sheet from the bacformer papers phenotype prediction tasks: https://huggingface.co/datasets/macwiatrak/bacbench-phenotypic-traits-dna
 
+### Reviewer benchmark
+
+The sparse full-versus-prefix benchmark is driven by
+`configs/reviewer_benchmark.example.json`. Copy and edit that file, then
+freeze the pilot conditions and the full-genome cluster/fold assignments:
+
+```bash
+python src/reviewer_benchmark.py prepare --config configs/reviewer_benchmark.json --pilot
+python src/reviewer_benchmark.py prepare-splits \
+  --config results/reviewer_benchmark/resolved_run_manifest.json
+```
+
+Use the resolved manifest for execution because it records the code version,
+absolute input/output paths, sampled-prefix manifest, and manifest hashes.
+Each condition is independently runnable (and suitable for a SLURM array):
+
+```bash
+python src/reviewer_benchmark.py run-condition \
+  --config results/reviewer_benchmark/resolved_run_manifest.json \
+  --condition-manifest results/reviewer_benchmark/conditions.pilot.csv \
+  --condition-index 0 \
+  --split-manifest results/reviewer_benchmark/split_manifest.csv
+```
+
+Submit the same inputs through `shell_scripts/reviewer_benchmark.sh` for a
+cluster run. The notebook `notebooks/reviewer_benchmark.ipynb` reads only the
+saved outputs; it does not retrain models.
+
 ### Installation on Healthtech Cluster
 
 See this guide to install on DTU's HealthTech Cluster
