@@ -594,24 +594,65 @@ def _resolve_class(value: Any, classes: Any) -> Any:
     return value
 
 
+def _normalise_model_name(model_name: str) -> str:
+    aliases = {
+        "logistic": "logistic_regression",
+        "logistic_regression": "logistic_regression",
+        "hgb": "hist_gradient_boosting",
+        "hgbm": "hist_gradient_boosting",
+        "hist_gradient_boosting": "hist_gradient_boosting",
+    }
+    try:
+        return aliases[str(model_name).lower()]
+    except KeyError as error:
+        raise ValueError(f"Unsupported model {model_name!r}") from error
+
+
+def _model_parameters(config: Mapping[str, Any], model_name: str) -> dict[str, Any]:
+    if model_name == "logistic_regression":
+        return dict(config.get("model", {}))
+    defaults = {
+        "loss": "log_loss",
+        "learning_rate": 0.01,
+        "l2_regularization": 1e-3,
+        "max_features": 0.9,
+        "class_weight": "balanced",
+        "max_iter": 100,
+        "random_state": int(config.get("split_seed", config.get("prefix_seed", 0))),
+    }
+    defaults.update(config.get("hgbm_model", {}))
+    return defaults
+
+
+def _new_classifier(model_name: str, parameters: Mapping[str, Any]):
+    if model_name == "logistic_regression":
+        from sklearn.linear_model import LogisticRegression
+
+        return LogisticRegression(**parameters)
+    from sklearn.ensemble import HistGradientBoostingClassifier
+
+    return HistGradientBoostingClassifier(**parameters)
+
+
 def _run_condition(
     config: Mapping[str, Any],
     condition: Mapping[str, Any] | pd.Series,
     split_manifest_path: str | Path,
     *,
     reuse_features: bool = False,
+    model_name: str = "logistic_regression",
     overall_measurement: Any,
 ) -> Path:
     """Execute one full or prefix-filtered condition and persist tidy outputs."""
     import numpy as np
-    from sklearn.linear_model import LogisticRegression
-
     from embeddings.sparse_kmer_counts import build_sparse_kmer_counts, load_sparse_kmer_counts
     from utilities.benchmark_design import read_split_manifest, validate_split_manifest
     from utilities.benchmark_metrics import prediction_metrics
     from utilities.resource_monitoring import ResourceMonitor, measure_stage
 
     condition = dict(condition)
+    model_name = _normalise_model_name(model_name)
+    model_parameters = _model_parameters(config, model_name)
     condition_id = str(condition["condition_id"])
     dataset_name = str(condition["dataset"])
     dataset = config["datasets"][dataset_name]
@@ -682,6 +723,14 @@ def _run_condition(
 
     prefix_value = condition.get("prefix")
     prefix = None if prefix_value is None or pd.isna(prefix_value) or str(prefix_value) == "" else str(prefix_value)
+    if model_name == "hist_gradient_boosting" and prefix is None:
+        raise ValueError("HistGradientBoosting is limited to prefix-filtered conditions")
+    result_directory = (
+        output_directory
+        if model_name == "logistic_regression"
+        else output_directory / "models" / model_name
+    )
+    result_directory.mkdir(parents=True, exist_ok=True)
     expected_matrix_name = (
         f"{dataset_name}_sparse_kmers_total_k_{int(condition['total_k'])}_"
         f"prefix_{prefix or 'full'}_normalization_{config.get('normalization', 'frequency')}.npz"
@@ -727,22 +776,27 @@ def _run_condition(
         with monitor.stage("matrix_serialization", cache_state="cold"):
             matrix_path = features.save(output_directory, dataset=dataset_name)
 
+    model_matrix = features.matrix
+    if model_name == "hist_gradient_boosting":
+        with monitor.stage("dense_conversion"):
+            model_matrix = features.matrix.toarray()
+
+    output_context = {**condition, "model_name": model_name}
     prediction_rows: list[dict[str, Any]] = []
     score_rows: list[dict[str, Any]] = []
     metric_rows: list[dict[str, Any]] = []
-    model_config = dict(config.get("model", {}))
     positive_class = _resolve_class(condition.get("positive_class"), expected_classes)
     for fold_id in sorted(np.unique(folds)):
         train = folds != fold_id
         test = folds == fold_id
         if not train.any() or not test.any():
             raise ValueError(f"Fold {fold_id!r} has an empty train or test partition")
-        classifier = LogisticRegression(**model_config)
+        classifier = _new_classifier(model_name, model_parameters)
         with monitor.stage("fitting", fold_id=fold_id):
-            classifier.fit(features.matrix[train], y[train])
+            classifier.fit(model_matrix[train], y[train])
         with monitor.stage("prediction", fold_id=fold_id):
-            predicted = classifier.predict(features.matrix[test])
-            probabilities = classifier.predict_proba(features.matrix[test])
+            predicted = classifier.predict(model_matrix[test])
+            probabilities = classifier.predict_proba(model_matrix[test])
 
         if len(classifier.classes_) == 2:
             if positive_class not in set(classifier.classes_):
@@ -762,11 +816,11 @@ def _run_condition(
         )
         fold_metrics["classes"] = json.dumps(fold_metrics["classes"], default=str)
         fold_metrics["confusion_matrix"] = json.dumps(fold_metrics["confusion_matrix"])
-        metric_rows.append({**condition, "fold_id": fold_id, **fold_metrics})
+        metric_rows.append({**output_context, "fold_id": fold_id, **fold_metrics})
         for row_index, genome_index in enumerate(np.flatnonzero(test)):
             prediction_rows.append(
                 {
-                    **condition,
+                    **output_context,
                     "fold_id": fold_id,
                     "genome_id": usable_ids[genome_index],
                     "true_label": y[genome_index],
@@ -782,7 +836,7 @@ def _run_condition(
                 )
                 score_rows.append(
                     {
-                        **condition,
+                        **output_context,
                         "fold_id": fold_id,
                         "genome_id": usable_ids[genome_index],
                         "score_class": score_class,
@@ -794,7 +848,7 @@ def _run_condition(
     retained_tokens = int(features.raw_token_counts.sum())
     valid_windows = int(features.valid_window_counts.sum())
     resource_common = {
-        **condition,
+        **output_context,
         "input_genomes": len(usable_ids),
         "total_bases": total_bases,
         "retained_token_count": retained_tokens,
@@ -812,15 +866,24 @@ def _run_condition(
     overall_measurement.record["cache_state"] = resource_common["cache_state"]
     monitor.records.append(overall_measurement.record)
     resource_rows = [{**resource_common, **record} for record in monitor.records]
-    pd.DataFrame(metric_rows).to_parquet(output_directory / "metrics.parquet", index=False)
-    pd.DataFrame(resource_rows).to_parquet(output_directory / "resources.parquet", index=False)
-    pd.DataFrame(prediction_rows).to_parquet(output_directory / "predictions.parquet", index=False)
-    pd.DataFrame(score_rows).to_parquet(output_directory / "prediction_scores.parquet", index=False)
+    pd.DataFrame(metric_rows).to_parquet(result_directory / "metrics.parquet", index=False)
+    pd.DataFrame(resource_rows).to_parquet(result_directory / "resources.parquet", index=False)
+    pd.DataFrame(prediction_rows).to_parquet(result_directory / "predictions.parquet", index=False)
+    pd.DataFrame(score_rows).to_parquet(result_directory / "prediction_scores.parquet", index=False)
     strict_condition = {key: _json_scalar(value) for key, value in condition.items()}
-    (output_directory / "condition.json").write_text(
-        json.dumps(strict_condition, indent=2, allow_nan=False) + "\n"
+    (result_directory / "condition.json").write_text(
+        json.dumps(
+            {
+                **strict_condition,
+                "model_name": model_name,
+                "model_parameters": model_parameters,
+            },
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
     )
-    return output_directory
+    return result_directory
 
 
 def run_condition(
@@ -829,6 +892,7 @@ def run_condition(
     split_manifest_path: str | Path,
     *,
     reuse_features: bool = False,
+    model_name: str = "logistic_regression",
 ) -> Path:
     """Run one condition and always close the process-wide resource sampler.
 
@@ -850,6 +914,7 @@ def run_condition(
             condition,
             split_manifest_path,
             reuse_features=reuse_features,
+            model_name=model_name,
             overall_measurement=overall_measurement,
         )
     except BaseException as error:
@@ -887,6 +952,11 @@ def _parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--condition-index", required=True, type=int)
     run_parser.add_argument("--split-manifest", required=True)
     run_parser.add_argument("--reuse-features", action="store_true")
+    run_parser.add_argument(
+        "--model",
+        default="logistic_regression",
+        choices=("logistic_regression", "hgbm", "hist_gradient_boosting"),
+    )
     return parser
 
 
@@ -905,7 +975,15 @@ def main(argv: list[str] | None = None) -> int:
             raise IndexError(f"condition-index must be between 0 and {len(manifest) - 1}")
         condition = manifest.iloc[args.condition_index]
         try:
-            print(run_condition(config, condition, args.split_manifest, reuse_features=args.reuse_features))
+            print(
+                run_condition(
+                    config,
+                    condition,
+                    args.split_manifest,
+                    reuse_features=args.reuse_features,
+                    model_name=args.model,
+                )
+            )
         except Exception as error:
             write_failure_record(config["output_dir"], condition, error)
             raise

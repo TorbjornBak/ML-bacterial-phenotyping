@@ -269,6 +269,29 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
             reuse_features=True,
         )
 
+    config["reverse_complement"] = False
+    prefix_condition = build_condition_manifest(config).query(
+        "representation == 'prefix_filtered'"
+    ).iloc[0]
+    prefix_output = run_condition(config, prefix_condition, split_path)
+    hgbm_output = run_condition(
+        config,
+        prefix_condition,
+        split_path,
+        reuse_features=True,
+        model_name="hist_gradient_boosting",
+    )
+
+    assert hgbm_output == prefix_output / "models" / "hist_gradient_boosting"
+    hgbm_metrics = pd.read_parquet(hgbm_output / "metrics.parquet")
+    hgbm_resources = pd.read_parquet(hgbm_output / "resources.parquet")
+    hgbm_manifest = json.loads((hgbm_output / "condition.json").read_text())
+    assert set(hgbm_metrics["model_name"]) == {"hist_gradient_boosting"}
+    assert "dense_conversion" in set(hgbm_resources["stage"])
+    assert set(hgbm_resources["cache_state"]) == {"warm"}
+    assert hgbm_manifest["model_name"] == "hist_gradient_boosting"
+    assert hgbm_manifest["model_parameters"]["random_state"] == 7
+
 
 def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
     tmp_path, monkeypatch
