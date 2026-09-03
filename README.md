@@ -43,8 +43,17 @@ python src/reviewer_benchmark.py run-condition \
   --split-manifest results/reviewer_benchmark/split_manifest.csv
 ```
 
+To fit the project's deterministic HistGradientBoosting model on an existing
+prefix-filtered matrix without repeating tokenization, add
+`--reuse-features --model hgbm`. HGBM outputs are written below the condition's
+`models/hist_gradient_boosting` directory and do not replace logistic-regression
+results. Full-representation HGBM runs are intentionally rejected because the
+dense matrix would be impractical.
+
 Submit the same inputs through `shell_scripts/reviewer_benchmark.sh` for a
-cluster run. The notebook `notebooks/reviewer_benchmark.ipynb` reads only the
+cluster run. Its optional fourth and fifth arguments select the model and reuse
+mode, for example `hgbm true`; select only prefix-condition array indices for
+that model. The notebook `notebooks/reviewer_benchmark.ipynb` reads only the
 saved outputs; it does not retrain models.
 
 ### Installation on Healthtech Cluster
