@@ -22,6 +22,7 @@ from scipy import sparse
 _DNA_ALPHABET = "ACGT"
 _DNA_TO_DIGIT = {base: digit for digit, base in enumerate(_DNA_ALPHABET)}
 _COMPLEMENT = str.maketrans(_DNA_ALPHABET, "TGCA")
+_VALID_DNA_RUN = re.compile(r"[ACGT]+")
 
 
 def encode_kmer(kmer: str) -> int:
@@ -269,18 +270,35 @@ def build_sparse_kmer_counts(
             if reverse_complement:
                 strands.extend(_reverse_complement(contig) for contig in contigs)
             for sequence in strands:
-                for start in range(max(0, len(sequence) - total_k + 1)):
-                    candidate_count += 1
-                    kmer = sequence[start : start + total_k]
-                    if any(base not in _DNA_TO_DIGIT for base in kmer):
-                        continue
-                    valid_count += 1
-                    if prefix is not None and not kmer.startswith(prefix):
-                        continue
-                    raw_count += 1
-                    feature = kmer if prefix is None else kmer[len(prefix) :]
-                    column = encode_kmer(feature)
-                    row_counts[column] = row_counts.get(column, 0) + 1
+                candidate_count += max(0, len(sequence) - total_k + 1)
+                if prefix is None:
+                    for start in range(max(0, len(sequence) - total_k + 1)):
+                        kmer = sequence[start : start + total_k]
+                        if any(base not in _DNA_TO_DIGIT for base in kmer):
+                            continue
+                        valid_count += 1
+                        raw_count += 1
+                        column = encode_kmer(kmer)
+                        row_counts[column] = row_counts.get(column, 0) + 1
+                    continue
+
+                # Prefix-filtered conditions retain only ~4**-len(prefix) of
+                # all windows. Find prefix occurrences inside valid DNA runs
+                # in C-backed string/regex operations instead of constructing
+                # and checking every candidate k-mer in Python.
+                for match in _VALID_DNA_RUN.finditer(sequence):
+                    valid_run = match.group(0)
+                    last_start = len(valid_run) - total_k
+                    valid_count += max(0, last_start + 1)
+                    start = valid_run.find(prefix)
+                    while start != -1 and start <= last_start:
+                        raw_count += 1
+                        suffix = valid_run[
+                            start + len(prefix) : start + total_k
+                        ]
+                        column = encode_kmer(suffix)
+                        row_counts[column] = row_counts.get(column, 0) + 1
+                        start = valid_run.find(prefix, start + 1)
             for column, count in row_counts.items():
                 row_indices.append(row)
                 column_indices.append(column)

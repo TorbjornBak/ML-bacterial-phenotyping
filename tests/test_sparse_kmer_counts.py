@@ -64,6 +64,63 @@ def test_prefix_frequencies_use_all_valid_candidate_windows_as_denominator():
     assert result.matrix[0, encode_kmer("G")] == 0.25
 
 
+def test_prefix_scan_preserves_overlaps_and_ambiguous_window_denominator():
+    result = build_sparse_kmer_counts(
+        {"g1": "AAAAANAAAAA"}, total_k=3, prefix="AA", normalization="frequency"
+    )
+
+    assert result.metadata["candidate_window_counts"] == [9]
+    assert result.valid_window_counts.tolist() == [6]
+    assert result.raw_token_counts.tolist() == [6]
+    assert result.matrix[0, encode_kmer("A")] == 1.0
+
+
+def test_prefix_scan_matches_exhaustive_counts_across_edge_cases():
+    rng = np.random.default_rng(20260903)
+    alphabet = np.array(list("ACGTNacgtn"))
+    genomes = {
+        "random": ["".join(rng.choice(alphabet, size=80)) for _ in range(3)],
+        "boundaries": ["AC", "GTACGT", "NACGTN", "ACGT"],
+        "short": ["A", "NN", "acg"],
+    }
+
+    total_k = 4
+    prefix = "AC"
+    prefix_columns = [
+        encode_kmer(prefix + decode_kmer(suffix, total_k - len(prefix)))
+        for suffix in range(4 ** (total_k - len(prefix)))
+    ]
+    for reverse_complement in (False, True):
+        full = build_sparse_kmer_counts(
+            genomes,
+            total_k=total_k,
+            normalization="raw",
+            reverse_complement=reverse_complement,
+        )
+        filtered = build_sparse_kmer_counts(
+            genomes,
+            total_k=total_k,
+            prefix=prefix,
+            normalization="raw",
+            reverse_complement=reverse_complement,
+        )
+
+        np.testing.assert_array_equal(
+            filtered.matrix.toarray(), full.matrix[:, prefix_columns].toarray()
+        )
+        np.testing.assert_array_equal(
+            filtered.valid_window_counts, full.valid_window_counts
+        )
+        np.testing.assert_array_equal(
+            filtered.raw_token_counts,
+            np.asarray(full.matrix[:, prefix_columns].sum(axis=1)).ravel(),
+        )
+        assert (
+            filtered.metadata["candidate_window_counts"]
+            == full.metadata["candidate_window_counts"]
+        )
+
+
 def test_lowercase_ambiguous_bases_and_contig_boundaries_are_handled():
     result = build_sparse_kmer_counts(
         {"g1": ["acg", "tac"], "g2": "AANAAA"}, total_k=3, normalization="raw"

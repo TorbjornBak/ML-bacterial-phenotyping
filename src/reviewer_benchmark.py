@@ -35,6 +35,23 @@ def _code_version() -> str | None:
         return None
 
 
+def _json_scalar(value: Any) -> Any:
+    """Convert manifest scalars to strict JSON values without changing types."""
+    if value is None:
+        return None
+    try:
+        if bool(pd.isna(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+    item = getattr(value, "item", None)
+    if callable(item):
+        value = item()
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
+
+
 def build_condition_manifest(config: Mapping[str, Any], pilot: bool = False) -> pd.DataFrame:
     """Expand configuration into immutable, independently runnable conditions."""
     from utilities.benchmark_design import create_prefix_manifest, get_phenotype_metadata
@@ -664,7 +681,10 @@ def _run_condition(
     pd.DataFrame(resource_rows).to_parquet(output_directory / "resources.parquet", index=False)
     pd.DataFrame(prediction_rows).to_parquet(output_directory / "predictions.parquet", index=False)
     pd.DataFrame(score_rows).to_parquet(output_directory / "prediction_scores.parquet", index=False)
-    (output_directory / "condition.json").write_text(json.dumps(condition, indent=2, default=str) + "\n")
+    strict_condition = {key: _json_scalar(value) for key, value in condition.items()}
+    (output_directory / "condition.json").write_text(
+        json.dumps(strict_condition, indent=2, allow_nan=False) + "\n"
+    )
     return output_directory
 
 

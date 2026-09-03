@@ -186,6 +186,7 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
     predictions = pd.read_parquet(output / "predictions.parquet")
     resources = pd.read_parquet(output / "resources.parquet")
     scores = pd.read_parquet(output / "prediction_scores.parquet")
+    condition = json.loads((output / "condition.json").read_text())
     assert set(metrics["fold_id"]) == {0, 1}
     assert predictions["genome_id"].nunique() == 8
     assert pd.api.types.is_numeric_dtype(predictions["score"])
@@ -198,6 +199,9 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
         "prediction",
     }.issubset(resources["stage"])
     assert set(resources["cache_state"]) == {"cold"}
+    assert condition["prefix"] is None
+    assert isinstance(condition["total_k"], int)
+    assert isinstance(condition["n_classes"], int)
 
     config["reverse_complement"] = True
     with pytest.raises(ValueError, match="Cached feature metadata"):
