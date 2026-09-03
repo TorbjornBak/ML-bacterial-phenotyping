@@ -119,6 +119,63 @@ def test_fasta_loader_reads_mixed_compressed_and_uncompressed_files(tmp_path):
     assert total_bases == 8
 
 
+def test_fasta_sequence_source_loads_only_the_requested_genome(tmp_path, monkeypatch):
+    import reviewer_benchmark
+
+    (tmp_path / "g1.fasta").write_text(">c1\nAAAA\n")
+    (tmp_path / "g2.fasta").write_text(">c1\nCCCC\n")
+    loaded = []
+    original = reviewer_benchmark._read_fasta_contigs
+
+    def recording_reader(path):
+        loaded.append(path.name)
+        return original(path)
+
+    monkeypatch.setattr(reviewer_benchmark, "_read_fasta_contigs", recording_reader)
+    source = reviewer_benchmark._open_sequence_source(
+        {
+            "input": str(tmp_path),
+            "file_type": "fasta",
+            "id_column": "genome_id",
+        }
+    )
+
+    assert list(source) == ["g1", "g2"]
+    assert loaded == []
+    assert source["g2"] == ["CCCC"]
+    assert loaded == ["g2.fasta"]
+
+
+def test_parquet_sequence_source_loads_ids_before_sequence_shard(tmp_path, monkeypatch):
+    import reviewer_benchmark
+
+    path = tmp_path / "genomes.parquet"
+    pd.DataFrame(
+        {"genome_id": ["g1", "g2"], "dna_sequence": ["AAAA", "CCCC GGGG"]}
+    ).to_parquet(path, index=False)
+    reads = []
+    original = reviewer_benchmark.pd.read_parquet
+
+    def recording_reader(*args, **kwargs):
+        reads.append(kwargs.get("columns"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(reviewer_benchmark.pd, "read_parquet", recording_reader)
+    source = reviewer_benchmark._open_sequence_source(
+        {
+            "input": str(path),
+            "file_type": "parquet",
+            "id_column": "genome_id",
+            "sequence_column": "dna_sequence",
+        }
+    )
+
+    assert reads == [["genome_id"]]
+    assert list(source) == ["g1", "g2"]
+    assert source["g2"] == ["CCCC", "GGGG"]
+    assert reads == [["genome_id"], ["dna_sequence"]]
+
+
 def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_path):
     from reviewer_benchmark import run_condition
 

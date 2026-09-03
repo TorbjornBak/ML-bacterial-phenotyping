@@ -121,6 +121,34 @@ def test_prefix_scan_matches_exhaustive_counts_across_edge_cases():
         )
 
 
+def test_genome_iterable_is_consumed_inside_counting_stage():
+    events = []
+
+    def genomes():
+        events.append("first")
+        yield "AACG"
+        events.append("second")
+        yield "TTAC"
+
+    @contextmanager
+    def stage(name):
+        if name == "tokenization_and_counting":
+            assert events == []
+        yield
+
+    result = build_sparse_kmer_counts(
+        genomes(),
+        genome_ids=["g1", "g2"],
+        total_k=3,
+        prefix="AC",
+        normalization="raw",
+        stage_callback=stage,
+    )
+
+    assert events == ["first", "second"]
+    assert result.genome_ids == ["g1", "g2"]
+
+
 def test_lowercase_ambiguous_bases_and_contig_boundaries_are_handled():
     result = build_sparse_kmer_counts(
         {"g1": ["acg", "tac"], "g2": "AANAAA"}, total_k=3, normalization="raw"

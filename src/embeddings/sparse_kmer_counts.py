@@ -223,29 +223,35 @@ def build_sparse_kmer_counts(
             raise ValueError("prefix must contain only A, C, G, and T")
 
     mode = _normalise_normalization(normalization)
+    expected_rows: int | None
+    dynamic_ids = False
     if isinstance(genomes, Mapping):
         if genome_ids is not None:
             raise ValueError("genome_ids cannot be supplied when genomes is a mapping")
-        ids = [str(genome_id) for genome_id in genomes.keys()]
-        genome_values = list(genomes.values())
+        genome_keys = list(genomes.keys())
+        ids = [str(genome_id) for genome_id in genome_keys]
+        genome_values = (genomes[genome_id] for genome_id in genome_keys)
+        expected_rows = len(ids)
     elif isinstance(genomes, (str, bytes)):
         # Treat one sequence string as one genome rather than iterating over
         # its individual bases.
-        genome_values = [genomes]
+        genome_values = iter([genomes])
         if genome_ids is None:
             ids = ["0"]
         else:
             if len(genome_ids) != 1:
                 raise ValueError("genome_ids must have one entry per genome")
             ids = [str(genome_ids[0])]
+        expected_rows = 1
     else:
-        genome_values = list(genomes)
+        genome_values = iter(genomes)
         if genome_ids is None:
-            ids = [str(index) for index in range(len(genome_values))]
+            ids = []
+            expected_rows = None
+            dynamic_ids = True
         else:
-            if len(genome_ids) != len(genome_values):
-                raise ValueError("genome_ids must have one entry per genome")
             ids = [str(genome_id) for genome_id in genome_ids]
+            expected_rows = len(ids)
 
     suffix_length = total_k if prefix is None else total_k - len(prefix)
     feature_space_size = 4**suffix_length
@@ -261,8 +267,13 @@ def build_sparse_kmer_counts(
         if stage_callback is not None
         else nullcontext()
     )
+    row_count = 0
     with count_context:
         for row, genome in enumerate(genome_values):
+            if expected_rows is not None and row >= expected_rows:
+                raise ValueError("genome_ids must have one entry per genome")
+            if dynamic_ids:
+                ids.append(str(row))
             contigs = _as_contigs(genome)
             row_counts: dict[int, int] = {}
             raw_count = valid_count = candidate_count = 0
@@ -306,6 +317,10 @@ def build_sparse_kmer_counts(
             raw_token_counts.append(raw_count)
             valid_window_counts.append(valid_count)
             candidate_window_counts.append(candidate_count)
+            row_count = row + 1
+
+    if expected_rows is not None and row_count != expected_rows:
+        raise ValueError("genome_ids must have one entry per genome")
 
     data_type = np.float32 if mode == "frequency" else np.int64
     matrix_context = (
@@ -316,7 +331,7 @@ def build_sparse_kmer_counts(
     with matrix_context:
         matrix = sparse.coo_matrix(
             (np.asarray(values, dtype=data_type), (row_indices, column_indices)),
-            shape=(len(genome_values), feature_space_size),
+            shape=(row_count, feature_space_size),
             dtype=data_type,
         ).tocsr()
         if mode == "frequency" and matrix.nnz:

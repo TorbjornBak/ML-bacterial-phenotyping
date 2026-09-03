@@ -358,6 +358,132 @@ def _read_table(path: str | Path, separator: str = ",") -> pd.DataFrame:
     return pd.read_csv(path, sep=separator)
 
 
+def _fasta_paths(input_path: Path, file_type: str) -> list[Path]:
+    if input_path.is_file():
+        return [input_path]
+    extensions = {file_type, "fasta", "fa", "fna"}
+    return sorted(
+        {
+            path
+            for extension in extensions
+            for pattern in (f"*.{extension}", f"*.{extension}.gz")
+            for path in input_path.glob(pattern)
+        }
+    )
+
+
+def _read_fasta_contigs(path: Path) -> list[str]:
+    from Bio import SeqIO
+
+    handle = gzip.open(path, "rt") if path.suffix.lower() == ".gz" else open(path, "rt")
+    with handle as stream:
+        return [str(record.seq) for record in SeqIO.parse(stream, "fasta")]
+
+
+class _LazyFastaSequences(Mapping[str, list[str]]):
+    """Index FASTA paths while decoding only the genome currently requested."""
+
+    def __init__(self, paths: list[Path]):
+        self._paths: OrderedDict[str, Path] = OrderedDict()
+        for path in paths:
+            genome_id = Path(path.stem).stem if path.suffix.lower() == ".gz" else path.stem
+            self._paths[genome_id] = path
+
+    def __getitem__(self, genome_id: str) -> list[str]:
+        return _read_fasta_contigs(self._paths[genome_id])
+
+    def __iter__(self):
+        return iter(self._paths)
+
+    def __len__(self) -> int:
+        return len(self._paths)
+
+
+def _sequence_value_to_contigs(sequence: Any) -> list[str]:
+    if sequence is None or (pd.api.types.is_scalar(sequence) and pd.isna(sequence)):
+        return []
+    if isinstance(sequence, str):
+        return sequence.split()
+    return [str(contig) for contig in sequence]
+
+
+class _LazyParquetSequences(Mapping[str, list[str]]):
+    """Index IDs cheaply and retain at most one decoded Parquet shard."""
+
+    def __init__(self, paths: list[Path], id_column: str, sequence_column: str):
+        self._id_column = id_column
+        self._sequence_column = sequence_column
+        self._locations: OrderedDict[str, list[tuple[Path, int]]] = OrderedDict()
+        for path in paths:
+            identifiers = pd.read_parquet(path, columns=[id_column])
+            for row, genome_id in enumerate(identifiers[id_column]):
+                self._locations.setdefault(str(genome_id), []).append((path, row))
+        self._cached_path: Path | None = None
+        self._cached_sequences: pd.Series | None = None
+
+    def _sequences(self, path: Path) -> pd.Series:
+        if self._cached_path != path:
+            frame = pd.read_parquet(path, columns=[self._sequence_column])
+            self._cached_path = path
+            self._cached_sequences = frame[self._sequence_column]
+        assert self._cached_sequences is not None
+        return self._cached_sequences
+
+    def __getitem__(self, genome_id: str) -> list[str]:
+        contigs: list[str] = []
+        for path, row in self._locations[genome_id]:
+            contigs.extend(_sequence_value_to_contigs(self._sequences(path).iloc[row]))
+        return contigs
+
+    def __iter__(self):
+        return iter(self._locations)
+
+    def __len__(self) -> int:
+        return len(self._locations)
+
+
+class _SelectedSequences(Mapping[str, Any]):
+    """Ordered, lazy view over the genomes shared by labels and split data."""
+
+    def __init__(self, source: Mapping[str, Any], genome_ids: list[str]):
+        self._source = source
+        self._genome_ids = list(genome_ids)
+        self._genome_id_set = set(genome_ids)
+
+    def __getitem__(self, genome_id: str) -> Any:
+        if genome_id not in self._genome_id_set:
+            raise KeyError(genome_id)
+        return self._source[genome_id]
+
+    def __iter__(self):
+        return iter(self._genome_ids)
+
+    def __len__(self) -> int:
+        return len(self._genome_ids)
+
+
+def _open_sequence_source(dataset: Mapping[str, Any]) -> Mapping[str, Any]:
+    """Return a source that decodes at most one genome or Parquet shard."""
+    input_path = Path(dataset["input"])
+    file_type = str(dataset["file_type"]).lower().lstrip(".")
+    if file_type.endswith(".gz"):
+        file_type = file_type[:-3]
+    if file_type in {"fasta", "fa", "fna"}:
+        source = _LazyFastaSequences(_fasta_paths(input_path, file_type))
+    elif file_type == "parquet":
+        paths = [input_path] if input_path.is_file() else sorted(input_path.glob("*.parquet"))
+        source = _LazyParquetSequences(
+            paths,
+            str(dataset["id_column"]),
+            str(dataset.get("sequence_column", "dna_sequence")),
+        )
+    else:
+        raise ValueError(f"Unsupported file_type {file_type!r}; use FASTA or Parquet")
+    if not source:
+        raise ValueError(f"No {file_type} genomes found at {input_path}")
+    return source
+
+
 def _load_sequences(dataset: Mapping[str, Any]) -> tuple[OrderedDict[str, list[str]], int]:
     """Load FASTA (including ``.gz``) or Parquet without joining contigs.
 
@@ -375,36 +501,15 @@ def _load_sequences(dataset: Mapping[str, Any]) -> tuple[OrderedDict[str, list[s
     sequences: OrderedDict[str, list[str]] = OrderedDict()
 
     if file_type in {"fasta", "fa", "fna"}:
-        from Bio import SeqIO
-
-        if input_path.is_file():
-            paths = [input_path]
-        else:
-            extensions = {file_type, "fasta", "fa", "fna"}
-            paths = sorted(
-                {
-                    path
-                    for extension in extensions
-                    for pattern in (f"*.{extension}", f"*.{extension}.gz")
-                    for path in input_path.glob(pattern)
-                }
-            )
-        for path in paths:
+        for path in _fasta_paths(input_path, file_type):
             genome_id = Path(path.stem).stem if path.suffix.lower() == ".gz" else path.stem
-            handle = gzip.open(path, "rt") if path.suffix.lower() == ".gz" else open(path, "rt")
-            with handle as stream:
-                sequences[genome_id] = [str(record.seq) for record in SeqIO.parse(stream, "fasta")]
+            sequences[genome_id] = _read_fasta_contigs(path)
     elif file_type == "parquet":
         paths = [input_path] if input_path.is_file() else sorted(input_path.glob("*.parquet"))
         for path in paths:
             frame = pd.read_parquet(path, columns=[id_column, sequence_column])
             for genome_id, sequence in frame[[id_column, sequence_column]].itertuples(index=False):
-                if sequence is None or (pd.api.types.is_scalar(sequence) and pd.isna(sequence)):
-                    contigs = []
-                elif isinstance(sequence, str):
-                    contigs = sequence.split()
-                else:
-                    contigs = [str(contig) for contig in sequence]
+                contigs = _sequence_value_to_contigs(sequence)
                 sequences.setdefault(str(genome_id), []).extend(contigs)
     else:
         raise ValueError(f"Unsupported file_type {file_type!r}; use FASTA or Parquet")
@@ -421,16 +526,42 @@ def _manifest_digest(path: str | Path) -> str:
 
 def _sequence_digest(genomes: Mapping[str, list[str]]) -> str:
     """Fingerprint genome order, IDs, contents, and contig boundaries."""
+    return _sequence_digest_and_total_bases(genomes)[0]
+
+
+def _sequence_digest_and_total_bases(genomes: Mapping[str, list[str]]) -> tuple[str, int]:
+    """Fingerprint a sequence stream and count bases without retaining it."""
 
     digest = hashlib.sha256()
+    total_bases = 0
     for genome_id, contigs in genomes.items():
         digest.update(str(genome_id).encode("utf-8"))
         digest.update(b"\0")
         for contig in contigs:
+            total_bases += len(contig)
             digest.update(str(contig).upper().encode("ascii"))
             digest.update(b"\0")
         digest.update(b"\xff")
-    return digest.hexdigest()
+    return digest.hexdigest(), total_bases
+
+
+def _fingerprinted_sequence_stream(
+    genomes: Mapping[str, list[str]], state: dict[str, Any]
+):
+    """Yield genomes once while recording the same digest and base count."""
+    digest = hashlib.sha256()
+    total_bases = 0
+    for genome_id, contigs in genomes.items():
+        digest.update(str(genome_id).encode("utf-8"))
+        digest.update(b"\0")
+        for contig in contigs:
+            total_bases += len(contig)
+            digest.update(str(contig).upper().encode("ascii"))
+            digest.update(b"\0")
+        digest.update(b"\xff")
+        yield contigs
+    state["input_sha256"] = digest.hexdigest()
+    state["total_bases"] = total_bases
 
 
 def _validate_unique_labels(frame: pd.DataFrame, id_column: str, label_column: str) -> pd.DataFrame:
@@ -489,7 +620,7 @@ def _run_condition(
     output_directory.mkdir(parents=True, exist_ok=True)
     monitor = ResourceMonitor(condition_id=condition_id)
     with monitor.stage("loading"):
-        sequences, total_bases = _load_sequences(dataset)
+        sequences = _open_sequence_source(dataset)
         labels = _read_table(dataset["labels"], dataset.get("label_separator", ","))
         id_column = dataset["id_column"]
         label_column = condition["label_column"]
@@ -529,8 +660,7 @@ def _run_condition(
             raise ValueError("No genome IDs are shared by sequences, labels, and split manifest")
         label_by_id = labels.set_index(id_column)[label_column]
         fold_by_id = split_manifest.set_index("genome_id")["fold_id"]
-        genomes = OrderedDict((genome_id, sequences[genome_id]) for genome_id in usable_ids)
-        input_sha256 = _sequence_digest(genomes)
+        genomes = _SelectedSequences(sequences, usable_ids)
         y = label_by_id.loc[usable_ids].to_numpy()
         folds = fold_by_id.loc[usable_ids].to_numpy()
         expected_classes = set(y)
@@ -559,6 +689,7 @@ def _run_condition(
     matrix_path = output_directory / expected_matrix_name
     cache_used = bool(reuse_features and matrix_path.exists() and matrix_path.with_suffix(".json").exists())
     if cache_used:
+        input_sha256, total_bases = _sequence_digest_and_total_bases(genomes)
         with monitor.stage("feature_loading", cache_state="warm"):
             features = load_sparse_kmer_counts(matrix_path)
         if features.genome_ids != usable_ids:
@@ -578,16 +709,20 @@ def _run_condition(
         if mismatches:
             raise ValueError(f"Cached feature metadata does not match this condition: {mismatches}")
     else:
+        stream_state: dict[str, Any] = {}
         with monitor.stage("feature_extraction", cache_state="cold"):
             features = build_sparse_kmer_counts(
-                genomes,
+                _fingerprinted_sequence_stream(genomes, stream_state),
                 total_k=int(condition["total_k"]),
                 prefix=prefix,
                 normalization=config.get("normalization", "frequency"),
                 reverse_complement=bool(config.get("reverse_complement", False)),
+                genome_ids=usable_ids,
                 dataset=dataset_name,
                 stage_callback=lambda stage: monitor.stage(stage, cache_state="cold"),
             )
+            input_sha256 = str(stream_state["input_sha256"])
+            total_bases = int(stream_state["total_bases"])
             features.metadata["input_sha256"] = input_sha256
         with monitor.stage("matrix_serialization", cache_state="cold"):
             matrix_path = features.save(output_directory, dataset=dataset_name)
