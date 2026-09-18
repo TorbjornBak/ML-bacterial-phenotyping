@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 #from models.CNN_alternative_version import dataset_file_path
+import copy
 import numpy as np
 import torch
 import os, sys
@@ -25,6 +26,25 @@ from models.RNN import OneHot_RNN_MLP_KmerClassifier, OneHot_RNN_small, RNN_MLP_
 from utilities.clustering import SourMashClustering
 from tqdm import tqdm
 from utilities.cliargparser import ArgParser
+
+
+def resolve_device(requested: str, model_type: str | None = None) -> torch.device:
+	"""Resolve an explicit device or choose the best available local backend."""
+	if requested == "auto":
+		if torch.cuda.is_available():
+			return torch.device("cuda")
+		# Long-sequence scaled-dot-product attention can materialize its full
+		# score matrix on MPS. Prefer CPU for the laptop-safe transformer path.
+		if model_type != "TRANSFORMER" and torch.backends.mps.is_available():
+			return torch.device("mps")
+		return torch.device("cpu")
+	if requested == "cuda" and not torch.cuda.is_available():
+		raise RuntimeError("CUDA was requested but is not available")
+	if requested == "mps" and not torch.backends.mps.is_available():
+		raise RuntimeError("MPS was requested but is not available")
+	if requested == "mps" and model_type == "TRANSFORMER":
+		raise RuntimeError("MPS is not supported for the memory-bounded TRANSFORMER; use cpu")
+	return torch.device(requested)
 
 
 
@@ -264,11 +284,14 @@ class SequenceDataset(Dataset):
 	"""Dataset that returns variable-length token sequences and labels.
 	If X is 2D padded with pad_id=0, trailing zeros are trimmed per sample.
 	If X is an object array/list of 1D arrays, those are returned directly."""
-	def __init__(self, X, y, pad_id: int = 0,):
+	def __init__(self, X, y, pad_id: int = 0, max_tokens: int | None = None):
 		assert len(X) == len(y), "X and y must have same length"
+		if max_tokens is not None and max_tokens <= 0:
+			raise ValueError("max_tokens must be positive or None")
 		self.X = X
 		self.y = y
 		self.pad_id = pad_id
+		self.max_tokens = max_tokens
 
 	def __len__(self):
 		return len(self.X)
@@ -296,6 +319,13 @@ class SequenceDataset(Dataset):
 				else:
 					row = row[:1]
 			xi = torch.as_tensor(row, dtype=torch.long)
+		if self.max_tokens is not None and xi.numel() > self.max_tokens:
+			# Preserve coverage across the genome while strictly bounding the
+			# transformer's memory and compute for every sample.
+			indices = torch.linspace(
+				0, xi.numel() - 1, steps=self.max_tokens, dtype=torch.float64
+			).round().long()
+			xi = xi[indices]
 		yi = torch.as_tensor(self.y[idx], dtype=torch.long)
 		return xi, yi
 	
@@ -406,7 +436,11 @@ def fit_model(
 	trace_memory_usage = False,
 	dropout = 0.2,
 	patience = 15,
-	embedding_class = "integer"):
+	embedding_class = "integer",
+	transformer_emb_dim = 32,
+	transformer_heads = 4,
+	transformer_ff_dim = 64,
+	transformer_layers = 2):
 	
 	
 
@@ -561,14 +595,14 @@ def fit_model(
 	
 
 	elif model_type == "TRANSFORMER":
-		emb_dim = 4
-		#emb_dim = vocab_size if (vocab_size is not None and vocab_size < 16) else 16
+		if embedding_class != "integer":
+			raise ValueError("TRANSFORMER currently requires --embedding integer")
 		model = TransformerKmerClassifier(
 			vocab_size=vocab_size,
-			emb_dim=emb_dim,
-			nhead=2,
-			ff_dim=16,
-			num_layers=2,
+			emb_dim=transformer_emb_dim,
+			nhead=transformer_heads,
+			ff_dim=transformer_ff_dim,
+			num_layers=transformer_layers,
 			num_classes=num_classes,
 			pad_id=pad_id,
 			dropout=dropout,
@@ -607,7 +641,10 @@ def fit_model(
 				yb = yb.to(device)
 
 				optimizer.zero_grad()
-				output = model(xb)
+				if model_type == "TRANSFORMER":
+					output = model(xb, lengths=lengths.to(device), mask=mask.to(device))
+				else:
+					output = model(xb)
 				loss = criterion(output, yb)
 
 				loss.backward()
@@ -642,7 +679,10 @@ def fit_model(
 				for xb, lengths, mask, yb in val_loader:
 					xb = xb.to(device)
 					yb = yb.to(device)
-					out = model(xb)
+					if model_type == "TRANSFORMER":
+						out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
+					else:
+						out = model(xb)
 					val_running += criterion(out, yb).item()
 			else:
 				for xb, lengths, mask, yb in val_loader:
@@ -656,11 +696,11 @@ def fit_model(
 			# Early stopping check
 			if epoch == 0:
 				best_val_loss = val_loss
-				best_model_state = model.state_dict()
+				best_model_state = copy.deepcopy(model.state_dict())
 			else:
-				if val_loss < best_val_loss and val_loss is not np.nan:
+				if torch.isfinite(val_loss) and val_loss < best_val_loss:
 					best_val_loss = val_loss
-					best_model_state = model.state_dict()
+					best_model_state = copy.deepcopy(model.state_dict())
 					early_stop_counter = 0
 				else:
 					early_stop_counter += 1
@@ -669,7 +709,7 @@ def fit_model(
 						print(f"Early stopping at epoch {epoch + 1}")
 						model.load_state_dict(best_model_state)
 						break
-					elif val_loss is np.nan:
+					elif not torch.isfinite(val_loss):
 						print(f"Early stopping at epoch {epoch + 1} due to validation loss being nan")
 						model.load_state_dict(best_model_state)
 						break
@@ -694,7 +734,10 @@ def fit_model(
 		if embedding_class == "integer":
 			for xb, lengths, mask, yb in test_loader:
 				xb = xb.to(device)
-				out = model(xb)
+				if model_type == "TRANSFORMER":
+					out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
+				else:
+					out = model(xb)
 				outs.append(out.cpu().numpy())
 		else:
 			for xb, lengths, mask, yb in test_loader:
@@ -702,7 +745,7 @@ def fit_model(
 				out = model(xb, lengths=lengths.to(device), mask=mask.to(device))
 				outs.append(out.cpu().numpy())
 			
-	test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, 2), dtype=np.float32)
+	test_outputs = np.concatenate(outs, axis=0) if outs else np.empty((0, num_classes), dtype=np.float32)
 
 	fit_model_results = {"test_outputs" : test_outputs, "memory_usage" : memory_usage}
 		
@@ -770,10 +813,18 @@ def get_model_performance(phenotype = None,
 						  kmer_offset = 0,
 						  reverse_complement = True,
 						  group_clusters=False,
-						  train_split_method = "GroupShuffleSplit",
-						  xhot = None,
-						  subset_ratio = None,
-						  ):
+					  train_split_method = "GroupShuffleSplit",
+					  xhot = None,
+					  subset_ratio = None,
+					  transformer_max_tokens = 2048,
+					  transformer_batch_size = 2,
+					  transformer_emb_dim = 32,
+					  transformer_heads = 4,
+					  transformer_ff_dim = 64,
+					  transformer_layers = 2,
+					  ):
+	if model_type == "TRANSFORMER" and embedding_class != "integer":
+		raise ValueError("TRANSFORMER currently requires --embedding integer")
 	
 	num_epochs = epochs
 	for prefix in kmer_prefixes:
@@ -847,8 +898,13 @@ def get_model_performance(phenotype = None,
 
 					learning_rate = lr
 					# Build DataLoaders
-					bs = 50 if model_type == "CNN" else 25
-					num_workers = nr_of_cores
+					if model_type == "CNN":
+						bs = 50
+					elif model_type == "TRANSFORMER":
+						bs = transformer_batch_size
+					else:
+						bs = 25
+					num_workers = 0 if model_type == "TRANSFORMER" else nr_of_cores
 
 					if embedding_class == "esmc":
 						print(f'Using EmbeddingSequenceDataset for {model_type=}')
@@ -913,9 +969,10 @@ def get_model_performance(phenotype = None,
 
 					elif embedding_class == "integer":
 						print(f'Using SequenceDataset for {model_type=}')
-						train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id)
-						val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id)
-						test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id)
+						max_tokens = transformer_max_tokens if model_type == "TRANSFORMER" else None
+						train_ds = SequenceDataset(X_train, y_train, pad_id=pad_id, max_tokens=max_tokens)
+						val_ds = SequenceDataset(X_val, y_val, pad_id=pad_id, max_tokens=max_tokens)
+						test_ds = SequenceDataset(X_test, y_test, pad_id=pad_id, max_tokens=max_tokens)
 						pad_collate_fn = "pad_collate"
 
 						train_loader = DataLoader(
@@ -969,13 +1026,6 @@ def get_model_performance(phenotype = None,
 							num_workers=0,
 						)
 
-					#num_workers = min(8, os.cpu_count() or 2)
-					if model_type == "TRANSFORMER":
-						num_workers = 0
-					else:
-						num_workers = 2
-
-					
 					training_result = fit_model(train_loader, val_loader, test_loader,
 											device=device,
 											num_epochs=num_epochs,
@@ -986,9 +1036,13 @@ def get_model_performance(phenotype = None,
 											vocab_size=vocab_size,
 											pad_id=pad_id, 
 											trace_memory_usage=trace_memory_usage,
-											dropout = dropout,
-											patience = patience, 
-											embedding_class=embedding_class,)
+										dropout = dropout,
+										patience = patience,
+										embedding_class=embedding_class,
+										transformer_emb_dim=transformer_emb_dim,
+										transformer_heads=transformer_heads,
+										transformer_ff_dim=transformer_ff_dim,
+										transformer_layers=transformer_layers,)
 					
 					y_test_pred, memory_usage = training_result["test_outputs"], training_result["memory_usage"]
 					
@@ -1059,15 +1113,7 @@ if __name__ == "__main__":
 	parser = ArgParser(module = "train_models")
 	parser = parser.parser
 
-	if torch.cuda.is_available(): 
-		device = torch.device("cuda")
-		
-	elif torch.backends.mps.is_available(): 
-		device = torch.device("mps")
-
-	else: 
-		# On CPU server
-		device = torch.device("cpu")
+	device = resolve_device(parser.device, model_type=parser.model_arch)
 		
 	
 	print(f"Using {device=}")
@@ -1128,4 +1174,10 @@ if __name__ == "__main__":
 								train_split_method=parser.train_split_method,
 								xhot = parser.xhot,
 								subset_ratio = parser.subset_ratio,
+								transformer_max_tokens=parser.transformer_max_tokens,
+								transformer_batch_size=parser.transformer_batch_size,
+								transformer_emb_dim=parser.transformer_emb_dim,
+								transformer_heads=parser.transformer_heads,
+								transformer_ff_dim=parser.transformer_ff_dim,
+								transformer_layers=parser.transformer_layers,
 								)

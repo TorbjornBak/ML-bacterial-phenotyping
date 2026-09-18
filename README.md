@@ -56,6 +56,46 @@ mode, for example `hgbm true`; select only prefix-condition array indices for
 that model. The notebook `notebooks/reviewer_benchmark.ipynb` reads only the
 saved outputs; it does not retrain models.
 
+### Transformer pilot
+
+`src/reviewer_transformer_pilot.py` trains a Transformer on the ordered
+suffix tokens of one prefix-filtered condition, using the same frozen folds,
+metrics, and output layout as the RNN pilot (`models/transformer/<run>`).
+Attention uses PyTorch's fused scaled-dot-product kernels, so memory grows
+linearly with sequence length; it trains on a 16 GB laptop CPU without
+thinning a typical ACATG/k=11 genome (~3,200 tokens):
+
+```bash
+PYTHONPATH=src .venv/bin/python src/reviewer_transformer_pilot.py \
+  --config results/reviewer_benchmark/resolved_run_manifest.json \
+  --split-manifest results/reviewer_benchmark/split_manifest.csv \
+  --prefix ACATG --total-k 11 --folds 0 1 2 3 4
+```
+
+`--max-tokens` caps each genome by even thinning (default 4096);
+`--num-layers 0` gives an attention-free embedding-bag ablation. Use CPU or
+CUDA: Apple MPS materialises the full attention matrix and runs out of memory
+at genome lengths.
+
+The general cross-validation trainer also supports the bounded configuration.
+It defaults to 2,048 uniformly sampled tokens and batch size 2, and currently
+requires integer embeddings:
+
+```bash
+.venv/bin/python src/train_models_v2.py \
+  --phenotype resistant_phenotype \
+  --input genomes/ --output results/transformer/ \
+  --labels genomes/metadata.csv \
+  --id_column genome_id --file_type fasta \
+  --kmer_prefixes ACATG --kmer_suffix_sizes 6 \
+  --model_arch TRANSFORMER --embedding integer \
+  --learning_rates 3e-4 --device auto --cores 2 \
+  --transformer_max_tokens 2048 --transformer_batch_size 2
+```
+
+Add `--reembed` on the first run. Lower the token cap to 1024 or the batch size
+to 1 if other processes leave little free memory.
+
 ### Installation on Healthtech Cluster
 
 See this guide to install on DTU's HealthTech Cluster
