@@ -222,3 +222,6 @@ wandb
 *.jpg
 *.fasta
 notebooks/GradientBoostingPlot/*
+docs/rebuttal_letter.md
+docs/paper.md
+docs/reviewer_revision_plan.md
