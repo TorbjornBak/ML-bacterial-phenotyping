@@ -8,6 +8,7 @@ from embeddings.KmerTokenization import KmerTokenizer, load_labels, read_sequenc
 import seaborn as sns
 import matplotlib.pyplot as plt
 import scipy.cluster.hierarchy as sch
+from scipy.spatial.distance import squareform
 
 class SourMashClustering():
 	def __init__(self,
@@ -62,20 +63,41 @@ class SourMashClustering():
 
 
 	def jaccard_distance_matrix(self, minhashes : dict):
+		"""Return a symmetric matrix of Jaccard *distances*.
 
-		distance_matrix = np.zeros((len(minhashes), len(minhashes)))
+		Sourmash's ``jaccard`` method returns a similarity in ``[0, 1]``.  The
+		clustering code consumes distances, so the conversion is kept explicit
+		here rather than relying on a misleading variable name.
+		"""
+
+		distance_matrix = np.zeros((len(minhashes), len(minhashes)), dtype=float)
 		labels = list(minhashes.keys())
 		for i, label1 in enumerate(labels):
-			for j, label2 in enumerate(labels):
-				distance = minhashes[label1].jaccard(minhashes[label2])
+			for j in range(i, len(labels)):
+				label2 = labels[j]
+				if i == j:
+					distance = 0.0
+				else:
+					similarity = minhashes[label1].jaccard(minhashes[label2])
+					distance = 1.0 - float(similarity)
 				distance_matrix[i, j] = distance
+				distance_matrix[j, i] = distance
 
 		return distance_matrix, labels
+
+	def jaccard_similarity_matrix(self, minhashes: dict):
+		"""Return the raw Sourmash Jaccard similarities for diagnostics."""
+
+		distance_matrix, labels = self.jaccard_distance_matrix(minhashes)
+		return 1.0 - distance_matrix, labels
 	
 	def group_clusters(self, distance_matrix, labels, threshold = None, method = "average", nr_of_clusters = None):
 		df = pd.DataFrame(distance_matrix, index=labels, columns=labels)
 		# Perform hierarchical clustering
-		linkage_matrix = sch.linkage(df, method=method, metric='euclidean')
+		# ``linkage`` expects a condensed distance vector when a square matrix
+		# is supplied.  Passing rows with Euclidean distance would cluster the
+		# distance profiles, rather than the genomes themselves.
+		linkage_matrix = sch.linkage(squareform(distance_matrix, checks=False), method=method)
 
 		if nr_of_clusters is None:
 			# Form flat clusters based on the threshold

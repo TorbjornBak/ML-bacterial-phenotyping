@@ -1,0 +1,80 @@
+{
+  "notes": "The BacBench download has its Parquet shards in the dataset's data subdirectory.",
+  "datasets": {
+    "gentamicin": {
+      "input": "data/dataset_2/genomes",
+      "labels": "data/dataset_2/metadata_ecoli_gentamicin.csv",
+      "file_type": "fasta",
+      "id_column": "genome_id",
+      "sequence_column": "dna_sequence",
+      "label_separator": ","
+    },
+    "bacformer": {
+      "input": "data/dataset_1/bacbench-phenotypic-traits-dna/data",
+      "labels": "data/dataset_1/labels.csv",
+      "file_type": "parquet",
+      "id_column": "genome_name",
+      "sequence_column": "dna_sequence",
+      "label_separator": ","
+    }
+  },
+  "phenotypes": [
+    {
+      "name": "gentamicin_resistance",
+      "dataset": "gentamicin",
+      "label_column": "resistant_phenotype",
+      "positive_class": "Resistant",
+      "classes": ["Susceptible", "Resistant"]
+    },
+    {
+      "name": "motility",
+      "dataset": "bacformer",
+      "label_column": "madin_categorical_motility_binary",
+      "positive_class": "yes",
+      "classes": ["no", "yes"]
+    },
+    {
+      "name": "beta_hemolysis",
+      "dataset": "bacformer",
+      "label_column": "gideon_Beta hemolysis",
+      "positive_class": "+",
+      "classes": ["-", "+"]
+    },
+    {
+      "name": "nitrate_to_nitrite",
+      "dataset": "bacformer",
+      "label_column": "gideon_Nitrate to nitrite",
+      "positive_class": "+",
+      "classes": ["-", "+"]
+    },
+    {
+      "name": "glucose_utilization",
+      "dataset": "bacformer",
+      "label_column": "madin_carbsubs_glucose",
+      "positive_class": 1,
+      "classes": [0, 1]
+    }
+  ],
+  "total_k": [8, 10, 12],
+  "prefix_lengths": [2, 4, 5],
+  "prefix_seed": 20260901,
+  "n_prefixes": 10,
+  "historical_prefix": "ACATG",
+  "n_folds": 5,
+  "split_seed": 20260901,
+  "clustering": {
+    "ksize": 31,
+    "n_hashes": 1000,
+    "min_similarity": 0.96
+  },
+  "normalization": "frequency",
+  "reverse_complement": false,
+  "model": {
+    "solver": "liblinear",
+    "class_weight": "balanced",
+    "C": 1.0,
+    "max_iter": 2000,
+    "random_state": 20260901
+  },
+  "output_dir": "results/reviewer_benchmark_all_jaccard_096"
+}

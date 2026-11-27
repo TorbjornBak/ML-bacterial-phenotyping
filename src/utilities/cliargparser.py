@@ -28,9 +28,9 @@ class ArgParser():
         parser.output = parser.output.rstrip("/")
         input_data_directory = parser.input
         output_data_directory = parser.output
-        assert os.path.isdir(output_data_directory), f"Selected output directory does not exist: {output_data_directory}"
         assert os.path.isdir(input_data_directory), f"Selected input directory does not exist: {input_data_directory}"
         assert os.path.isfile(labels_path), f"Path to labels does not exist: {labels_path}"
+        os.makedirs(output_data_directory, exist_ok=True)
         
 
         self.parser = parser
@@ -68,7 +68,7 @@ class ArgParser():
         parser.add_argument("--esmc_pooling", default = "mean", help = "Pooling method for ESM-c embeddings, choose between mean, mean_per_token or None")
         parser.add_argument("--group_clusters", action="store_true", help = "Flag to indicate whether to group clusters during train test split to avoid data leakage")
         parser.add_argument("--subset_ratio", default = None, type = float, help = "Fraction to subset dataset to, for analysis purposes")
-        parser.add_argument("--device", default = "cpu", help = "Device to use for training, choose between cuda, cpu or mps")
+        parser.add_argument("--device", default = "auto", choices=["auto", "cuda", "cpu", "mps"], help = "Device to use for training")
         return parser
     
     def train_model_arguments(self):
@@ -76,14 +76,13 @@ class ArgParser():
                                         prog='train_models_v2.py',
                                         description='Toolbox of different ml models for downsampled genomes',
                                         epilog='Made by Torbjørn Regueira',
-                                        suggest_on_error=True,
                                         )
         
         parser = self.default_arguments(parser)
-        parser.add_argument("-m","--model","--model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
-        parser.add_argument("-lr", "--learning_rates", default = -1.0, type = float, nargs = '+', help = "List of learning rates for given model")
+        parser.add_argument("-m","--model","--model_arch", dest="model_arch", default="CNN", help = "Determines which ml model architecure to use, (CNN, RNN or TRANSFORMER)")
+        parser.add_argument("-lr", "--learning_rates", dest="lr", default = [3e-4], type = float, nargs = '+', help = "List of learning rates for given model")
         parser.add_argument("--kmer_prefixes", required = True, type = str, nargs = '+', help = "Comma separated list of kmer prefixes")
-        parser.add_argument("--train_split_method", default = "GroupKFold", choice = ["GroupKFold","GroupShuffleSplit"],help = "Sklearn method to use for train test splitting")
+        parser.add_argument("--train_split_method", default = "GroupKFold", choices = ["GroupKFold","GroupShuffleSplit"],help = "Sklearn method to use for train test splitting")
         parser.add_argument("--kmer_suffix_sizes", required = True, type = int, nargs = '+', help = "Comma seaparated list of kmer suffix sizes")
         parser.add_argument("--compress", action="store_true", help = "Flag telling whether to compress vocab size or not")
         parser.add_argument("--model_pooling", default = "mean", choices=["mean", "last", "attn"], help = "Pooling method for model, choose between mean, last and attn")
@@ -95,8 +94,14 @@ class ArgParser():
         parser.add_argument("--tokenize_method", default="kmers", type = str, help = "Method for tokenization, choose between kmers and bpe" )
         parser.add_argument("--embedding", default = "onehot", help = "Type of embedding, choose between onehot, xhot, esmc or integer")
         parser.add_argument("--xhot", default = None, type = int, help = "value for x in x-hot encoding, only used if embedding is set to xhot (fx 3 for 3-hot encoding)")
+        parser.add_argument("--transformer_max_tokens", default=2048, type=int, help="Maximum uniformly sampled tokens per genome (keeps laptop memory and runtime bounded)")
+        parser.add_argument("--transformer_batch_size", default=2, type=int, help="Batch size used by TRANSFORMER")
+        parser.add_argument("--transformer_emb_dim", default=32, type=int, help="Transformer embedding dimension")
+        parser.add_argument("--transformer_heads", default=4, type=int, help="Number of transformer attention heads")
+        parser.add_argument("--transformer_ff_dim", default=64, type=int, help="Transformer feed-forward dimension")
+        parser.add_argument("--transformer_layers", default=2, type=int, help="Number of transformer encoder layers")
         return parser
-        
+
     def baseline_arguments(self):
         parser = argparse.ArgumentParser(
                                         prog='utilities/baselines.py',
@@ -120,8 +125,3 @@ class ArgParser():
         parser.add_argument("-mloc","--model_directory", default = None, help = "Path to model directory where model is saved during training, and used for validation ")
         parser.add_argument("--classification_metric", default = "balanced_accuracy", help = "Metric to use for model evaluation during training and inference, choose between balanced_accuracy, accuracy, f1, precision and recall")
         return parser
-
-
-   
-
-        
