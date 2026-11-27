@@ -8,11 +8,18 @@
 
 set -euo pipefail
 
-# Resolve the runner from this script, so submitting from a login directory
-# (or with an absolute config/manifest path) does not depend on Slurm's
-# working-directory policy.
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
+# Slurm can execute a spooled copy of this script. Submit from the checkout
+# root, or set REVIEWER_REPO_ROOT to an absolute path to the checkout.
+if [[ -n "${SLURM_SUBMIT_DIR:-}" ]]; then
+  REPO_ROOT=${REVIEWER_REPO_ROOT:-$SLURM_SUBMIT_DIR}
+else
+  SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  REPO_ROOT=${REVIEWER_REPO_ROOT:-$(cd -- "$SCRIPT_DIR/.." && pwd)}
+fi
+if [[ ! -f "$REPO_ROOT/src/reviewer_benchmark.py" ]]; then
+  echo "Submit from the checkout root or set REVIEWER_REPO_ROOT to the checkout path." >&2
+  exit 2
+fi
 
 if [[ $# -lt 3 ]]; then
   echo "Usage: sbatch --array=0-N $0 CONFIG CONDITION_MANIFEST SPLIT_MANIFEST [MODEL] [REUSE_FEATURES]" >&2

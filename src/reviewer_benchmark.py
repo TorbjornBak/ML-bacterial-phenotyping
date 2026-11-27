@@ -10,10 +10,12 @@ import subprocess
 import traceback
 from collections import OrderedDict
 from datetime import datetime, timezone
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Mapping
 
 import pandas as pd
+from tqdm import tqdm
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -264,9 +266,10 @@ def prepare_split_manifest(
     clustering = dict(config.get("clustering", {}))
     threshold = clustering.get("distance_threshold")
     n_clusters = clustering.get("n_clusters")
-    if (threshold is None) == (n_clusters is None):
+    min_similarity = clustering.get("min_similarity")
+    if sum(value is not None for value in (threshold, n_clusters, min_similarity)) != 1:
         raise ValueError(
-            "clustering must declare exactly one of distance_threshold or n_clusters"
+            "clustering must declare exactly one of distance_threshold, n_clusters, or min_similarity"
         )
 
     split_frames: list[pd.DataFrame] = []
@@ -278,7 +281,7 @@ def prepare_split_manifest(
         ]
         if not phenotype_definitions:
             continue
-        sequences, _ = _load_sequences(dataset)
+        sequences = _open_sequence_source(dataset)
         id_column = dataset["id_column"]
         label_columns = list(
             dict.fromkeys(
@@ -315,13 +318,31 @@ def prepare_split_manifest(
                     f"classes {sorted(observed, key=str)!r} for {label_column!r}"
                 )
 
+        ksize = int(clustering.get("ksize", 31))
+        n_hashes = int(clustering.get("n_hashes", 1000))
+        source_files = []
+        for path in sequences.input_paths:
+            stat = path.stat()
+            source_files.append((str(path.resolve()), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns))
+        sketch_identity = {
+            "format": 1,
+            "sourmash_version": version("sourmash"),
+            "ksize": ksize,
+            "n_hashes": n_hashes,
+            "dataset": dataset,
+            "source_files": source_files,
+        }
+        sketch_key = hashlib.sha256(json.dumps(sketch_identity, sort_keys=True).encode()).hexdigest()
+        sketch_cache = destination.parent / "sketches" / f"{sketch_key}.sig.gz"
         cluster_manifest = create_cluster_manifest(
             sequences,
             dataset=dataset_name,
-            ksize=int(clustering.get("ksize", 31)),
-            n_hashes=int(clustering.get("n_hashes", 1000)),
+            ksize=ksize,
+            n_hashes=n_hashes,
             threshold=None if threshold is None else float(threshold),
             n_clusters=None if n_clusters is None else int(n_clusters),
+            min_similarity=min_similarity,
+            sketch_cache=sketch_cache,
         )
         design = cluster_manifest.merge(
             labels,
@@ -384,6 +405,7 @@ class _LazyFastaSequences(Mapping[str, list[str]]):
     """Index FASTA paths while decoding only the genome currently requested."""
 
     def __init__(self, paths: list[Path]):
+        self.input_paths = paths
         self._paths: OrderedDict[str, Path] = OrderedDict()
         for path in paths:
             genome_id = Path(path.stem).stem if path.suffix.lower() == ".gz" else path.stem
@@ -411,6 +433,7 @@ class _LazyParquetSequences(Mapping[str, list[str]]):
     """Index IDs cheaply and retain at most one decoded Parquet shard."""
 
     def __init__(self, paths: list[Path], id_column: str, sequence_column: str):
+        self.input_paths = paths
         self._id_column = id_column
         self._sequence_column = sequence_column
         self._locations: OrderedDict[str, list[tuple[Path, int]]] = OrderedDict()
@@ -462,7 +485,7 @@ class _SelectedSequences(Mapping[str, Any]):
         return len(self._genome_ids)
 
 
-def _open_sequence_source(dataset: Mapping[str, Any]) -> Mapping[str, Any]:
+def _open_sequence_source(dataset: Mapping[str, Any]) -> _LazyFastaSequences | _LazyParquetSequences:
     """Return a source that decodes at most one genome or Parquet shard."""
     input_path = Path(dataset["input"])
     file_type = str(dataset["file_type"]).lower().lstrip(".")
@@ -641,6 +664,8 @@ def _run_condition(
     *,
     reuse_features: bool = False,
     model_name: str = "logistic_regression",
+    workers: int = 1,
+    progress_position: int | None = None,
     overall_measurement: Any,
 ) -> Path:
     """Execute one full or prefix-filtered condition and persist tidy outputs."""
@@ -759,7 +784,11 @@ def _run_condition(
             raise ValueError(f"Cached feature metadata does not match this condition: {mismatches}")
     else:
         stream_state: dict[str, Any] = {}
-        with monitor.stage("feature_extraction", cache_state="cold"):
+        with monitor.stage("feature_extraction", cache_state="cold"), tqdm(
+            total=len(usable_ids), desc="Counting k-mers", unit="genome",
+            position=progress_position, leave=False, dynamic_ncols=True,
+            disable=True if progress_position is None else None,
+        ) as counting:
             features = build_sparse_kmer_counts(
                 _fingerprinted_sequence_stream(genomes, stream_state),
                 total_k=int(condition["total_k"]),
@@ -769,6 +798,8 @@ def _run_condition(
                 genome_ids=usable_ids,
                 dataset=dataset_name,
                 stage_callback=lambda stage: monitor.stage(stage, cache_state="cold"),
+                genome_counted=counting.update if not counting.disable else None,
+                workers=workers,
             )
             input_sha256 = str(stream_state["input_sha256"])
             total_bases = int(stream_state["total_bases"])
@@ -786,7 +817,12 @@ def _run_condition(
     score_rows: list[dict[str, Any]] = []
     metric_rows: list[dict[str, Any]] = []
     positive_class = _resolve_class(condition.get("positive_class"), expected_classes)
-    for fold_id in sorted(np.unique(folds)):
+    fold_progress = tqdm(
+        sorted(np.unique(folds)), desc="Evaluating folds", unit="fold",
+        position=progress_position, leave=False, dynamic_ncols=True,
+        disable=True if progress_position is None else None,
+    )
+    for fold_id in fold_progress:
         train = folds != fold_id
         test = folds == fold_id
         if not train.any() or not test.any():
@@ -861,6 +897,7 @@ def _run_condition(
         "serialized_size_bytes": matrix_size,
         "split_manifest_sha256": _manifest_digest(split_manifest_path),
         "cache_state": "warm" if cache_used else "cold",
+        "counting_workers": 0 if cache_used else workers,
     }
     overall_measurement.__exit__(None, None, None)
     overall_measurement.record["cache_state"] = resource_common["cache_state"]
@@ -893,6 +930,8 @@ def run_condition(
     *,
     reuse_features: bool = False,
     model_name: str = "logistic_regression",
+    workers: int = 1,
+    progress_position: int | None = None,
 ) -> Path:
     """Run one condition and always close the process-wide resource sampler.
 
@@ -905,6 +944,9 @@ def run_condition(
 
     from utilities.resource_monitoring import measure_stage
 
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
+
     condition_id = str(condition["condition_id"])
     overall_measurement = measure_stage("overall", condition_id, cache_state="unknown")
     overall_measurement.__enter__()
@@ -915,6 +957,8 @@ def run_condition(
             split_manifest_path,
             reuse_features=reuse_features,
             model_name=model_name,
+            workers=workers,
+            progress_position=progress_position,
             overall_measurement=overall_measurement,
         )
     except BaseException as error:
@@ -946,47 +990,80 @@ def _parser() -> argparse.ArgumentParser:
     split_parser.add_argument("--config", required=True)
     split_parser.add_argument("--output")
 
-    run_parser = subparsers.add_parser("run-condition", help="Run one SLURM-safe condition manifest row")
-    run_parser.add_argument("--config", required=True)
-    run_parser.add_argument("--condition-manifest", required=True)
-    run_parser.add_argument("--condition-index", required=True, type=int)
-    run_parser.add_argument("--split-manifest", required=True)
-    run_parser.add_argument("--reuse-features", action="store_true")
-    run_parser.add_argument(
+    run_arguments = argparse.ArgumentParser(add_help=False)
+    run_arguments.add_argument("--config", required=True)
+    run_arguments.add_argument("--condition-manifest", required=True)
+    run_arguments.add_argument("--split-manifest", required=True)
+    run_arguments.add_argument("--reuse-features", action="store_true")
+    run_arguments.add_argument("--no-progress", action="store_true", help="Hide progress bars")
+    run_arguments.add_argument(
+        "--workers", type=int, default=1, help="Number of k-mer counting processes (default: 1)"
+    )
+    run_arguments.add_argument(
         "--model",
         default="logistic_regression",
         choices=("logistic_regression", "hgbm", "hist_gradient_boosting"),
+    )
+    run_parser = subparsers.add_parser(
+        "run-condition", parents=[run_arguments], help="Run one SLURM-safe condition manifest row"
+    )
+    run_parser.add_argument("--condition-index", required=True, type=int)
+    batch_parser = subparsers.add_parser(
+        "run-conditions", parents=[run_arguments], help="Run multiple conditions sequentially"
+    )
+    batch_parser.add_argument(
+        "--condition-indices", nargs="+", type=int,
+        help="Zero-based rows in execution order (default: all rows)",
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
     if args.command == "prepare":
         print(prepare(args.config, args.output_dir, args.pilot))
         return 0
     if args.command == "prepare-splits":
         print(prepare_split_manifest(args.config, args.output))
         return 0
-    if args.command == "run-condition":
+    if args.command in {"run-condition", "run-conditions"}:
+        if args.workers < 1:
+            parser.error("--workers must be a positive integer")
         config = json.loads(Path(args.config).read_text())
         manifest = _read_table(args.condition_manifest)
-        if args.condition_index < 0 or args.condition_index >= len(manifest):
-            raise IndexError(f"condition-index must be between 0 and {len(manifest) - 1}")
-        condition = manifest.iloc[args.condition_index]
-        try:
-            print(
-                run_condition(
-                    config,
-                    condition,
-                    args.split_manifest,
-                    reuse_features=args.reuse_features,
-                    model_name=args.model,
+        batch = args.command == "run-conditions"
+        indices = (
+            args.condition_indices or range(len(manifest)) if batch else [args.condition_index]
+        )
+        if any(index < 0 or index >= len(manifest) for index in indices):
+            parser.error(f"condition indices must be between 0 and {len(manifest) - 1}")
+        if len(set(indices)) != len(indices):
+            parser.error("condition indices must be unique")
+        with tqdm(
+            total=len(indices), desc="Benchmark", unit="condition", position=0,
+            dynamic_ncols=True, disable=True if args.no_progress or not batch else None,
+        ) as progress:
+            for index in indices:
+                condition = manifest.iloc[index]
+                tqdm.write(
+                    f"Starting {condition['condition_id']} with {args.workers} counting worker(s)."
                 )
-            )
-        except Exception as error:
-            write_failure_record(config["output_dir"], condition, error)
-            raise
+                try:
+                    result = run_condition(
+                        config,
+                        condition,
+                        args.split_manifest,
+                        reuse_features=args.reuse_features,
+                        model_name=args.model,
+                        workers=args.workers,
+                        progress_position=None if args.no_progress else int(batch),
+                    )
+                except Exception as error:
+                    write_failure_record(config["output_dir"], condition, error)
+                    raise
+                progress.update()
+                tqdm.write(str(result))
         return 0
     return 2
 

@@ -89,15 +89,24 @@ def _descendant_rss_bytes(pid: int) -> int:
 
     try:
         import psutil  # optional: avoid making monitoring a hard dependency
+    except ImportError:
+        pass
+    else:
+        try:
+            process = psutil.Process(pid)
+            rss = process.memory_info().rss
+            for child in process.children(recursive=True):
+                try:
+                    rss += child.memory_info().rss
+                except (psutil.Error, OSError):
+                    # Workers can exit between enumeration and the RSS read.
+                    continue
+            return int(rss)
+        except (psutil.Error, OSError, RuntimeError):
+            pass
 
-        process = psutil.Process(pid)
-        return int(process.memory_info().rss + sum(child.memory_info().rss for child in process.children(recursive=True)))
-    except (ImportError, OSError, RuntimeError):
-        # ``RUSAGE_CHILDREN`` is less precise than live psutil sampling but
-        # still captures a worker that has already exited before the next
-        # sample.  This keeps process-tree accounting useful without adding a
-        # mandatory dependency to the project.
-        return max(_self_rss_bytes(), _children_max_rss_bytes())
+    # OS accounting is less precise than sampling the live process tree.
+    return max(_self_rss_bytes(), _children_max_rss_bytes())
 
 
 @dataclass

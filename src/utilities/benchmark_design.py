@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from itertools import product
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
@@ -73,6 +74,30 @@ def _genome_contigs(value: Any) -> list[str]:
     return contigs
 
 
+def _similarity_components(sketches: Sequence[Any], min_similarity: float) -> list[int]:
+    """Join qualifying pairs without storing a distance matrix or edge list."""
+    parents = list(range(len(sketches)))
+    sizes = [1] * len(sketches)
+
+    def root(index: int) -> int:
+        while parents[index] != index:
+            parents[index] = parents[parents[index]]
+            index = parents[index]
+        return index
+
+    for right, sketch in enumerate(sketches):
+        for left in range(right):
+            if sketch.jaccard(sketches[left]) < min_similarity:
+                continue
+            first, second = root(left), root(right)
+            if first != second:
+                if sizes[first] < sizes[second]:
+                    first, second = second, first
+                parents[second] = first
+                sizes[first] += sizes[second]
+    return [root(index) for index in range(len(sketches))]
+
+
 def create_cluster_manifest(
     genomes: Mapping[Any, Any],
     *,
@@ -81,17 +106,22 @@ def create_cluster_manifest(
     n_hashes: int = 1000,
     threshold: float | None = None,
     n_clusters: int | None = None,
+    min_similarity: float | None = None,
     output_path: str | Path | None = None,
+    sketch_cache: Path | None = None,
 ) -> pd.DataFrame:
     """Sketch complete genomes and assign deterministic sequence clusters.
 
     Each mapping value is one sequence or an iterable of independent contigs;
     contigs are added separately to Sourmash so no k-mer crosses a boundary.
     Sourmash Jaccard similarities are explicitly converted to distances before
-    hierarchical clustering.  Supply exactly one of ``threshold`` (distance
-    cutoff) or ``n_clusters`` (requested flat-cluster count).  Cluster names
+    hierarchical clustering. Supply exactly one of ``threshold`` (distance
+    cutoff), ``n_clusters`` (requested flat-cluster count), or
+    ``min_similarity`` (inclusive pairwise Jaccard cutoff for connected
+    components). Cluster names
     are canonicalized by their lexicographically smallest genome ID, making
     manifests stable when the input mapping order changes.
+    A sketch cache path must identify the source inputs and sketch parameters.
     """
 
     if not isinstance(genomes, Mapping):
@@ -110,8 +140,14 @@ def create_cluster_manifest(
         or int(n_hashes) <= 0
     ):
         raise ValueError("n_hashes must be a positive integer")
-    if (threshold is None) == (n_clusters is None):
-        raise ValueError("supply exactly one of threshold or n_clusters")
+    if sum(value is not None for value in (threshold, n_clusters, min_similarity)) != 1:
+        raise ValueError("supply exactly one of threshold, n_clusters, or min_similarity")
+    if min_similarity is not None and (
+        isinstance(min_similarity, bool)
+        or not isinstance(min_similarity, (int, float, np.number))
+        or not 0 <= min_similarity <= 1
+    ):
+        raise ValueError("min_similarity must be between 0 and 1")
     if threshold is not None:
         if isinstance(threshold, bool) or not isinstance(threshold, (int, float, np.number)):
             raise ValueError("threshold must be a finite non-negative number")
@@ -131,11 +167,7 @@ def create_cluster_manifest(
     raw_genome_ids = [str(genome_id) for genome_id in genomes]
     if len(set(raw_genome_ids)) != len(raw_genome_ids):
         raise ValueError("genome IDs must be unique")
-    genome_values = {
-        str(genome_id): value for genome_id, value in genomes.items()
-    }
-    genome_ids = list(genome_values)
-    genome_ids.sort()
+    genome_ids = sorted(raw_genome_ids)
     if isinstance(dataset, Mapping):
         dataset_values = {str(genome_id): value for genome_id, value in dataset.items()}
         missing = set(genome_ids).difference(dataset_values)
@@ -155,29 +187,59 @@ def create_cluster_manifest(
     try:
         import sourmash
         from scipy.cluster.hierarchy import fcluster, linkage
-        from scipy.spatial.distance import squareform
     except ImportError as exc:
         raise ImportError("create_cluster_manifest requires sourmash and scipy") from exc
 
-    sketches = []
-    for genome_id in genome_ids:
-        sketch = sourmash.MinHash(n=int(n_hashes), ksize=int(ksize))
-        for contig in _genome_contigs(genome_values[genome_id]):
-            sketch.add_sequence(contig, True)
-        sketches.append(sketch)
+    if sketch_cache is not None and sketch_cache.exists():
+        sketches_by_id = {
+            signature.name: signature.minhash
+            for signature in sourmash.load_file_as_signatures(str(sketch_cache))
+        }
+        if set(sketches_by_id) != set(genome_ids) or any(
+            sketch.ksize != ksize or sketch.num != n_hashes
+            for sketch in sketches_by_id.values()
+        ):
+            raise ValueError(f"Sketch cache does not match the requested genomes and parameters: {sketch_cache}")
+    else:
+        sketches_by_id = {}
+        # Follow source order for shard locality. Sort only the finished sketches.
+        for genome_id, sequence in genomes.items():
+            sketch = sourmash.MinHash(n=int(n_hashes), ksize=int(ksize))
+            for contig in _genome_contigs(sequence):
+                sketch.add_sequence(contig, True)
+            sketches_by_id[str(genome_id)] = sketch
+        if sketch_cache is not None:
+            from sourmash.signature import save_signatures_to_json
 
-    distance_matrix = np.zeros((len(sketches), len(sketches)), dtype=float)
-    for left in range(len(sketches)):
-        for right in range(left):
-            similarity = float(sketches[left].jaccard(sketches[right]))
-            distance = 1.0 - similarity
-            distance_matrix[left, right] = distance
-            distance_matrix[right, left] = distance
+            sketch_cache.parent.mkdir(parents=True, exist_ok=True)
+            signatures = [
+                sourmash.SourmashSignature(sketch, name=genome_id)
+                for genome_id, sketch in sketches_by_id.items()
+            ]
+            with NamedTemporaryFile(dir=sketch_cache.parent, delete=False) as handle:
+                temporary_path = Path(handle.name)
+                try:
+                    save_signatures_to_json(signatures, fp=handle, compression=1)
+                    handle.close()
+                    temporary_path.replace(sketch_cache)
+                finally:
+                    temporary_path.unlink(missing_ok=True)
 
-    if len(sketches) == 1:
+    sketches = [sketches_by_id[genome_id] for genome_id in genome_ids]
+    if min_similarity is not None:
+        flat_clusters = _similarity_components(sketches, min_similarity)
+    elif len(sketches) == 1:
         flat_clusters = np.ones(1, dtype=int)
     else:
-        linkage_matrix = linkage(squareform(distance_matrix, checks=False), method="average")
+        count = len(sketches)
+        distances = np.empty(count * (count - 1) // 2, dtype=np.float64)
+        index = 0
+        for left, sketch in enumerate(sketches):
+            for right in range(left + 1, count):
+                distances[index] = 1.0 - sketches[right].jaccard(sketch)
+                index += 1
+        # Keep SciPy's merge ordering for tied distances.
+        linkage_matrix = linkage(distances, method="average")
         if threshold is not None:
             flat_clusters = fcluster(linkage_matrix, t=threshold, criterion="distance")
         else:

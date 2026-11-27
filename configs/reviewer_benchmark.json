@@ -31,7 +31,7 @@
   "clustering": {
     "ksize": 31,
     "n_hashes": 1000,
-    "distance_threshold": 0.1
+    "min_similarity": 0.96
   },
   "normalization": "frequency",
   "reverse_complement": false,
@@ -42,5 +42,5 @@
     "max_iter": 2000,
     "random_state": 20260901
   },
-  "output_dir": "results/reviewer_benchmark"
+  "output_dir": "results/reviewer_benchmark_jaccard_096"
 }

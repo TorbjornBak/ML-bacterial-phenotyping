@@ -176,6 +176,30 @@ def test_cluster_manifest_sketches_contigs_independently_and_is_stable(
     pd.testing.assert_frame_equal(pd.read_csv(tmp_path / "clusters.csv"), manifest)
 
 
+def test_similarity_components_join_a_chain_and_include_the_cutoff(monkeypatch):
+    class FakeMinHash:
+        def __init__(self, n, ksize):
+            pass
+
+        def add_sequence(self, sequence, force):
+            self.sequence = sequence
+
+        def jaccard(self, other):
+            pair = frozenset((self.sequence, other.sequence))
+            return {
+                frozenset(("AAAA", "CCCC")): 0.96,
+                frozenset(("CCCC", "GGGG")): 0.97,
+            }.get(pair, 0.91 if pair == frozenset(("AAAA", "GGGG")) else 0.5)
+
+    monkeypatch.setitem(sys.modules, "sourmash", SimpleNamespace(MinHash=FakeMinHash))
+    result = create_cluster_manifest(
+        {"c": "GGGG", "b": "CCCC", "a": "AAAA", "d": "TTTT"},
+        min_similarity=0.96,
+    ).set_index("genome_id")
+    assert result.loc[["a", "b", "c"], "cluster_id"].nunique() == 1
+    assert result["cluster_id"].nunique() == 2
+
+
 def test_split_manifest_without_labels_is_deterministic_and_missing_labels_are_allowed():
     genomes = pd.DataFrame(
         {

@@ -1,5 +1,5 @@
 {
-  "notes": "Example paths match the checked-in metadata. Dataset 1 genome parquet files are distributed separately; place them under data/dataset_1 before running.",
+  "notes": "The BacBench download has its Parquet shards in the dataset's data subdirectory.",
   "datasets": {
     "gentamicin": {
       "input": "data/dataset_2/genomes",
@@ -10,7 +10,7 @@
       "label_separator": ","
     },
     "bacformer": {
-      "input": "data/dataset_1",
+      "input": "data/dataset_1/bacbench-phenotypic-traits-dna/data",
       "labels": "data/dataset_1/labels.csv",
       "file_type": "parquet",
       "id_column": "genome_name",
@@ -65,7 +65,7 @@
   "clustering": {
     "ksize": 31,
     "n_hashes": 1000,
-    "distance_threshold": 0.1
+    "min_similarity": 0.96
   },
   "normalization": "frequency",
   "reverse_complement": false,
@@ -76,5 +76,5 @@
     "max_iter": 2000,
     "random_state": 20260901
   },
-  "output_dir": "results/reviewer_benchmark"
+  "output_dir": "results/reviewer_benchmark_all_jaccard_096"
 }

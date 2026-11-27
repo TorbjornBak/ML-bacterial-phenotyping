@@ -3,12 +3,33 @@ import gzip
 
 import pandas as pd
 import pytest
+from scipy.sparse import load_npz
 
 from reviewer_benchmark import (
     build_condition_manifest,
+    main,
     prepare_split_manifest,
     write_failure_record,
 )
+
+
+def test_run_conditions_preserves_selection_order_and_worker_count(tmp_path, monkeypatch):
+    config = tmp_path / "config.json"
+    config.write_text(json.dumps({"output_dir": str(tmp_path)}))
+    manifest = tmp_path / "conditions.csv"
+    pd.DataFrame({"condition_id": ["first", "second", "third"]}).to_csv(manifest, index=False)
+    calls = []
+
+    def record_run(config, condition, split_manifest, *, workers, progress_position, **kwargs):
+        calls.append((condition["condition_id"], workers, progress_position))
+        return tmp_path / condition["condition_id"]
+
+    monkeypatch.setattr("reviewer_benchmark.run_condition", record_run)
+    assert main([
+        "run-conditions", "--config", str(config), "--condition-manifest", str(manifest),
+        "--split-manifest", "splits.csv", "--condition-indices", "2", "0", "--workers", "2",
+    ]) == 0
+    assert calls == [("third", 2, 1), ("first", 2, 1)]
 
 
 def _config():
@@ -260,6 +281,20 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
     assert isinstance(condition["total_k"], int)
     assert isinstance(condition["n_classes"], int)
 
+    parallel_config = {**config, "output_dir": str(tmp_path / "parallel")}
+    parallel_output = run_condition(
+        parallel_config, build_condition_manifest(config).iloc[0], split_path, workers=2
+    )
+    serial_matrix = load_npz(next(output.glob("*.npz")))
+    parallel_matrix = load_npz(next(parallel_output.glob("*.npz")))
+    assert (serial_matrix != parallel_matrix).nnz == 0
+    for name, expected in (
+        ("metrics", metrics), ("predictions", predictions), ("prediction_scores", scores)
+    ):
+        pd.testing.assert_frame_equal(pd.read_parquet(parallel_output / f"{name}.parquet"), expected)
+    parallel_resources = pd.read_parquet(parallel_output / "resources.parquet")
+    assert set(parallel_resources["counting_workers"]) == {2}
+
     config["reverse_complement"] = True
     with pytest.raises(ValueError, match="Cached feature metadata"):
         run_condition(
@@ -293,17 +328,21 @@ def test_single_condition_writes_tidy_fold_prediction_and_resource_outputs(tmp_p
     assert hgbm_manifest["model_parameters"]["random_state"] == 7
 
 
+@pytest.mark.parametrize("file_type", ["fasta", "parquet"])
 def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, file_type
 ):
     genome_directory = tmp_path / "genomes"
     genome_directory.mkdir()
     labels = []
+    genomes = []
     for index, sequence in enumerate(
         ["AAAAAA", "AAAAAA", "CCCCCC", "CCCCCC", "GGGGGG", "GGGGGG", "TTTTTT", "TTTTTT"]
     ):
         genome_id = f"g{index}"
-        (genome_directory / f"{genome_id}.fasta").write_text(f">contig\n{sequence}\n")
+        genomes.append({"genome_id": genome_id, "dna_sequence": sequence})
+        if file_type == "fasta":
+            (genome_directory / f"{genome_id}.fasta").write_text(f">contig\n{sequence}\n")
         labels.append(
             {
                 "genome_id": genome_id,
@@ -311,6 +350,9 @@ def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
                 "trait_b": None if index < 2 else index % 2,
             }
         )
+    if file_type == "parquet":
+        pd.DataFrame(genomes[::2]).to_parquet(genome_directory / "a.parquet", index=False)
+        pd.DataFrame(genomes[1::2]).to_parquet(genome_directory / "b.parquet", index=False)
     labels_path = tmp_path / "labels.csv"
     pd.DataFrame(labels).to_csv(labels_path, index=False)
     config = {
@@ -318,7 +360,7 @@ def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
             "toy": {
                 "input": str(genome_directory),
                 "labels": str(labels_path),
-                "file_type": "fasta",
+                "file_type": file_type,
                 "id_column": "genome_id",
                 "sequence_column": "dna_sequence",
             }
@@ -329,7 +371,9 @@ def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
         ],
         "n_folds": 2,
         "split_seed": 13,
-        "clustering": {"ksize": 3, "n_hashes": 20, "distance_threshold": 0.1},
+        "clustering": {"ksize": 3, "n_hashes": 20, **(
+            {"min_similarity": 0.96} if file_type == "parquet" else {"distance_threshold": 0.1}
+        )},
         "output_dir": str(tmp_path / "output"),
     }
     config_path = tmp_path / "config.json"
@@ -344,3 +388,14 @@ def test_prepare_split_manifest_clusters_full_genomes_and_writes_reusable_folds(
     assert {"trait_a", "trait_b", "requested_n_folds", "effective_n_folds"}.issubset(
         manifest.columns
     )
+    assert len(list((output.parent / "sketches").glob("*.sig.gz"))) == 1
+
+    from reviewer_benchmark import _LazyFastaSequences, _LazyParquetSequences
+
+    def unexpected_sequence_read(*args):
+        pytest.fail("A warm sketch cache should skip reading genome sequences")
+
+    monkeypatch.setattr(_LazyFastaSequences, "__getitem__", unexpected_sequence_read)
+    monkeypatch.setattr(_LazyParquetSequences, "__getitem__", unexpected_sequence_read)
+    cached_output = prepare_split_manifest(config_path, tmp_path / "output" / "cached.csv")
+    assert output.read_bytes() == cached_output.read_bytes()

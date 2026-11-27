@@ -1,15 +1,35 @@
 import time
+from types import SimpleNamespace
 
 import pytest
 
 from utilities.resource_monitoring import (
     RESOURCE_FIELDS,
     ResourceMonitor,
+    _descendant_rss_bytes,
     ingest_slurm_record,
     parse_slurm_elapsed,
     parse_slurm_max_rss,
     measure_stage,
 )
+
+
+def test_process_tree_sample_keeps_live_rss_when_a_worker_exits(monkeypatch):
+    psutil = pytest.importorskip("psutil")
+
+    def exited():
+        raise psutil.ZombieProcess(20619)
+
+    parent = SimpleNamespace(
+        memory_info=lambda: SimpleNamespace(rss=100),
+        children=lambda recursive: [
+            SimpleNamespace(memory_info=exited),
+            SimpleNamespace(memory_info=lambda: SimpleNamespace(rss=40)),
+        ],
+    )
+    monkeypatch.setattr(psutil, "Process", lambda pid: parent)
+
+    assert _descendant_rss_bytes(1) == 140
 
 
 def test_stage_measurement_has_consistent_cpu_and_memory_schema():

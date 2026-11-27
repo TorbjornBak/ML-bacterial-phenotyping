@@ -7,10 +7,14 @@ base-four integer, so the feature space does not need to be enumerated.
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from contextlib import nullcontext
 from dataclasses import dataclass
 import json
+from multiprocessing import get_context
+from itertools import islice
 from pathlib import Path
 import re
 from typing import Any
@@ -182,6 +186,75 @@ def _safe_component(value: Any) -> str:
     return re.sub(r"[^A-Za-z0-9_.-]+", "-", value) or "none"
 
 
+def _count_genome(
+    contigs: list[str], total_k: int, prefix: str | None, reverse_complement: bool
+) -> tuple[dict[int, int], int, int, int]:
+    row_counts: dict[int, int] = {}
+    raw_count = valid_count = candidate_count = 0
+    strands = list(contigs)
+    if reverse_complement:
+        strands.extend(_reverse_complement(contig) for contig in contigs)
+    for sequence in strands:
+        candidate_count += max(0, len(sequence) - total_k + 1)
+        if prefix is None:
+            for start in range(max(0, len(sequence) - total_k + 1)):
+                kmer = sequence[start : start + total_k]
+                if any(base not in _DNA_TO_DIGIT for base in kmer):
+                    continue
+                valid_count += 1
+                raw_count += 1
+                column = encode_kmer(kmer)
+                row_counts[column] = row_counts.get(column, 0) + 1
+            continue
+
+        # Prefix-filtered conditions retain only ~4**-len(prefix) of
+        # all windows. Find prefix occurrences inside valid DNA runs
+        # in C-backed string/regex operations instead of constructing
+        # and checking every candidate k-mer in Python.
+        for match in _VALID_DNA_RUN.finditer(sequence):
+            valid_run = match.group(0)
+            last_start = len(valid_run) - total_k
+            valid_count += max(0, last_start + 1)
+            start = valid_run.find(prefix)
+            while start != -1 and start <= last_start:
+                raw_count += 1
+                suffix = valid_run[
+                    start + len(prefix) : start + total_k
+                ]
+                column = encode_kmer(suffix)
+                row_counts[column] = row_counts.get(column, 0) + 1
+                start = valid_run.find(prefix, start + 1)
+    return row_counts, raw_count, valid_count, candidate_count
+
+
+def _count_genomes(
+    genomes: Iterable[Any],
+    total_k: int,
+    prefix: str | None,
+    reverse_complement: bool,
+    workers: int,
+) -> Iterable[tuple[dict[int, int], int, int, int]]:
+    contigs = (_as_contigs(genome) for genome in genomes)
+    if workers == 1:
+        for genome in contigs:
+            yield _count_genome(genome, total_k, prefix, reverse_complement)
+        return
+
+    # Spawn rather than fork because the benchmark samples resources in threads.
+    # Limit the queue so streaming input does not accumulate genomes in RAM.
+    with ProcessPoolExecutor(max_workers=workers, mp_context=get_context("spawn")) as pool:
+        pending = deque(
+            pool.submit(_count_genome, genome, total_k, prefix, reverse_complement)
+            for genome in islice(contigs, workers)
+        )
+        while pending:
+            result = pending.popleft().result()
+            genome = next(contigs, None)
+            if genome is not None:
+                pending.append(pool.submit(_count_genome, genome, total_k, prefix, reverse_complement))
+            yield result
+
+
 def build_sparse_kmer_counts(
     genomes: Mapping[Any, Any] | Sequence[Any] | Iterable[Any],
     total_k: int,
@@ -192,6 +265,8 @@ def build_sparse_kmer_counts(
     genome_ids: Sequence[Any] | None = None,
     dataset: str = "dataset",
     stage_callback: Callable[[str], Any] | None = None,
+    genome_counted: Callable[[], Any] | None = None,
+    workers: int = 1,
 ) -> SparseKmerCounts:
     """Build full or prefix-filtered sparse k-mer counts.
 
@@ -206,7 +281,12 @@ def build_sparse_kmer_counts(
     name and returning a context manager. It is entered separately for
     ``tokenization_and_counting`` and ``matrix_construction`` so callers can
     instrument those phases without reimplementing the counter.
+    With more than one worker, counting runs in separate processes and results
+    are assembled in input order.
     """
+
+    if isinstance(workers, bool) or not isinstance(workers, int) or workers < 1:
+        raise ValueError("workers must be a positive integer")
 
     if not isinstance(total_k, (int, np.integer)) or isinstance(total_k, bool) or total_k <= 0:
         raise ValueError("total_k must be a positive integer")
@@ -269,47 +349,13 @@ def build_sparse_kmer_counts(
     )
     row_count = 0
     with count_context:
-        for row, genome in enumerate(genome_values):
+        for row, (row_counts, raw_count, valid_count, candidate_count) in enumerate(
+            _count_genomes(genome_values, total_k, prefix, reverse_complement, workers)
+        ):
             if expected_rows is not None and row >= expected_rows:
                 raise ValueError("genome_ids must have one entry per genome")
             if dynamic_ids:
                 ids.append(str(row))
-            contigs = _as_contigs(genome)
-            row_counts: dict[int, int] = {}
-            raw_count = valid_count = candidate_count = 0
-            strands = list(contigs)
-            if reverse_complement:
-                strands.extend(_reverse_complement(contig) for contig in contigs)
-            for sequence in strands:
-                candidate_count += max(0, len(sequence) - total_k + 1)
-                if prefix is None:
-                    for start in range(max(0, len(sequence) - total_k + 1)):
-                        kmer = sequence[start : start + total_k]
-                        if any(base not in _DNA_TO_DIGIT for base in kmer):
-                            continue
-                        valid_count += 1
-                        raw_count += 1
-                        column = encode_kmer(kmer)
-                        row_counts[column] = row_counts.get(column, 0) + 1
-                    continue
-
-                # Prefix-filtered conditions retain only ~4**-len(prefix) of
-                # all windows. Find prefix occurrences inside valid DNA runs
-                # in C-backed string/regex operations instead of constructing
-                # and checking every candidate k-mer in Python.
-                for match in _VALID_DNA_RUN.finditer(sequence):
-                    valid_run = match.group(0)
-                    last_start = len(valid_run) - total_k
-                    valid_count += max(0, last_start + 1)
-                    start = valid_run.find(prefix)
-                    while start != -1 and start <= last_start:
-                        raw_count += 1
-                        suffix = valid_run[
-                            start + len(prefix) : start + total_k
-                        ]
-                        column = encode_kmer(suffix)
-                        row_counts[column] = row_counts.get(column, 0) + 1
-                        start = valid_run.find(prefix, start + 1)
             for column, count in row_counts.items():
                 row_indices.append(row)
                 column_indices.append(column)
@@ -318,6 +364,8 @@ def build_sparse_kmer_counts(
             valid_window_counts.append(valid_count)
             candidate_window_counts.append(candidate_count)
             row_count = row + 1
+            if genome_counted is not None:
+                genome_counted()
 
     if expected_rows is not None and row_count != expected_rows:
         raise ValueError("genome_ids must have one entry per genome")
